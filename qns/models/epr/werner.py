@@ -103,7 +103,23 @@ class WernerStateEntanglement(BaseEntanglement, QuantumModel):
         ne.decoherence_time = min(self.decoherence_time, epr.decoherence_time)
         return ne
 
-    def distillation(self, epr: "WernerStateEntanglement", name: Optional[str] = None):
+    def purify_self(self, epr: "WernerStateEntanglement") -> bool:
+        if self.is_decoherenced or epr.is_decoherenced:
+            self.is_decoherenced = True
+            self.fidelity = 0
+            return False
+        epr.is_decoherenced = True
+        fmin = min(self.fidelity, epr.fidelity)
+
+        if get_rand() > (fmin ** 2 + 5 / 9 * (1 - fmin) ** 2 + 2 / 3 * fmin * (1 - fmin)):
+            self.is_decoherenced = True
+            self.fidelity = 0
+            return False
+        self.fidelity = (fmin ** 2 + (1 - fmin) ** 2 / 9) /\
+                      (fmin ** 2 + 5 / 9 * (1 - fmin) ** 2 + 2 / 3 * fmin * (1 - fmin))
+        return True
+
+    def distillation(self, epr: "WernerStateEntanglement", name: Optional[str] = None) -> "WernerStateEntanglement":
         """
         Use `self` and `epr` to perfrom distillation and distribute a new entanglement.
         Using Bennett 96 protocol and estimate lower bound.
@@ -114,7 +130,7 @@ class WernerStateEntanglement(BaseEntanglement, QuantumModel):
         Returns:
             the new distributed entanglement
         """
-        ne = WernerStateEntanglement()
+        """ ne = WernerStateEntanglement()
         if self.is_decoherenced or epr.is_decoherenced:
             ne.is_decoherenced = True
             ne.fidelity = 0
@@ -129,7 +145,7 @@ class WernerStateEntanglement(BaseEntanglement, QuantumModel):
             return
         ne.fidelity = (fmin ** 2 + (1 - fmin) ** 2 / 9) /\
                       (fmin ** 2 + 5 / 9 * (1 - fmin) ** 2 + 2 / 3 * fmin * (1 - fmin))
-        return ne
+        return ne """
 
     def store_error_model(self, t: float, decoherence_rate: Optional[float], **kwargs):
         """
@@ -195,3 +211,12 @@ class WernerStateEntanglement(BaseEntanglement, QuantumModel):
             merged.values(),
             key=lambda e: e.ch_index
         )
+  
+    def __repr__(self):
+        return (f"{self.__class__.__name__}("
+            f"name={self.name}, fidelity={self.fidelity:.4f}, "
+            f"is_decoherenced={self.is_decoherenced}, "
+            f"src={self.src}, dst={self.dst}, "
+            f"ch_index={self.ch_index}, "
+            f"orig_eprs={[e.name if hasattr(e, 'name') else repr(e) for e in self.orig_eprs]}), "
+            f"decoherence_time={self.decoherence_time})")

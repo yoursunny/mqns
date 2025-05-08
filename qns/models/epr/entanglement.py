@@ -120,13 +120,3 @@ class BaseEntanglement(object):
     #    if self.name is not None:
     #        return "<epr "+self.name+">"
     #    return super().__repr__()
-
-    def __repr__(self):
-        return (f"{self.__class__.__name__}("
-            f"name={self.name!r}, fidelity={self.fidelity:.4f}, "
-            f"is_decoherenced={self.is_decoherenced}, "
-            f"src={self.src}, dst={self.dst}, "
-            f"ch_index={self.ch_index}, "
-            f"orig_eprs={[e.name if hasattr(e, 'name') else repr(e) for e in self.orig_eprs]}), "
-            f"decoherence_time={self.decoherence_time})")
-

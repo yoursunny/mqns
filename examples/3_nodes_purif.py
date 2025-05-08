@@ -26,7 +26,7 @@ SEED_BASE = 100
 light_speed = 2 * 10**5 # km/s
 
 # parameters
-sim_duration = 3
+sim_duration = 1
 
 fiber_alpha = 0.2
 eta_d = 0.95
@@ -34,7 +34,7 @@ eta_s = 0.95
 frequency = 1e6                  # memory frequency
 entg_attempt_rate = 50e6         # From fiber max frequency (50 MHz) AND detectors count rate (60 MHz)
 
-channel_qubits = 1
+channel_qubits = 2
 init_fidelity = 0.99
 p_swap = 0.5
 
@@ -98,6 +98,7 @@ def generate_topology(t_coherence):
     }
     }
 
+
 def run_simulation(t_coherence, seed):
     json_topology = generate_topology(t_coherence)
 
@@ -123,47 +124,57 @@ def run_simulation(t_coherence, seed):
         total_etg+=ll_app.etg_count
         total_decohered+=ll_app.decoh_count
     
-    e2e_rate = net.get_node("S").get_apps(ProactiveRouting)[0].e2e_count / sim_duration
+    e2e_count = net.get_node("S").get_apps(ProactiveRouting)[0].e2e_count
+    e2e_rate =  e2e_count / sim_duration
+    mean_fidelity = net.get_node("S").get_apps(ProactiveRouting)[0].fidelity / e2e_count
 
-    return e2e_rate, total_decohered / total_etg if total_etg > 0 else 0
+    return e2e_rate, mean_fidelity, total_decohered / total_etg if total_etg > 0 else 0
 
 
 results = {
     "T_cohere": [],
     "Mean Rate": [],
-    "Std Rate": []
+    "Std Rate": [],
+    "Mean F": [],
+    "Std F": []
 }
 
+t_cohere_values = [1]
 #t_cohere_values = [2e-3, 5e-3, 1e-2, 2e-2, 3e-2, 4e-2, 8e-2, 1e-1]
-t_cohere_values = np.geomspace(2e-3, 1e-1, 8)
+#t_cohere_values = np.geomspace(2e-3, 1e-1, 8)
 
-N_RUNS = 10
+N_RUNS = 1
 for t_cohere in t_cohere_values:
     rates = []
+    fids = []
     for i in range(N_RUNS):
         print(f"T_cohere={t_cohere:.4f}, run {i+1}")
         seed = SEED_BASE + i
-        rate, *_ = run_simulation(t_cohere, seed)
+        rate, f, *_ = run_simulation(t_cohere, seed)
         rates.append(rate)
+        fids.append(f)
 
     results["T_cohere"].append(t_cohere)
     results["Mean Rate"].append(np.mean(rates))
     results["Std Rate"].append(np.std(rates))
+    results["Mean F"].append(np.mean(fids))
+    results["Std F"].append(np.std(fids))
 
 # Convert to DataFrame
 df = pd.DataFrame(results)
 
-# Plotting
-plt.figure(figsize=(6, 4))
-plt.errorbar(
-    df["T_cohere"], df["Mean Rate"], yerr=df["Std Rate"],
-    fmt='o', color='orange', ecolor='orange', capsize=4, label="sim.", linestyle='--'
-)
-plt.xscale('log')
-plt.xlabel(r"$T_{\mathrm{cohere}}$")
-plt.ylabel("Ent. per second")
-plt.title("E2e rate")
-plt.legend()
-plt.grid(True, which="both", ls='--', lw=0.5)
-plt.tight_layout()
-plt.show()
+print(df)
+
+# plt.figure(figsize=(6, 4))
+# plt.errorbar(
+#     df["T_cohere"], df["Mean Rate"], yerr=df["Std Rate"],
+#     fmt='o', color='orange', ecolor='orange', capsize=4, label="sim.", linestyle='--'
+# )
+# plt.xscale('log')
+# plt.xlabel(r"$T_{\mathrm{cohere}}$")
+# plt.ylabel("Ent. per second")
+# plt.title("E2e rate")
+# plt.legend()
+# plt.grid(True, which="both", ls='--', lw=0.5)
+# plt.tight_layout()
+# plt.show()

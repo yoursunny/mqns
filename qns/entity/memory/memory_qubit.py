@@ -37,22 +37,18 @@ class QubitState(Enum):
 class QubitFSM:
     def __init__(self):
         self.state = QubitState.RELEASE
-        self.purif_rounds = 0
         
     def to_entangled(self):
         if self.state == QubitState.RELEASE:
             self.state = QubitState.ENTANGLED
-            self.purif_rounds = 0
         else:
             print(f"Unexpected transition: <{self.state}> -> <ENTANGLED>")
 
     def to_purif(self):
         if self.state == QubitState.ENTANGLED:    # swapping conditions met -> go to first purif (if any)
             self.state = QubitState.PURIF
-            self.purif_rounds = 0
         elif self.state == QubitState.PENDING:    # pending purif succ -> go to next purif (if any)
             self.state = QubitState.PURIF
-            self.purif_rounds +=1
         else:
             print(f"Unexpected transition: <{self.state}> -> <PURIF>")
     
@@ -73,6 +69,9 @@ class QubitFSM:
             self.state = QubitState.ELIGIBLE
         else:
             print(f"Unexpected transition: <{self.state}> -> <ELIGIBLE>")
+            
+    def __repr__(self) -> str:
+        return f"state={self.state}"
 
 class MemoryQubit():
     """
@@ -88,6 +87,7 @@ class MemoryQubit():
         self.qchannel = None
         self.pid = None
         self.active = None
+        self.purif_rounds = 0
 
     def allocate(self, pid: int) -> None:
         self.pid = pid
@@ -103,5 +103,5 @@ class MemoryQubit():
 
     def __repr__(self) -> str:
         if self.addr is not None:
-            return f"<memory qubit {self.addr}, cg={self.qchannel}, pid={self.pid}, active={self.active}>"
+            return f"<memory qubit {self.addr}, ch={self.qchannel}, pid={self.pid}, active={self.active}, pr={self.purif_rounds}, {self.fsm}>"
         return super().__repr__()

@@ -165,7 +165,7 @@ class QuantumMemory(Entity):
         t_now = self._simulator.current_time
         sec_diff = t_now.sec - store_time.sec
         data.store_error_model(t=sec_diff, decoherence_rate=self.decoherence_rate, **self.store_error_model_args)
-        
+
         # cancel scheduled decoherence event
         event = self.pending_decohere_events[data.name]
         event.cancel()
@@ -279,12 +279,25 @@ class QuantumMemory(Entity):
             if data and qubit.fsm.state == QubitState.ELIGIBLE and qubit.pid == pid and qubit.qchannel.name != qchannel:
                 qubits.append((qubit, data))
         return qubits
-    
+
     def search_path_qubits(self, pid: int = None) -> List[MemoryQubit]:
         qubits = []
         for (qubit, data) in self._storage:
             if not data and qubit.pid == pid and not qubit.active:
                 qubits.append(qubit)
+        return qubits
+    
+    def search_purif_qubits(self, curr_qubit_addr: int, partner: str, qchannel: str, pid: int = None, purif_rounds: int = 0) -> List[Tuple[MemoryQubit, QuantumModel]]:
+        # recurrence purif -> pairs must be of equal rounds
+        # log.debug(f"partner={partner}, qchannel={qchannel}, pid={pid}, purif_rounds={purif_rounds}")
+        qubits = []
+        for (qubit, data) in self._storage:
+            #if data:
+                # log.debug(f"----- {qubit} | {data.src.name}-{data.dst.name}")
+            if qubit.addr != curr_qubit_addr and data and qubit.fsm.state == QubitState.PURIF and qubit.pid == pid \
+                and qubit.qchannel.name == qchannel and (data.src.name == partner or data.dst.name == partner) \
+                and qubit.purif_rounds == purif_rounds:
+                qubits.append((qubit, data))
         return qubits
     
     # for dynamic capacity allocation
