@@ -44,7 +44,7 @@ SEED_BASE = 100
 light_speed = 2 * 10**5 # km/s
 
 # parameters
-sim_duration = 1
+sim_duration = 5
 
 fiber_alpha = 0.2
 eta_d = 0.95
@@ -53,7 +53,7 @@ frequency = 1e6                  # memory frequency
 entg_attempt_rate = 50e6         # From fiber max frequency (50 MHz) AND detectors count rate (60 MHz)
 
 channel_qubits = 2
-init_fidelity = 0.99
+init_fidelity = 0.7
 p_swap = 0.5
 
 
@@ -141,10 +141,10 @@ def run_simulation(t_coherence, seed):
         ll_app = node.get_apps(LinkLayer)[0]
         total_etg+=ll_app.etg_count
         total_decohered+=ll_app.decoh_count
-    
+
     e2e_count = net.get_node("S").get_apps(ProactiveForwarder)[0].e2e_count
     e2e_rate =  e2e_count / sim_duration
-    mean_fidelity = net.get_node("S").get_apps(ProactiveForwarder)[0].fidelity / e2e_count
+    mean_fidelity = net.get_node("S").get_apps(ProactiveForwarder)[0].fidelity / e2e_count if e2e_count > 0 else 0
 
     return e2e_rate, mean_fidelity, total_decohered / total_etg if total_etg > 0 else 0
 
@@ -182,17 +182,3 @@ for t_cohere in t_cohere_values:
 df = pd.DataFrame(results)
 
 print(df)
-
-# plt.figure(figsize=(6, 4))
-# plt.errorbar(
-#     df["T_cohere"], df["Mean Rate"], yerr=df["Std Rate"],
-#     fmt='o', color='orange', ecolor='orange', capsize=4, label="sim.", linestyle='--'
-# )
-# plt.xscale('log')
-# plt.xlabel(r"$T_{\mathrm{cohere}}$")
-# plt.ylabel("Ent. per second")
-# plt.title("E2e rate")
-# plt.legend()
-# plt.grid(True, which="both", ls='--', lw=0.5)
-# plt.tight_layout()
-# plt.show()

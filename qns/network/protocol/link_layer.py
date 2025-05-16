@@ -236,14 +236,15 @@ class LinkLayer(Application):
         Notes:
             - The quantum channel is assumed to have no photon loss in this step since it executes only the sucessful attempt.
         """
-        
+
         epr = WernerStateEntanglement(fidelity=self.init_fidelity, name=uuid.uuid4().hex)
+        epr.creation_time = self._simulator.tc - Time(sec=4*qchannel.delay_model.calculate())  # qubit init at 2tau and we are at 6tau
         epr.src = self.own
         epr.dst = next_hop
         epr.attempts = attempts
         epr.key = key
 
-        local_qubit = self.memory.write(qm=epr, address=address, delay=3*qchannel.delay_model.calculate())   # qubit init at 2tau
+        local_qubit = self.memory.write(qm=epr, address=address)
 
         if not local_qubit:
             raise Exception(f"{self.own}: (sender) Do succ EPR -> memory full, key ({key})")
@@ -280,8 +281,11 @@ class LinkLayer(Application):
 
         log.debug(f"{self.own}: recv half-EPR {epr.name} from {from_node} | reservation key {epr.key}")
 
-        # if 3-6 tau -> we are at 6tau
-        local_qubit = self.memory.write(qm=epr, path_id=epr.path_id, key=epr.key, delay=4*qchannel.delay_model.calculate())   # qubit init at 2tau
+        if epr.decoherence_time <= self._simulator.tc:
+            raise Exception(f"{self.own}: Decoherence time already passed | {epr}")
+
+        # qubit init at 2tau and we are at 7*tau
+        local_qubit = self.memory.write(qm=epr, path_id=epr.path_id, key=epr.key)
 
         if local_qubit is None:
             raise Exception(f"{self.own}: Failed to store rcvd EPR due to full memory")
@@ -473,10 +477,9 @@ class LinkLayer(Application):
         p = self._loss_based_success_prob(link_length_km)
         k = np.random.geometric(p)     # k-th attempt will succeed
 
-        attempt_duration = max(4.5*tau, reset_time)
+        attempt_duration = max(5.5*tau, reset_time)    # includes 1*tau between attempts (not rounds)
 
-        # calculate time right before the successful trial
-        # the last 1-tau of the successful trial will be executed
-        # t_success = ((k-1) * attempt_duration) + 3*tau      # if 3-4 tau
-        t_success = ((k-1) * attempt_duration) + (5*tau) # - 2*tau    # if 3-6 tau (can subsctract 2tau from Reservation)
+        # calculate time right before the successful attempt
+        # the last 1-tau of the successful attempt will be executed
+        t_success = ((k-1) * attempt_duration) + (4*tau) # substract 2tau consumed for reservation (just to alignt with sequence)
         return t_success, k

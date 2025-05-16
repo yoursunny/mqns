@@ -184,7 +184,8 @@ class ProactiveRoutingControllerApp(Application):
                 "swap": swapping_settings[self.swapping],
                 "mux": "B",
                 "m_v": m_v,
-                "purif": { }
+                # "purif": { 'S-R':1, 'R-D':1 },
+                "purif": {}
             }
 
             cchannel = self.own.get_cchannel(qnode)

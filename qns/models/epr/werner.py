@@ -51,8 +51,9 @@ class WernerStateEntanglement(BaseEntanglement, QuantumModel):
         self.orig_eprs = []          # Elementary EPRs from which this EPR is created via swapping
         
         self.decoherence_time = None
+        self.creation_time = None
         
-        self.rcvd = 0                # to know when both end-nodes are aware of the EPR
+        self.read = False                # to know when both end-nodes are aware of the EPR
         self.key = None              # to store the EPR in the right negociated qubit at the dst node
 
     def __deepcopy__(self, memo):
@@ -90,7 +91,7 @@ class WernerStateEntanglement(BaseEntanglement, QuantumModel):
 
         ne.w = self.w * epr.w
         ne.orig_eprs = self._merge_orig_eprs(epr)
-        
+
         eprs_name_list = [e.name for e in ne.orig_eprs]
         ne.name = hash('-'.join(eprs_name_list))
         
@@ -112,6 +113,7 @@ class WernerStateEntanglement(BaseEntanglement, QuantumModel):
             self.is_decoherenced = True
             self.fidelity = 0
             return False
+        
         epr.is_decoherenced = True
         fmin = min(self.fidelity, epr.fidelity)
 
@@ -119,37 +121,10 @@ class WernerStateEntanglement(BaseEntanglement, QuantumModel):
             self.is_decoherenced = True
             self.fidelity = 0
             return False
+
         self.fidelity = (fmin ** 2 + (1 - fmin) ** 2 / 9) /\
                       (fmin ** 2 + 5 / 9 * (1 - fmin) ** 2 + 2 / 3 * fmin * (1 - fmin))
         return True
-
-    def distillation(self, epr: "WernerStateEntanglement", name: Optional[str] = None) -> "WernerStateEntanglement":
-        """
-        Use `self` and `epr` to perfrom distillation and distribute a new entanglement
-        Using Bennett 96 protocol and estimate lower bound
-
-        Args:
-            epr (WernerEntanglement): another entanglement
-            name (str): the name of the new entanglement
-        Returns:
-            the new distributed entanglement
-        """
-        ne = WernerStateEntanglement()
-        if self.is_decoherenced or epr.is_decoherenced:
-            ne.is_decoherenced = True
-            ne.fidelity = 0
-            return
-        epr.is_decoherenced = True
-        self.is_decoherenced = True
-        fmin = min(self.fidelity, epr.fidelity)
-
-        if get_rand() > (fmin ** 2 + 5 / 9 * (1 - fmin) ** 2 + 2 / 3 * fmin * (1 - fmin)):
-            ne.is_decoherenced = True
-            ne.fidelity = 0
-            return
-        ne.fidelity = (fmin ** 2 + (1 - fmin) ** 2 / 9) /\
-                      (fmin ** 2 + 5 / 9 * (1 - fmin) ** 2 + 2 / 3 * fmin * (1 - fmin))
-        return ne
 
     def store_error_model(self, t: float, decoherence_rate: Optional[float], **kwargs):
         """
@@ -224,4 +199,5 @@ class WernerStateEntanglement(BaseEntanglement, QuantumModel):
             f"src={self.src}, dst={self.dst}, "
             f"ch_index={self.ch_index}, "
             f"orig_eprs={[e.name if hasattr(e, 'name') else repr(e) for e in self.orig_eprs]}), "
+            f"cration_time={self.creation_time}, "
             f"decoherence_time={self.decoherence_time})")

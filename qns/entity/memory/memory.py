@@ -57,7 +57,6 @@ class QuantumMemory(Entity):
             self._storage: List[Tuple[MemoryQubit, Optional[QuantumModel]]] = [
                     (MemoryQubit(addr), None) for addr in range(self.capacity)
             ]
-            self._store_time: List[Optional[Time]] = [None] * self.capacity
         else:      # should not use this case
             print("Error: unlimited memory capacity not supported")
             return
@@ -105,11 +104,6 @@ class QuantumMemory(Entity):
             for idx, (qubit, _) in enumerate(self._storage):
                 if qubit.addr == address:
                     return idx
-        #elif isinstance(key, int):
-        #    if self.capacity == 0 and key >= 0 and key < self._usage:
-        #        index = key
-        #    elif key >= 0 and key < self.capacity and self._storage[key][1] is not None:
-        #        index = key
         elif isinstance(key, QuantumModel):
             for idx, (_, data) in enumerate(self._storage):
                 if data is None:
@@ -149,9 +143,9 @@ class QuantumMemory(Entity):
             return None
 
     def read(self, key: Optional[Union[QuantumModel, str]] = None, 
-             address: Optional[int] = None) -> Tuple[MemoryQubit, Optional[QuantumModel]]:
+             address: Optional[int] = None, destructive: bool = True) -> Tuple[MemoryQubit, Optional[QuantumModel]]:
         """
-        Destructive reading of a qubit from the memory
+        Reading of a qubit from the memory. This methods sets the fidelity of the EPR at read time.
 
         Args:
             key (Optional[Union[QuantumModel, str, int]]): Identifier for the qubit.
@@ -170,25 +164,28 @@ class QuantumMemory(Entity):
             return None
 
         (qubit, data) = self._storage[idx]
-        store_time = self._store_time[idx]
-        self._usage -= 1
-
-        self._storage[idx] = (self._storage[idx][0], None)
-        self._store_time[idx] = None
 
         t_now = self._simulator.current_time
-        sec_diff = t_now.sec - store_time.sec
-        data.store_error_model(t=sec_diff, decoherence_rate=self.decoherence_rate, **self.store_error_model_args)
+        sec_diff = t_now.sec - data.creation_time.sec
+        
+        # set fidelity at read time
+        if not data.read:
+            data.store_error_model(t=sec_diff, decoherence_rate=self.decoherence_rate, **self.store_error_model_args)
+            data.read = True
 
-        # cancel scheduled decoherence event
-        event = self.pending_decohere_events[data.name]
-        event.cancel()
-        self.pending_decohere_events.pop(data.name)
+        if destructive:
+            self._usage -= 1
+            self._storage[idx] = (self._storage[idx][0], None)
+            
+            # cancel scheduled decoherence event
+            event = self.pending_decohere_events[data.name]
+            event.cancel()
+            self.pending_decohere_events.pop(data.name)
 
         return (qubit, data)
 
     def write(self, qm: QuantumModel, path_id: Optional[int] = None, 
-              address: Optional[int] = None, key: str = None, delay: float = 0) -> Optional[MemoryQubit]:
+              address: Optional[int] = None, key: str = None) -> Optional[MemoryQubit]:
         """
         Store a quantum model (e.g., a qubit or an entangled pair) in memory.
 
@@ -201,9 +198,6 @@ class QuantumMemory(Entity):
             path_id (Optional[int]): Optional path ID to match against the memory qubit.
             address (Optional[int]): Optional qubit address to match.
             key (str, optional): Optional tag to match against the `active` field of the memory qubit (obtained from reservation).
-            delay (float): Optional delay (in seconds) used to adjust the qubit's store time 
-                with prior operations (e.g., EPR generation). This delay is subtracted when 
-                setting the store and decoherence times.
 
         Returns:
             Optional[MemoryQubit]: The `MemoryQubit` object into which the quantum model was stored, 
@@ -226,16 +220,15 @@ class QuantumMemory(Entity):
             return None
 
         self._storage[idx] = (self._storage[idx][0], qm)
-        self._store_time[idx] = self._simulator.current_time - Time(sec=delay)
         self._usage += 1
 
         # schedule an event at T_coh to decohere the qubit
-        t = self._simulator.tc - Time(sec=delay) + Time(sec = 1 / self.decoherence_rate)   # align store time with EPR generation time at sender
-        event = func_to_event(t, self.decohere_qubit, by=self, qubit=self._storage[idx][0], qm=qm)
+        decoherence_t = qm.creation_time + Time(sec = 1 / self.decoherence_rate)
+        event = func_to_event(decoherence_t, self.decohere_qubit, by=self, qubit=self._storage[idx][0], qm=qm)
         self.pending_decohere_events[qm.name] = event
         self._simulator.add_event(event)
 
-        qm.decoherence_time = t
+        qm.decoherence_time = decoherence_t
         return self._storage[idx][0]    # return the memory qubit
 
     def update(self, old_qm: str, new_qm: QuantumModel) -> bool:
@@ -289,7 +282,6 @@ class QuantumMemory(Entity):
         for idx, (qubit, _) in enumerate(self._storage):
             qubit.fsm.to_release()
             self._storage[idx] = (qubit, None)
-            self._store_time[idx] = None
         self._usage = 0
         for _, event in self.pending_decohere_events.items():
             event.cancel()
@@ -530,29 +522,6 @@ class QuantumMemory(Entity):
         if self.name is not None:
             return "<memory "+self.name+">"
         return super().__repr__()
-
-    # Not used
-    def get_store_time(self, key: Optional[Union[QuantumModel, str]] = None, address: Optional[int] = None) -> Optional[Time]:
-        """
-        Get the time at which the current EPR has been stored in a qubit.
-
-        Args:
-            key (Optional[Union[QuantumModel, str, int]]): Identifier for the qubit.
-                - If a `QuantumModel`, it matches against the stored EPR instances.
-                - If a str, it matches against the stored EPR names.
-            address (Optional[int]): The memory address of the qubit to locate.
-        
-        Returns:
-            Optional[Time]: store time of the EPR
-        """
-        try:
-            idx = self._search(key, address)
-            if idx != -1:
-                return self._store_time[idx]
-            else:
-                return None
-        except IndexError:
-            return None
 
     def handle(self, event: Event) -> None:
         from qns.entity.memory.event import MemoryReadRequestEvent, MemoryReadResponseEvent, \
