@@ -32,11 +32,11 @@ class ManageActiveChannels(Event):
     """
     ``ManageActiveChannels`` is the event sent by the forwarder to request to start generating EPRs over a qchannel
     """
-    def __init__(self, link_layer: LinkLayer, next_hop: QNode, type: TypeEnum, 
+    def __init__(self, link_layer: LinkLayer, neighbor: QNode, type: TypeEnum, 
                  t: Optional[Time] = None, name: Optional[str] = None, by: Optional[Any] = None):
         super().__init__(t=t, name=name, by=by)
         self.link_layer = link_layer
-        self.next_hop = next_hop
+        self.neighbor = neighbor
         self.type = type
 
     def invoke(self) -> None:

@@ -42,14 +42,30 @@ class LinkLayer(Application):
     This is the network function reponsible for creating elementary entanglements over qchannels. 
     It equips a QNode and is activated from the forwarding function (e.g., ProactiveForwarder).
     """
+
     def __init__(self, 
-                 attempt_rate: int = 1e6,           # should be min(fiber frequency, detector count rate)
-                 alpha_db_per_km: float = 0.2,      # attenuation rate per km of fiber
-                 eta_d: float = 1.0,                # detector efficiency 
-                 eta_s: float = 1.0,                # source efficiency    
-                 frequency: int = 80e6,             # source frequency
-                 init_fidelity: int = 0.99,         # fidelity of created pairs
-                 light_speed_kms = 2 * 10**5):      # speed of light in fiber
+                 attempt_rate: int = 1e6,
+                 alpha_db_per_km: float = 0.2,
+                 eta_d: float = 1.0, 
+                 eta_s: float = 1.0,
+                 frequency: int = 80e6,
+                 init_fidelity: int = 0.99,
+                 light_speed_kms = 2 * 10**5):
+        """
+        This constructor sets up the entanglement generation layer of a quantum node with key hardware parameters. 
+        It also initializes data structures for managing quantum channels, entanglement attempts, 
+        and synchronization.
+
+        Parameters:
+            attempt_rate (int): Max entanglement attempts per second from fiber frequency and detector count rate (default: 1e6).
+            alpha_db_per_km (float): Fiber loss in dB/km (default: 0.2).
+            eta_d (float): Detector efficiency (default: 1.0).
+            eta_s (float): Source efficiency (default: 1.0).
+            frequency (int): Entanglement source frequency (default: 80e6).
+            init_fidelity (int): Fidelity of generated entangled pairs (default: 0.99).
+            light_speed_kms (int): Speed of light in fiber in km/s (default: 2e5).
+        """
+
         from qns.network.protocol.proactive_forwarder import ProactiveForwarder
         super().__init__()
 
@@ -63,7 +79,7 @@ class LinkLayer(Application):
 
         self.own: QNode = None                          # Quantum node this LinkLayer equips
         self.memory: QuantumMemory = None               # Quantum memory of the node
-        self.forwarder: ProactiveForwarder = None         # Forwarder function of the node
+        self.forwarder: ProactiveForwarder = None       # Forwarder function of the node
 
         self.active_channels = {}                   # stores the qchannels activated by the forwarding function at path installation
         
@@ -82,6 +98,7 @@ class LinkLayer(Application):
         self.add_handler(self.RecvClassicPacketHandler, [RecvClassicPacket])
 
 
+    # called at initialization of the node
     def install(self, node: QNode, simulator: Simulator):
         from qns.network.protocol.proactive_forwarder import ProactiveForwarder
         
@@ -306,7 +323,7 @@ class LinkLayer(Application):
     def handle_event(self, event: Event) -> None:
         """
         Handles the following external events:
-            - `ManageActiveChannels` from the forwarder to start/stop generating EPRs over a given qchannel.
+            - `ManageActiveChannels` from the forwarder to start/stop generating EPRs with a given neighbor.
             - `QubitDecoheredEvent` from memory informing that an entangled qubit has decohered and can be re-entangled.
             - `QubitReleasedEvent` from the forwarder informing that an entangled qubit has released and can be re-entangled.
         """
@@ -314,17 +331,17 @@ class LinkLayer(Application):
         from qns.network.protocol.event import ManageActiveChannels, TypeEnum, \
             QubitDecoheredEvent, QubitReleasedEvent
         if isinstance(event, ManageActiveChannels):
-            log.debug(f"{self.own}: start qchannel with {event.next_hop}")
-            qchannel: QuantumChannel = self.own.get_qchannel(event.next_hop)
+            log.debug(f"{self.own}: start qchannel with {event.neighbor}")
+            qchannel: QuantumChannel = self.own.get_qchannel(event.neighbor)
             if qchannel is None:
                 raise Exception("No such quantum channel")
             if event.type == TypeEnum.ADD:
                 if qchannel.name not in self.active_channels:
-                    self.active_channels[qchannel.name] = (qchannel, event.next_hop)
+                    self.active_channels[qchannel.name] = (qchannel, event.neighbor)
                     if self.own.timing_mode == TimingModeEnum.ASYNC:
-                        self.handle_active_channel(qchannel, event.next_hop)
+                        self.handle_active_channel(qchannel, event.neighbor)
                     elif self.own.timing_mode == TimingModeEnum.LSYNC:     # LSYNC
-                        self.waiting_channels[qchannel.name] = (qchannel, event.next_hop)
+                        self.waiting_channels[qchannel.name] = (qchannel, event.neighbor)
                 else:
                     raise Exception("Qchannel already handled")
             else:

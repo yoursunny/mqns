@@ -356,7 +356,8 @@ class QuantumMemory(Entity):
             qubits.append(qubit)
         return qubits
 
-    def search_eligible_qubits(self, qchannel: Optional[str] = None, path_id: Optional[int] = None) -> List[Tuple[MemoryQubit, QuantumModel]]:
+    def search_eligible_qubits(self, exc_qchannel: Optional[str] = None, 
+                               path_id: Optional[int] = None) -> List[Tuple[MemoryQubit, QuantumModel]]:
         """
         Search for memory qubits that are eligible for use.
 
@@ -366,7 +367,7 @@ class QuantumMemory(Entity):
             - (Optionally) are not associated with the specified quantum channel (`qchannel`).
 
         Args:
-            qchannel (Optional[str]): The name of the quantum channel to exclude. If None, no exclusion is applied.
+            exc_qchannel (Optional[str]): The name of the quantum channel to exclude. If None, no exclusion is applied.
             path_id (Optional[int]): The path ID the qubit must be assigned to. If None, any path ID is accepted.
 
         Returns:
@@ -382,16 +383,17 @@ class QuantumMemory(Entity):
                 continue
             if path_id is not None and qubit.path_id != path_id:
                 continue
-            if qchannel is not None and qubit.qchannel.name == qchannel:
+            if exc_qchannel is not None and qubit.qchannel.name == exc_qchannel:
                 continue
             qubits.append((qubit, data))
         return qubits
 
-    def search_purif_qubits(self, curr_qubit_addr: int, partner: str, 
+    def search_purif_qubits(self, exc_address: int, partner: str, 
                             qchannel: str, path_id: Optional[int] = None, 
                             purif_rounds: int = 0) -> List[Tuple[MemoryQubit, QuantumModel]]:
         """
         Search for memory qubits eligible for purification with a given qubit.
+        Assumes recurrence purification; i.e., input pairs must have undergone the same number of rounds.
 
         This method searches for qubits in the `PURIF` state that:
             - Are not the current qubit (by address),
@@ -402,7 +404,7 @@ class QuantumMemory(Entity):
         both qubits to have undergone the same number of purification rounds.
 
         Args:
-            curr_qubit_addr (int): The address of the current qubit to avoid pairing with itself.
+            exc_address (int): The address of the qubit to exclude.
             partner (str): The name of the entanglement partner node (as `src.name` or `dst.name`).
             qchannel (str): The name of the quantum channel used by the current qubit for entanglement.
             path_id (Optional[int]): The path ID that eligible qubits must match. If None, any path ID is accepted.
@@ -414,7 +416,7 @@ class QuantumMemory(Entity):
         """
         qubits = []
         for qubit, data in self._storage:
-            if qubit.addr == curr_qubit_addr:
+            if qubit.addr == exc_address:
                 continue
             if data is None or qubit.fsm.state != QubitState.PURIF:
                 continue
