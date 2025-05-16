@@ -42,8 +42,8 @@ import copy
 class ProactiveForwarder(Application):
     """
     ProactiveForwarder is the forwarder of QNodes and receives routing instructions from the controller.
-    It implements the forwarding phase (i.e., entanglement generation and swapping) while the centralized routing is done at the controller. 
-    Purification will be moved to a sepeare network function.
+    It implements the forwarding phase (i.e., entanglement generation and swapping) while the centralized 
+    routing is done at the controller. Purification will be moved to a sepeare network function.
     """
 
     def __init__(self, ps: float = 1.0):
@@ -66,7 +66,7 @@ class ProactiveForwarder(Application):
         self.memory: QuantumMemory = None       # Quantum memory of the node
 
         self.fib: ForwardingInformationBase = ForwardingInformationBase()           # FIB structure
-        self.link_layer = None                  # Reference to the network function responsible for generating elementary EPRs
+        self.link_layer = None       # Reference to the network function responsible for generating elementary EPRs
 
         # for SNYC mode
         self.sync_current_phase = SignalTypeEnum.INTERNAL
