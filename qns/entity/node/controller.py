@@ -1,4 +1,4 @@
-#    Multiverse Quantum Network Simulator: a simulator for comparative 
+#    Multiverse Quantum Network Simulator: a simulator for comparative
 #    evaluation of quantum routing strategies
 #    Copyright (C) [2025] Amar Abane
 #
