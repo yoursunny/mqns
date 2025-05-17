@@ -1,3 +1,11 @@
 [build-system]
 requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 128
+select = ["E", "F"]  # E = pycodestyle (PEP8), F = pyflakes
+ignore = []
+
+# Optional: specify the source code directory
+# src = ["qns", "examples]
