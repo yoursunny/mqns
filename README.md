@@ -21,7 +21,7 @@ This is *not* a fork of the official SimQN repository, but rather a standalone p
 
 This project is therefore licensed under the GPLv3. See the LICENSE file for details.
 
-While we are developing dedicated documentation tailored to this simulator, **users can refer to [SimQN’s documentation](https://qnlab-ustc.github.io/SimQN/)** in the meantime to understand the foundational models and architecture.
+While we are developing dedicated documentation tailored to this simulator, users can refer to [SimQN’s documentation](https://qnlab-ustc.github.io/SimQN/) in the meantime to understand the foundational models and architecture.
 
 ---
 
@@ -72,7 +72,7 @@ This demonstrates:
 You can run the example with:
 
 ```bash
-python examples/3_nodes_thruput.py > output.log
+python3 examples/3_nodes_thruput.py > output.log
 ```
 
 More examples and configuration options will be added as the simulator evolves.
