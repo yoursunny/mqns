@@ -17,7 +17,6 @@
 
 import numpy as np
 
-from qns.entity.node.qnode import QNode
 from qns.models.qubit.qubit import Qubit, QState
 from qns.models.qubit.gate import H, X, Y, Z, CNOT, U
 from qns.models.qubit.const import OPERATOR_PAULI_I, QUBIT_STATE_0, QUBIT_STATE_P

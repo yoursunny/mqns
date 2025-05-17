@@ -16,19 +16,16 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from typing import Dict, Optional
-import uuid
 
 from qns.entity.cchannel.cchannel import ClassicChannel, ClassicPacket, RecvClassicPacket
-from qns.entity.memory.memory import QuantumMemory
+from qns.network.protocol.proactive_forwarder import ProactiveForwarder
+from qns.network.protocol.proactive_routing_controller import ProactiveRoutingControllerApp
+from qns.entity.node.controller import Controller
 from qns.entity.node.app import Application
 from qns.entity.node.node import QNode
-from qns.entity.qchannel.qchannel import QuantumChannel, RecvQubitPacket
-from qns.models.core.backend import QuantumModel
-from qns.network.requests import Request
 from qns.simulator.event import Event, func_to_event
 from qns.simulator.simulator import Simulator
 from qns.network import QuantumNetwork
-from qns.models.epr import WernerStateEntanglement
 from qns.simulator.ts import Time
 import qns.utils.log as log
 
@@ -132,7 +129,7 @@ class EndNodeEntanglementApp(Application):     # application to request entangle
         cmd = msg["cmd"]
 
         if cmd == "new_pair":
-            success_count+=1
+            self.success_count+=1
             
             
     def handle_pair(self, packet: RecvClassicPacket):      # handle pairs from routing protocol
@@ -147,7 +144,7 @@ class EndNodeEntanglementApp(Application):     # application to request entangle
         cmd = msg["cmd"]
 
         if cmd == "new_pair":
-            success_count+=1
+            self.success_count+=1
 
 
     # see what to do with this:

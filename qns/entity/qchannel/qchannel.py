@@ -26,8 +26,6 @@ from qns.simulator.ts import Time
 from qns.simulator.event import Event
 from qns.models.core.backend import QuantumModel
 import qns.utils.log as log
-from qns.utils.rnd import get_rand
-from qns.models.epr import BaseEntanglement
 
 
 class QuantumChannel(Entity):

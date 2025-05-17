@@ -16,8 +16,6 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from qns.simulator import Simulator
-from qns.simulator import Event
-from qns.entity import Entity
 from qns.entity.node.app import Application
 from qns.entity.node.node import Node
 

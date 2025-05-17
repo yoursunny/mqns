@@ -29,7 +29,7 @@ from qns.network import QuantumNetwork
 from qns.simulator.ts import Time
 import qns.utils.log as log
 from qns.network.protocol.fib import ForwardingInformationBase
-from qns.network import QuantumNetwork, TimingModeEnum, SignalTypeEnum
+from qns.network import TimingModeEnum, SignalTypeEnum
 
 import copy
 
@@ -125,7 +125,8 @@ class ProactiveForwarder(Application):
         # get left and right nodes from route vector:
         if self.own.name in instructions['route']:
             i = instructions['route'].index(self.own.name)
-            ln, rn = (instructions['route'][i - 1] if i > 0 else None, instructions['route'][i + 1] if i < len(instructions['route']) - 1 else None)
+            ln, rn = (instructions['route'][i - 1] if i > 0 else None, \
+                instructions['route'][i + 1] if i < len(instructions['route']) - 1 else None)
         else:
             raise Exception(f"Node {self.own.name} not found in route vector {instructions['route']}")
 
@@ -138,7 +139,6 @@ class ProactiveForwarder(Application):
                 raise Exception(f"Qchannel not found for left neighbor {left_neighbor}")
 
         right_qchannel = None
-        right_qmem = None
         if rn:
             right_neighbor = self.own.network.get_node(rn)
             right_qchannel: QuantumChannel = self.own.get_qchannel(right_neighbor)
@@ -153,14 +153,16 @@ class ProactiveForwarder(Application):
             num_left, num_next = self.compute_qubit_allocation(instructions['route'], instructions['m_v'], self.own.name)
             if num_left:
                 if num_left <= self.memory.cout_unallocated_qubits():
-                    for i in range(num_left): left_qubits.append(self.memory.allocate(path_id=path_id))
+                    for i in range(num_left): 
+                        left_qubits.append(self.memory.allocate(path_id=path_id))
                 else:
-                    raise Exception(f"Not enough qubits for left qchannel allocation")
+                    raise Exception("Not enough qubits for left qchannel allocation")
             if num_next:
                 if num_next <= self.memory.cout_unallocated_qubits():
-                    for i in range(num_next): right_qubits.append(self.memory.allocate(path_id=path_id))
+                    for i in range(num_next): 
+                        right_qubits.append(self.memory.allocate(path_id=path_id))
                 else:
-                    raise Exception(f"Not enough qubits for right qchannel allocation")
+                    raise Exception("Not enough qubits for right qchannel allocation")
             log.debug(f"Allocated qubits: left = {left_qubits} | right = {right_qubits}")
         else:
             log.debug(f"{self.own}: No m_v provided -> Statistical multiplexing not supported yet")
@@ -447,7 +449,8 @@ class ProactiveForwarder(Application):
             _, epr = self.memory.read(address=qubit.addr, destructive=False)    # sets the fidelity for the partner at this time
 
             # consume and release other_qubit
-            other_qubit, other_epr = self.memory.read(address=res.addr)       # this sets the fidelity for the partner at this time
+            # this sets the fidelity for the partner at this time
+            other_qubit, other_epr = self.memory.read(address=res.addr)   
             other_qubit.fsm.to_release()
             from qns.network.protocol.event import QubitReleasedEvent
             ev = QubitReleasedEvent(link_layer=self.link_layer, qubit=other_qubit, t=self._simulator.tc, by=self)
@@ -533,7 +536,8 @@ class ProactiveForwarder(Application):
             ev = QubitReleasedEvent(link_layer=self.link_layer, qubit=meas_qubit, t=self._simulator.tc, by=self)
             self._simulator.add_event(ev)
 
-            # TODO: if qubits in PURIF -> do purif, release consumed qubit, update pair + increment rounds (if succ, else release), reply
+            # TODO: if qubits in PURIF -> do purif, release consumed qubit, 
+            # update pair + increment rounds (if succ, else release), reply
         else: # node is not destination: forward message
             self.send_msg(dest=dest_node, msg=msg, route=fib_entry["path_vector"])
 
@@ -680,8 +684,10 @@ class ProactiveForwarder(Application):
                 this_qubit.fsm.to_release()
                 other_qubit.fsm.to_release()
                 from qns.network.protocol.event import QubitReleasedEvent
-                ev1 = QubitReleasedEvent(link_layer=self.link_layer, qubit=prev_qubit, t=self._simulator.tc, by=self)
-                ev2 = QubitReleasedEvent(link_layer=self.link_layer, qubit=next_qubit, t=self._simulator.tc + Time(sec=1e-6), by=self)
+                ev1 = QubitReleasedEvent(link_layer=self.link_layer, qubit=prev_qubit, 
+                                         t=self._simulator.tc, by=self)
+                ev2 = QubitReleasedEvent(link_layer=self.link_layer, qubit=next_qubit, 
+                                         t=self._simulator.tc + Time(sec=1e-6), by=self)
                 self._simulator.add_event(ev1)
                 self._simulator.add_event(ev2)
 

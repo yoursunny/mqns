@@ -161,7 +161,8 @@ class ProactiveRoutingControllerApp(Application):
         route = [n.name for n in path_nodes]
         
         if len(route) != len(swapping_settings[self.swapping]):
-            raise Exception(f"{self.own}: Swapping {swapping_settings[self.swapping]} does not correspond to computed route: {route}")
+            raise Exception(f"{self.own}: Swapping {swapping_settings[self.swapping]} \
+                does not correspond to computed route: {route}")
 
         m_v = []
         src_capacity = self.net.get_node(path_nodes[0].name).memory.capacity

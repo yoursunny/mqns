@@ -2,7 +2,6 @@ from qns.entity.memory.memory import QuantumMemory
 from qns.models.epr import WernerStateEntanglement
 from qns.entity.node.qnode import QNode
 from qns.simulator.simulator import Simulator
-from typing import Optional, List
 import numpy as np
 
 class ErrorEntanglement(WernerStateEntanglement):

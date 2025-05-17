@@ -70,8 +70,6 @@ def generate_topology(channel_qubits):
             "memory": {
                 "decoherence_rate": 1 / t_coherence,
                 "capacity": channel_qubits
-                # cutoff_ratio (float): the ratio between cutoff time and memory coherence time (default 1, should be between 0 and 1).
-                # e.g., a qubit is considered effectively decohered when coherence drops below 1% or 0.1%, which happens at t ≈ 4.6T to 6.9T.
             },
             "apps": [LinkLayer(attempt_rate=entg_attempt_rate, init_fidelity=init_fidelity, 
                                  alpha_db_per_km=fiber_alpha,

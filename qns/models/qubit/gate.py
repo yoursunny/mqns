@@ -73,7 +73,7 @@ class SingleQubitGate(Gate):
 X = SingleQubitGate(name="X", operator=OPERATOR_PAULI_X, _docs="Pauli X Gate")
 Y = SingleQubitGate(name="Y", operator=OPERATOR_PAULI_Y, _docs="Pauli Y Gate")
 Z = SingleQubitGate(name="Z", operator=OPERATOR_PAULI_Z, _docs="Pauli Z Gate")
-I = SingleQubitGate(name="I", operator=OPERATOR_PAULI_I, _docs="Pauli I Gate")
+# I = SingleQubitGate(name="I", operator=OPERATOR_PAULI_I, _docs="Pauli I Gate")
 H = SingleQubitGate(name="H", operator=OPERATOR_HADAMARD, _docs="Hadamard Gate")
 T = SingleQubitGate(name="T", operator=OPERATOR_T, _docs="T gate (pi/4 shift gate)")
 S = SingleQubitGate(name="S", operator=OPERATOR_S, _docs="S gate (pi/2 shift gate)")

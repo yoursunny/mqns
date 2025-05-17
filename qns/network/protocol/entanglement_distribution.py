@@ -145,7 +145,7 @@ class EntanglementDistributionApp(Application):
 
     def response_distribution(self, packet: RecvQubitPacket):
         qchannel: QuantumChannel = packet.qchannel
-        from_node: Node = qchannel.node_list[0] \
+        from_node: QNode = qchannel.node_list[0] \
             if qchannel.node_list[1] == self.own else qchannel.node_list[1]
 
         cchannel: ClassicChannel = self.own.get_cchannel(from_node)

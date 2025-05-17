@@ -27,7 +27,7 @@ from qns.utils.rnd import get_randint
 from qns.simulator.ts import Time
 import qns.utils.log as log
 
-from qns.simulator.event import Event, func_to_event
+from qns.simulator.event import func_to_event
 
 class TimingModeEnum(Enum):
     ASYNC = auto()

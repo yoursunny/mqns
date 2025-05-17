@@ -198,7 +198,8 @@ class QuantumMemory(Entity):
             qm (QuantumModel): The quantum model to store (e.g., an entangled pair).
             path_id (Optional[int]): Optional path ID to match against the memory qubit.
             address (Optional[int]): Optional qubit address to match.
-            key (str, optional): Optional tag to match against the `active` field of the memory qubit (obtained from reservation).
+            key (str, optional): Optional tag to match against the `active` field of 
+              the memory qubit (obtained from reservation).
 
         Returns:
             Optional[MemoryQubit]: The `MemoryQubit` object into which the quantum model was stored, 
@@ -258,7 +259,7 @@ class QuantumMemory(Entity):
         idx = self._search(key=old_qm)
         if idx == -1:
             if old_qm in self.pending_decohere_events:
-                print(f"UNEXPECTED ==> decohere event not cleared")
+                print("UNEXPECTED ==> decohere event not cleared")
                 old_event = self.pending_decohere_events[old_qm]
                 old_event.cancel()
                 self.pending_decohere_events.pop(old_qm)
@@ -400,7 +401,8 @@ class QuantumMemory(Entity):
             - Belong to the same quantum channel,
             - Are entangled with the specified partner node (either as source or destination),
             - Have completed the specified number of purification rounds,
-            - (Optionally) belong to the same path ID if `path_id` is specified. This enforces recurrence purification protocols, which require
+            - (Optionally) belong to the same path ID if `path_id` is specified. 
+              This enforces recurrence purification protocols, which require
         both qubits to have undergone the same number of purification rounds.
 
         Args:

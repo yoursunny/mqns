@@ -95,5 +95,6 @@ class MemoryQubit():
 
     def __repr__(self) -> str:
         if self.addr is not None:
-            return f"<memory qubit {self.addr}, ch={self.qchannel}, path_id={self.path_id}, active={self.active}, purif_rounds={self.purif_rounds}, state={self.fsm}>"
+            return f"<memory qubit {self.addr}, ch={self.qchannel}, path_id={self.path_id}, \
+                active={self.active}, purif_rounds={self.purif_rounds}, state={self.fsm}>"
         return super().__repr__()

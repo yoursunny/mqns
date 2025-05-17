@@ -16,7 +16,6 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from qns.entity.node.qnode import QNode
-from qns.entity.node.controller import Controller
 from qns.entity.cchannel.cchannel import ClassicChannel
 from qns.entity.memory.memory import QuantumMemory
 from qns.entity.node.app import Application

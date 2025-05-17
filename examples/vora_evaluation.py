@@ -31,7 +31,6 @@ from qns.network.protocol.proactive_forwarder import ProactiveForwarder
 from qns.network.protocol.link_layer import LinkLayer
 from qns.network.protocol.proactive_routing_controller import ProactiveRoutingControllerApp
 from qns.network.topology.customtopo import CustomTopology
-from qns.entity.cchannel import RecvClassicPacket
 
 log.logger.setLevel(logging.CRITICAL)
 
@@ -90,7 +89,8 @@ def compute_distances_distribution(end_to_end_distance, number_of_routers, dista
         # Compute middle distances
         if total_segments % 2 == 0:  # Even segments: two middle segments
             middle_distance = int(base_edge_distance * 1.2)
-            return [base_edge_distance] * (edge_segments // 2) + [middle_distance, middle_distance] + [base_edge_distance] * (edge_segments // 2)
+            return [base_edge_distance] * (edge_segments // 2) + [middle_distance, middle_distance] + [base_edge_distance] \
+                * (edge_segments // 2)
         else:  # Odd segments: single middle segment
             middle_distance = int(base_edge_distance * 1.2)
             return [base_edge_distance] * (edge_segments // 2) + [middle_distance] + [base_edge_distance] * (edge_segments // 2)

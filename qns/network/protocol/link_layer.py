@@ -15,7 +15,7 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Dict, Optional
+from typing import Optional
 import uuid
 
 from qns.entity.memory.memory_qubit import MemoryQubit
@@ -25,10 +25,9 @@ from qns.entity.node.app import Application
 from qns.entity.node.node import Node
 from qns.entity.node.qnode import QNode
 from qns.entity.qchannel.qchannel import QuantumChannel, RecvQubitPacket
-from qns.models.core.backend import QuantumModel
 from qns.simulator.event import Event, func_to_event
 from qns.simulator.simulator import Simulator
-from qns.network import QuantumNetwork, TimingModeEnum, SignalTypeEnum
+from qns.network import TimingModeEnum, SignalTypeEnum
 from qns.models.epr import WernerStateEntanglement
 from qns.simulator.ts import Time
 import qns.utils.log as log
@@ -57,7 +56,7 @@ class LinkLayer(Application):
         and synchronization.
 
         Parameters:
-            attempt_rate (int): Max entanglement attempts per second from fiber frequency and detector count rate (default: 1e6).
+            attempt_rate (int): Max entanglement attempts per second (default: 1e6).
             alpha_db_per_km (float): Fiber loss in dB/km (default: 0.2).
             eta_d (float): Detector efficiency (default: 1.0).
             eta_s (float): Source efficiency (default: 1.0).
@@ -81,7 +80,8 @@ class LinkLayer(Application):
         self.memory: QuantumMemory = None               # Quantum memory of the node
         self.forwarder: ProactiveForwarder = None       # Forwarder function of the node
 
-        self.active_channels = {}                   # stores the qchannels activated by the forwarding function at path installation
+        # stores the qchannels activated by the forwarding function at path installation
+        self.active_channels = {}
         
         self.pending_init_reservation = {}          # stores reservation requests sent by this node
         self.fifo_reservation_req = []              # stores received reservations requests awaiting for qubits
@@ -90,8 +90,11 @@ class LinkLayer(Application):
         self.decoh_count = 0                        # counts number of decohered qubits never swapped
 
         self.sync_current_phase = SignalTypeEnum.EXTERNAL      # for SYNC and LSYNC timing modes
-        self.waiting_channels = {}                  # In LSYNC mode: stores the qchannels that have all their qubits waiting for the next EXTERNAL phase
-        self.waiting_qubits = set()                 # In LSYNC mode: stores the qubits waiting for the next EXTERNAL phase
+        
+        # In LSYNC mode: stores the qchannels that have all their qubits waiting for the next EXTERNAL phase
+        self.waiting_channels = {}
+        # In LSYNC mode: stores the qubits waiting for the next EXTERNAL phase
+        self.waiting_qubits = set()
 
         # handlers for extenral events
         self.add_handler(self.RecvQubitHandler, [RecvQubitPacket])
@@ -191,8 +194,9 @@ class LinkLayer(Application):
         self.pending_init_reservation[key] = (qchannel, next_hop, qubit.addr)
         cchannel: ClassicChannel = self.own.get_cchannel(next_hop)
         if cchannel is None:
-            raise Exception(f"{self.own}: No classic channel for dest {dest}")
-        classic_packet = ClassicPacket(msg={"cmd": "RESERVE_QUBIT", "path_id": path_id, "key": key}, src=self.own, dest=next_hop)
+            raise Exception(f"{self.own}: No classic channel for dest {next_hop}")
+        classic_packet = ClassicPacket(msg={"cmd": "RESERVE_QUBIT", "path_id": path_id, "key": key}, 
+                                       src=self.own, dest=next_hop)
         cchannel.send(classic_packet, next_hop=next_hop)
 
 
@@ -255,7 +259,8 @@ class LinkLayer(Application):
         """
 
         epr = WernerStateEntanglement(fidelity=self.init_fidelity, name=uuid.uuid4().hex)
-        epr.creation_time = self._simulator.tc - Time(sec=4*qchannel.delay_model.calculate())  # qubit init at 2tau and we are at 6tau
+        # qubit init at 2tau and we are at 6tau
+        epr.creation_time = self._simulator.tc - Time(sec=4*qchannel.delay_model.calculate())
         epr.src = self.own
         epr.dst = next_hop
         epr.attempts = attempts
@@ -269,7 +274,8 @@ class LinkLayer(Application):
         epr.path_id = local_qubit.path_id
         qchannel.send(epr, next_hop)    # no drop
         self.etg_count+=1
-        self.notify_entangled_qubit(neighbor=next_hop, qubit=local_qubit, delay=qchannel.delay_model.calculate())   # wait 1tau to notify
+        self.notify_entangled_qubit(neighbor=next_hop, qubit=local_qubit, \
+            delay=qchannel.delay_model.calculate())   # wait 1tau to notify
 
     def receive_quit(self, packet: RecvQubitPacket):
         """
@@ -498,5 +504,6 @@ class LinkLayer(Application):
 
         # calculate time right before the successful attempt
         # the last 1-tau of the successful attempt will be executed
-        t_success = ((k-1) * attempt_duration) + (4*tau) # substract 2tau consumed for reservation (just to alignt with sequence)
+        # substract 2tau consumed for reservation (just to alignt with sequence)
+        t_success = ((k-1) * attempt_duration) + (4*tau)
         return t_success, k
