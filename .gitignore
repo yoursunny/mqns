@@ -3,7 +3,7 @@ env
 /build
 exp
 dist
-qns.egg-info
+mqns.egg-info
 qns/**/*.c
 qns/**/*.so
 qns/**/*.pyd

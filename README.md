@@ -1,10 +1,10 @@
-# Dynamic-QNetSim
+# Multiverse Quantum Network Simulator
 
 ![Lint](https://github.com/amar-ox/dynamic-qnetsim/actions/workflows/lint.yml/badge.svg)
 
 ## Overview
 
-**Dynamic-QNetSim** is a quantum network simulator designed to streamline the comparative evaluation of entanglement routing under dynamic and heterogeneous network conditions. It addresses the need for a unified, flexible framework for rapidly prototyping and benchmarking a wide range of entanglement distribution strategies and quantum network architectures. The simulator supports systematic exploration of routing algorithms, swapping strategies, purification schedules, and resource management techniques across diverse network scenarios.
+**Multiverse** is a quantum network simulator designed to streamline the comparative evaluation of entanglement routing under dynamic and heterogeneous network conditions. It addresses the need for a unified, flexible framework for rapidly prototyping and benchmarking a wide range of entanglement distribution strategies and quantum network architectures. The simulator supports systematic exploration of routing algorithms, swapping strategies, purification schedules, and resource management techniques across diverse network scenarios.
 
 This project is part of an ongoing research effort to evaluate the quantum networking approaches presented in our recent survey:
 🔗 [Entanglement Routing in Quantum Networks: A Comprehensive Survey](https://ieeexplore.ieee.org/document/10882978)
@@ -15,7 +15,7 @@ This project is part of an ongoing research effort to evaluate the quantum netwo
 
 ## Based on SimQN
 
-Dynamic-QNetSim reuses components from [SimQN v0.1.5](https://github.com/qnslab/SimQN), which is licensed under the GNU General Public License v3.0.
+This project reuses components from [SimQN v0.1.5](https://github.com/qnslab/SimQN), which is licensed under the GNU General Public License v3.0.
 
 This is *not* a fork of the official SimQN repository, but rather a standalone project that incorporates a snapshot of SimQN's implementation—specifically the discrete-event simulation engine, noise modeling framework, and code structure. Substantial modifications have been made to support dynamic routing protocols and enhanced entanglement management capabilities.
 
@@ -36,44 +36,52 @@ git checkout https://github.com/amar-ox/dynamic-qnetsim.git
 cd dynamic-qnetsim
 ```
 
-(Optional but recommended) Create a virtual environment:
+Create a virtual environment:
 
 ```bash
-python3 -m venv simqn
-source simqn/bin/activate
+python -m venv mqns
+source mqns/bin/activate
+```
+
+Install dependencies:
+```bash
+pip install --upgrade pip setuptools wheel build packaging
+pip install -r requirements.txt
 ```
 
 **Option 1: Install from wheel (local build)**
 
 ```bash
-pip3 install setuptools wheel
-python3 setup.py bdist_wheel
-pip3 install --force-reinstall dist/qns-0.1.5-py3-none-any.whl
+python -m build
+pip install dist/mqns-0.1.0-py3-none-any.whl
 ```
 
 **Option 2: Install in editable mode**
 
 ```bash
-pip3 install -e .
+pip install -e .
 ```
 
 ---
 
 ## Example: Three-Node Simulation
 
-The repository includes a simple example (`examples/3_nodes_thruput.py`) simulating end-to-end entanglement throughput between three nodes connected in a linear topology.
+The example `examples/3_nodes_thruput.py` simulates a linear three-node quantum network (`S → R → D`) to evaluate how memory coherence time affects end-to-end entanglement throughput.
 
-This demonstrates:
+It demonstrates:
 
-* Entanglement generation over lossy fiber
-* Swapping operations at the intermediate node
-* Performance monitoring of entanglement attempts and success rates
+* Entanglement generation over lossy fiber links (approximating Barrett-Kok protocol)
+* Swapping at an intermediate node
+* Statistical analysis over multiple runs with variable memory coherence
 
-You can run the example with:
+Run the example with:
 
 ```bash
-python3 examples/3_nodes_thruput.py > output.log
+cd examples
+python 3_nodes_thruput.py > output.log
 ```
+
+The script outputs a plot of the entanglement rate versus memory coherence time, and log messages in the `.log` file.
 
 More examples and configuration options will be added as the simulator evolves.
 

@@ -1,4 +1,5 @@
-#    Dynamic-QNetSim: a simulator for comparative evaluation of quantum routing strategies
+#    Multiverse Quantum Network Simulator: a simulator for comparative 
+#    evaluation of quantum routing strategies
 #    Copyright (C) [2025] Amar Abane
 #
 #    This program is free software: you can redistribute it and/or modify

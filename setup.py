@@ -1,3 +1,13 @@
+#    Modified by Amar Abane for Multiverse Quantum Network Simulator
+#    Date: 05/17/2025
+#    Summary of changes: Adapted logic to support dynamic approaches.
+#
+#    This file is based on a snapshot of SimQN (https://github.com/qnslab/SimQN),
+#    which is licensed under the GNU General Public License v3.0.
+#
+#    The original SimQN header is included below.
+
+
 #    SimQN: a discrete-event simulator for the quantum networks
 #    Copyright (C) 2024-2025 Amar Abane
 #    National Institute of Standards and Technology.
@@ -21,17 +31,16 @@ with open("README.md", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="qns",
+    name="mqns",
     author="amar",
-    version="0.0.1",
-    description="A discrete-event simulator for quantum networks",
+    version="0.1.0",
+    description="A simulator for comparative evaluation of quantum routing strategies",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=find_packages(),
     include_package_data=True,
     url="https://github.com/amar-ox/dynamic-qnetsim",
     exclude_package_data={"docs": [".gitkeep"]},
-    setup_requires=["numpy", "pandas", "twine", "wheel"],
     install_requires=["numpy", "pandas"],
     classifiers=[
         "Programming Language :: Python :: 3",

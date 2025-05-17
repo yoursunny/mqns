@@ -1,4 +1,4 @@
-#    Modified by Amar Abane
+#    Modified by Amar Abane Multiverse Quantum Network Simulator
 #    Date: 05/17/2025
 #    Summary of changes: Adapted logic to support dynamic approaches.
 #
