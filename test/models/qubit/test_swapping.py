@@ -1,6 +1,6 @@
-from qns.models.qubit.qubit import Qubit
-from qns.models.qubit.gate import H, CNOT, X, Z
 from qns.models.qubit.const import QUBIT_STATE_0
+from qns.models.qubit.gate import CNOT, H, X, Z
+from qns.models.qubit.qubit import Qubit
 
 
 def test_swapping():

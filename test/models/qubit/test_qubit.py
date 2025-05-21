@@ -1,7 +1,8 @@
-from qns.models.qubit.qubit import Qubit
-from qns.models.qubit.gate import H, CNOT, RX, RY, U, CZ, CR, Swap, Toffoli
-from qns.models.qubit.const import QUBIT_STATE_0, QUBIT_STATE_1, OPERATOR_RX, OPERATOR_RY
 import numpy as np
+
+from qns.models.qubit.const import OPERATOR_RX, OPERATOR_RY, QUBIT_STATE_0, QUBIT_STATE_1
+from qns.models.qubit.gate import CNOT, CR, CZ, RX, RY, H, Swap, Toffoli, U
+from qns.models.qubit.qubit import Qubit
 
 
 def test_qubit():
@@ -84,5 +85,5 @@ def test_state():
     # print('w: ', w)
     # print('v: ', v)
     from qns.models.qubit.const import QUBIT_STATE_N
-    q0 = Qubit(state=QUBIT_STATE_N, name='q0')
+    q0 = Qubit(state=QUBIT_STATE_N, name="q0")
     q0.state.state()

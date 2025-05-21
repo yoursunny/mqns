@@ -1,5 +1,5 @@
-from qns.simulator.simulator import Simulator
 from qns.entity.timer.timer import Timer
+from qns.simulator.simulator import Simulator
 
 
 def test_timer():

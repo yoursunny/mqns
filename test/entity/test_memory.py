@@ -1,13 +1,18 @@
 from typing import Optional
-from qns.entity.memory.event import MemoryReadRequestEvent, MemoryReadResponseEvent, \
-    MemoryWriteRequestEvent, MemoryWriteResponseEvent
+
+from qns.entity.memory.event import (
+    MemoryReadRequestEvent,
+    MemoryReadResponseEvent,
+    MemoryWriteRequestEvent,
+    MemoryWriteResponseEvent,
+)
+from qns.entity.memory.memory import QuantumMemory
 from qns.entity.node.app import Application
 from qns.entity.node.node import QNode
+from qns.models.epr.werner import WernerStateEntanglement
+from qns.models.qubit import Qubit
 from qns.simulator.event import Event
 from qns.simulator.simulator import Simulator
-from qns.entity.memory.memory import QuantumMemory
-from qns.models.qubit import Qubit
-from qns.models.epr.werner import WernerStateEntanglement
 
 
 def test_memory_sync_qubit():

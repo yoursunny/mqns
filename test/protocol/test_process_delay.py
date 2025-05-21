@@ -1,4 +1,5 @@
 from typing import Any, Optional
+
 from qns.entity.node.app import Application
 from qns.entity.node.node import QNode
 from qns.network.protocol.node_process_delay import NodeProcessDelayApp

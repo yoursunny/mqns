@@ -1,6 +1,6 @@
+from qns.models.qubit import CNOT, H, I, X, Y, Z
+from qns.models.qubit.const import OPERATOR_PAULI_I, OPERATOR_PAULI_X, QUBIT_STATE_0
 from qns.models.qubit.qubit import Qubit
-from qns.models.qubit.const import QUBIT_STATE_0, OPERATOR_PAULI_X, OPERATOR_PAULI_I
-from qns.models.qubit import H, CNOT, I, X, Y, Z
 
 
 def test_stochastic_operate():

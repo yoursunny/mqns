@@ -1,9 +1,10 @@
+import numpy as np
+
+from qns.entity import QNode
 from qns.entity.cchannel.cchannel import ClassicChannel
 from qns.entity.qchannel.qchannel import QuantumChannel
-from qns.entity import QNode
-from qns.simulator.simulator import Simulator
 from qns.network.protocol.bb84 import BB84RecvApp, BB84SendApp
-import numpy as np
+from qns.simulator.simulator import Simulator
 
 light_speed = 299791458
 length = 1000

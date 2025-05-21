@@ -1,10 +1,11 @@
 from typing import Optional
+
 from qns.entity.monitor.monitor import Monitor
 from qns.entity.node.app import Application
 from qns.entity.node.node import QNode
 from qns.entity.qchannel.qchannel import QuantumChannel, RecvQubitPacket
 from qns.models.qubit.qubit import Qubit
-from qns.simulator.event import func_to_event, Event
+from qns.simulator.event import Event, func_to_event
 from qns.simulator.simulator import Simulator
 
 

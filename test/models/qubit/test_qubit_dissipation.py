@@ -1,7 +1,7 @@
-from qns.models.qubit.const import QUBIT_STATE_1, QUBIT_STATE_0
+from qns.models.qubit.const import QUBIT_STATE_0, QUBIT_STATE_1
 from qns.models.qubit.decoherence import DissipationStorageErrorModel
-from qns.models.qubit.gate import CNOT, H
 from qns.models.qubit.factory import QubitFactory
+from qns.models.qubit.gate import CNOT, H
 
 
 def test_qubit_dissipation_1():
