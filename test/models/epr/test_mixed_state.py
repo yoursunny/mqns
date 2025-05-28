@@ -8,11 +8,13 @@ def test_mixed_state():
     e1 = MixedStateEntanglement(fidelity=0.95, name="e1")
     e2 = MixedStateEntanglement(fidelity=0.95, name="e2")
     e3 = e1.swapping(e2)
+    assert e3 is not None
     print(e3.fidelity)
 
     e4 = MixedStateEntanglement(fidelity=0.95, name="e4")
     e5 = MixedStateEntanglement(fidelity=0.95, name="e5")
     e6 = e4.swapping(e5)
+    assert e6 is not None
     print(e6.fidelity)
 
     e7 = e3.distillation(e6)

@@ -25,14 +25,18 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Generic, TypeVar
+
 import numpy as np
 
 from qns.models.qubit.const import OPERATOR_PAULI_I, QUBIT_STATE_0, QUBIT_STATE_P
 from qns.models.qubit.gate import CNOT, H, U, X, Y, Z
 from qns.models.qubit.qubit import QState, Qubit
 
+EntanglementT = TypeVar("EntanglementT")
 
-class BaseEntanglement:
+
+class BaseEntanglement(Generic[EntanglementT]):
     """This is the base entanglement model
     """
 
@@ -56,7 +60,7 @@ class BaseEntanglement:
         self.is_decoherenced = value
 
 
-    def swapping(self, epr: "BaseEntanglement", name: str | None = None, ps: float = 1) -> "BaseEntanglement":
+    def swapping(self, epr: EntanglementT, *, name: str | None = None, ps: float = 1) -> EntanglementT | None:
         """Use `self` and `epr` to perfrom swapping and distribute a new entanglement
 
         Args:
@@ -67,7 +71,7 @@ class BaseEntanglement:
         """
         raise NotImplementedError
 
-    def distillation(self, epr: "BaseEntanglement") -> "BaseEntanglement":
+    def distillation(self, epr: EntanglementT) -> EntanglementT | None:
         """Use `self` and `epr` to perfrom distillation and distribute a new entanglement
 
         Args:

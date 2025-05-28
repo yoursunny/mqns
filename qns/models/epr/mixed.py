@@ -26,7 +26,7 @@ from qns.models.qubit.qubit import QState, Qubit
 from qns.utils.rnd import get_rand
 
 
-class MixedStateEntanglement(BaseEntanglement, QuantumModel):
+class MixedStateEntanglement(BaseEntanglement["MixedStateEntanglement"], QuantumModel):
     """`MixedStateEntanglement` is a pair of entangled qubits in mixed State with a hidden-variable.
     rho = A * Phi^+ + B * Psi^+ + C * Psi^- + D * Phi^-
     """
@@ -70,7 +70,7 @@ class MixedStateEntanglement(BaseEntanglement, QuantumModel):
         self.c = self.c/total
         self.d = self.d/total
 
-    def swapping(self, epr: "MixedStateEntanglement", name: Optional[str] = None, ps: float = 1) -> "MixedStateEntanglement":
+    def swapping(self, epr: "MixedStateEntanglement", *, name: str|None = None, ps: float = 1) -> "MixedStateEntanglement|None":
         """Use `self` and `epr` to perfrom swapping and distribute a new entanglement
 
         Args:

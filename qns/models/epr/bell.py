@@ -21,14 +21,15 @@ from qns.models.core.backend import QuantumModel
 from qns.models.epr.entanglement import BaseEntanglement
 
 
-class BellStateEntanglement(BaseEntanglement, QuantumModel):
+class BellStateEntanglement(BaseEntanglement["BellStateEntanglement"], QuantumModel):
     """`BellStateEntanglement` is the ideal max entangled qubits. Its fidelity is always 1.
     """
 
     def __init__(self, fidelity: float = 1, name: Optional[str] = None):
         super().__init__(fidelity=1, name=name)
 
-    def swapping(self, epr: "BellStateEntanglement", name: Optional[str] = None) -> "BellStateEntanglement":
+    def swapping(self, epr: "BellStateEntanglement", *,
+                 name: Optional[str] = None, ps: float = 1) -> "BellStateEntanglement|None":
         ne = BellStateEntanglement(name=name)
         if self.is_decoherenced or epr.is_decoherenced:
             return None
@@ -36,7 +37,7 @@ class BellStateEntanglement(BaseEntanglement, QuantumModel):
         self.is_decoherenced = True
         return ne
 
-    def distillation(self, epr: "BellStateEntanglement"):
+    def distillation(self, epr: "BellStateEntanglement") -> "BellStateEntanglement":
         ne = BellStateEntanglement()
         if self.is_decoherenced or epr.is_decoherenced:
             ne.is_decoherenced = True

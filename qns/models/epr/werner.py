@@ -40,7 +40,7 @@ def hash(s1: str) -> str:
     return hashlib.sha256(s1.encode()).hexdigest()
 
 
-class WernerStateEntanglement(BaseEntanglement, QuantumModel):
+class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"], QuantumModel):
     """A pair of entangled qubits in Werner State with a hidden-variable
     """
 
@@ -78,7 +78,8 @@ class WernerStateEntanglement(BaseEntanglement, QuantumModel):
         self.w = (fidelity * 4 - 1) / 3
 
 
-    def swapping(self, epr: "WernerStateEntanglement", ps: float = 1) -> "WernerStateEntanglement":
+    def swapping(self, epr: "WernerStateEntanglement", *,
+                 name: str|None = None, ps: float = 1) -> "WernerStateEntanglement|None":
         """Use `self` and `epr` to perfrom swapping and distribute a new entanglement
 
         Args:
