@@ -128,7 +128,7 @@ class MixedStateEntanglement(BaseEntanglement, QuantumModel):
         ne.normalized()
         return ne
 
-    def store_error_model(self, t: Optional[float] = 0, decoherence_rate: Optional[float] = 0, **kwargs):
+    def store_error_model(self, t: float = 0, decoherence_rate: float = 0, **kwargs):
         """The default error model for storing this entangled pair in a quantum memory.
         The default behavior is:
             a = 0.25 + (a-0.25)*e^{decoherence_rate*t}
@@ -148,7 +148,7 @@ class MixedStateEntanglement(BaseEntanglement, QuantumModel):
         self.d = 0.25 + (self.d-0.25) * np.exp(-decoherence_rate * t)
         self.normalized()
 
-    def transfer_error_model(self, length: float, decoherence_rate: Optional[float] = 0, **kwargs):
+    def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
         """The default error model for transmitting this entanglement.
         The success possibility of transmitting is:
             a = 0.25 + (a-0.25)*e^{decoherence_rate*length}

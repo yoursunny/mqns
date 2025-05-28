@@ -15,14 +15,12 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Optional
-
 
 class QuantumModel:
     """The interface to present the backend models, including qubit, epr and other models.
     """
 
-    def store_error_model(self, t: Optional[float] = 0, decoherence_rate: Optional[float] = 0, **kwargs):
+    def store_error_model(self, t: float = 0, decoherence_rate: float = 0, **kwargs):
         """The error model for quantum memory.
         This function will change the quantum state or fidelity
         according to different backend models.
@@ -35,7 +33,7 @@ class QuantumModel:
         """
         pass
 
-    def transfer_error_model(self, length: Optional[float] = 0, decoherence_rate: Optional[float] = 0, **kwargs):
+    def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
         """The error model for transmitting a qubit in quantum channel.
         This function will change the quantum state or fidelity
         according to different backend models.
@@ -48,7 +46,7 @@ class QuantumModel:
         """
         pass
 
-    def operate_error_model(self, decoherence_rate: Optional[float] = 0, **kwargs):
+    def operate_error_model(self, decoherence_rate: float = 0, **kwargs):
         """The error model for operating a qubit.
         This function will change the quantum state.
 
@@ -59,7 +57,7 @@ class QuantumModel:
         """
         pass
 
-    def measure_error_model(self, decoherence_rate: Optional[float] = 0, **kwargs):
+    def measure_error_model(self, decoherence_rate: float = 0, **kwargs):
         """The error model for measuring a qubit.
         This function will change the quantum state.
 

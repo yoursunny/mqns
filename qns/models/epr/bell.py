@@ -45,7 +45,7 @@ class BellStateEntanglement(BaseEntanglement, QuantumModel):
         self.is_decoherenced = True
         return ne
 
-    def store_error_model(self, t: Optional[float] = 0, decoherence_rate: Optional[float] = 0, **kwargs):
+    def store_error_model(self, t: float = 0, decoherence_rate: float = 0, **kwargs):
         """The default error model for storing this entangled pair in a quantum memory.
         The default behavior is doing nothing
 
@@ -57,7 +57,7 @@ class BellStateEntanglement(BaseEntanglement, QuantumModel):
         """
         pass
 
-    def transfer_error_model(self, length: float, decoherence_rate: Optional[float] = 0, **kwargs):
+    def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
         """The default error model for transmitting this entanglement.
         The default behavior is doing nothing
 

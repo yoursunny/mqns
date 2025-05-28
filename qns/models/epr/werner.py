@@ -136,7 +136,7 @@ class WernerStateEntanglement(BaseEntanglement, QuantumModel):
                       (fmin ** 2 + 5 / 9 * (1 - fmin) ** 2 + 2 / 3 * fmin * (1 - fmin))
         return True
 
-    def store_error_model(self, t: float, decoherence_rate: float| None, **kwargs):
+    def store_error_model(self, t: float = 0, decoherence_rate: float = 0, **kwargs):
         """The default error model for storing this entangled pair in a quantum memory
         The default behavior is: w = w*e^{-decoherence_rate*t}, default a = 0
 
@@ -148,7 +148,7 @@ class WernerStateEntanglement(BaseEntanglement, QuantumModel):
         """
         self.w = self.w * np.exp(-decoherence_rate * t)
 
-    def transfer_error_model(self, length: float, decoherence_rate: float| None = 0, **kwargs):
+    def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
         """The default error model for transmitting this entanglement
         The success possibility of transmitting is: w = w* e^{decoherence_rate * length}
 
