@@ -636,7 +636,6 @@ class ProactiveForwarder(Application):
                 new_epr = this_epr.swapping(epr=other_epr, ps=self.ps)
                 log.debug(f"{self.own}: SWAP {'SUCC' if new_epr else 'FAILED'} | {this_qubit} x {other_qubit}")
                 if new_epr:    # swapping succeeded
-                    new_epr.creation_time = self._simulator.tc
                     new_epr.src = prev_partner
                     new_epr.dst = next_partner
 

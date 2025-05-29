@@ -108,6 +108,9 @@ class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"], Quant
 
         # set decoherence time to the shorter among the two pairs
         ne.decoherence_time = min(self.decoherence_time, epr.decoherence_time)
+        
+        # set creation time to the older among the two pairs
+        ne.creation_time = min(self.creation_time, epr.creation_time)
         return ne
 
     def purify(self, epr: "WernerStateEntanglement") -> bool:
