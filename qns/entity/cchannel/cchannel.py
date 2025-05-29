@@ -30,7 +30,7 @@ from typing import Any
 
 from qns.entity.entity import Entity
 from qns.entity.node import Node
-from qns.models.delay import ConstantDelayModel, DelayModel
+from qns.models.delay import DelayInput, parseDelay
 from qns.simulator import Event, Simulator, Time
 from qns.utils import get_rand, log
 
@@ -88,7 +88,7 @@ class ClassicChannel(Entity):
     """
 
     def __init__(self, name: str|None = None, node_list: list[Node] = [],
-                 bandwidth: int = 0, delay: float|DelayModel = 0, length: float = 0, drop_rate: float = 0,
+                 bandwidth: int = 0, delay: DelayInput = 0, length: float = 0, drop_rate: float = 0,
                  max_buffer_size: int = 0):
         """Args:
         name (str): the name of this channel
@@ -104,7 +104,7 @@ class ClassicChannel(Entity):
         super().__init__(name=name)
         self.node_list = node_list.copy()
         self.bandwidth = bandwidth
-        self.delay_model = delay if isinstance(delay, DelayModel) else ConstantDelayModel(delay=delay)
+        self.delay_model = parseDelay(delay)
         self.drop_rate = drop_rate
         self.length = length
         self.max_buffer_size = max_buffer_size

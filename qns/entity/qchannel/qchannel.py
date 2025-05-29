@@ -30,7 +30,7 @@ from typing import Any
 from qns.entity.entity import Entity
 from qns.entity.node import QNode
 from qns.models.core import QuantumModel
-from qns.models.delay import ConstantDelayModel, DelayModel
+from qns.models.delay import DelayInput, parseDelay
 from qns.simulator import Event, Simulator, Time
 from qns.utils import log
 
@@ -40,7 +40,7 @@ class QuantumChannel(Entity):
     """
 
     def __init__(self, name: str|None = None, node_list: list[QNode] = [],
-                 bandwidth: int = 0, delay: float|DelayModel = 0,
+                 bandwidth: int = 0, delay: DelayInput = 0,
                  max_buffer_size: int = 0, length: float = 0, decoherence_rate: float = 0,
                  transfer_error_model_args: dict = {}):
         """Args:
@@ -59,7 +59,7 @@ class QuantumChannel(Entity):
         super().__init__(name=name)
         self.node_list = node_list.copy()
         self.bandwidth = bandwidth
-        self.delay_model = delay if isinstance(delay, DelayModel) else ConstantDelayModel(delay=delay)
+        self.delay_model = parseDelay(delay)
         self.max_buffer_size = max_buffer_size
         self.length = length
         self.decoherence_rate = decoherence_rate
