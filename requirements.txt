@@ -3,5 +3,5 @@ Cython==0.29.28
 matplotlib>=3.0
 numpy<2.0
 pandas==1.4.2
-pytest==7.1.1
-setuptools
+pytest==8.*
+setuptools>=64
