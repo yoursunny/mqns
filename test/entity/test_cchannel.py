@@ -1,27 +1,25 @@
-from typing import Any, Optional
+from typing import Any
 
-from qns.entity.cchannel.cchannel import ClassicChannel, ClassicPacket, RecvClassicPacket
-from qns.entity.node.node import QNode
-from qns.models.delay.normaldelay import NormalDelayModel
-from qns.models.delay.uniformdelay import UniformDelayModel
-from qns.simulator.event import Event
-from qns.simulator.simulator import Simulator
-from qns.simulator.ts import Time
+from qns.entity.cchannel import ClassicChannel, ClassicPacket, RecvClassicPacket
+from qns.entity.node import Node
+from qns.models.delay import NormalDelayModel, UniformDelayModel
+from qns.simulator import Event, Simulator, Time
 
 
-class ClassicRecvNode(QNode):
+class ClassicRecvNode(Node):
     def handle(self, event: Event) -> None:
         if isinstance(event, RecvClassicPacket):
             print(event.t, event.packet.src, event.packet.dest, event.packet.msg)
 
 
-class ClassicSendNode(QNode):
-    def __init__(self, name: str = None, dest: QNode = None):
+class ClassicSendNode(Node):
+    def __init__(self, name: str, dest: Node):
         super().__init__(name=name)
         self.dest = dest
 
     def install(self, simulator: Simulator) -> None:
         super().install(simulator)
+        assert self._simulator is not None
 
         t = 0
         while t < 10:
@@ -31,16 +29,17 @@ class ClassicSendNode(QNode):
             t += 0.25
 
     def send(self):
+        assert self._simulator is not None
         print(self._simulator.current_time, "send packet")
-        link: ClassicChannel = self.cchannels[0]
+        link = self.cchannels[0]
         dest = self.dest
         packet = ClassicPacket(msg="ping", src=self, dest=dest)
         link.send(packet, dest)
 
 
 class SendEvent(Event):
-    def __init__(self, t: Optional[Time] = None, node: QNode = None,
-                 name: Optional[str] = None, by: Optional[Any] = None):
+    def __init__(self, t: Time, node: ClassicSendNode, *,
+                 name: str|None = None, by: Any = None):
         super().__init__(t=t, name=name, by=by)
         self.node: ClassicSendNode = node
 

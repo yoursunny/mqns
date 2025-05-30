@@ -178,8 +178,8 @@ class RecvClassicPacket(Event):
     """The event for a Node to receive a classic packet
     """
 
-    def __init__(self, t: Time|None = None, name: str|None = None,
-                 cchannel: ClassicChannel|None = None, packet: ClassicPacket|None = None, dest: Node|None = None,
+    def __init__(self, t: Time, *, name: str|None = None,
+                 cchannel: ClassicChannel, packet: ClassicPacket, dest: Node,
                  by: Any = None):
         super().__init__(t=t, name=name, by=by)
         self.cchannel = cchannel
@@ -187,5 +187,4 @@ class RecvClassicPacket(Event):
         self.dest = dest
 
     def invoke(self) -> None:
-        assert self.dest is not None
         self.dest.handle(self)
