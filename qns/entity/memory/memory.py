@@ -37,8 +37,9 @@ from qns.entity.memory.event import (
 )
 from qns.entity.memory.memory_qubit import MemoryQubit, QubitState
 from qns.entity.node import QNode
-from qns.models.core.backend import QuantumModel
+from qns.models.core import QuantumModel
 from qns.models.delay import DelayInput, parseDelay
+from qns.models.epr import BaseEntanglement
 from qns.simulator import Event, Simulator, Time, func_to_event
 from qns.utils import log
 
@@ -89,14 +90,15 @@ class QuantumMemory(Entity):
 
 
     def install(self, simulator: Simulator) -> None:
-        from qns.network.protocol.link_layer import LinkLayer
         super().install(simulator)
         assert self.node is not None
+
+        from qns.network.protocol.link_layer import LinkLayer
         ll_apps = self.node.get_apps(LinkLayer)
-        if ll_apps:
+        try:
             self.link_layer = ll_apps[0]
-        else:
-            raise Exception("No LinkLayer protocol found")
+        except IndexError:
+            pass
 
 
     def _search(self, key: QuantumModel|str|None = None, address: int|None = None) -> int:
@@ -123,17 +125,18 @@ class QuantumMemory(Entity):
                     return idx
         elif isinstance(key, QuantumModel):
             for idx, (_, data) in enumerate(self._storage):
-                if data is None:
-                    continue
                 if data == key:
                     return idx
         elif isinstance(key, str):
             for idx, (_, data) in enumerate(self._storage):
-                if data is None:
-                    continue
-                if data.name == key:
+                if getattr(data, "name", None) == key:
                     return idx
         return -1
+
+    @property
+    def count(self) -> int:
+        """Return the quantity of stored qubits."""
+        return self._usage
 
     def get(self, key: QuantumModel|str|None = None, address: int|None = None) -> tuple[MemoryQubit, QuantumModel|None]|None:
         """
@@ -183,9 +186,23 @@ class QuantumMemory(Entity):
             return None
 
         (qubit, data) = self._storage[idx]
-
         if not data:
             return None
+
+        if destructive:
+            self._usage -= 1
+            self._storage[idx] = (qubit, None)
+
+        if isinstance(data, BaseEntanglement):
+            self._read_epr(data, destructive)
+
+        return (qubit, data)
+
+    def _read_epr(self, data: QuantumModel, destructive: bool):
+        assert self._simulator is not None
+        assert isinstance(data, BaseEntanglement)
+        assert data.creation_time is not None
+        assert data.name is not None
 
         t_now = self._simulator.current_time
         sec_diff = t_now.sec - data.creation_time.sec
@@ -196,16 +213,11 @@ class QuantumMemory(Entity):
             data.read = True
 
         if destructive:
-            self._usage -= 1
-            self._storage[idx] = (self._storage[idx][0], None)
-
             # cancel scheduled decoherence event
             if data.name in self.pending_decohere_events:
                 event = self.pending_decohere_events[data.name]
                 event.cancel()
                 self.pending_decohere_events.pop(data.name)
-
-        return (qubit, data)
 
     def write(self, qm: QuantumModel, path_id: int|None = None,
               address: int|None = None, key: str|None = None) -> MemoryQubit|None:
@@ -230,7 +242,6 @@ class QuantumMemory(Entity):
         Notes:
             - The decoherence time is calculated as 1 / `decoherence_rate` after the adjusted current time.
         """
-        assert self._simulator is not None
 
         if self.is_full():
             return None
@@ -245,8 +256,15 @@ class QuantumMemory(Entity):
         if idx == -1:
             return None
 
-        self._storage[idx] = (self._storage[idx][0], qm)
+        qubit = self._storage[idx][0]
+        self._storage[idx] = (qubit, qm)
         self._usage += 1
+
+        if not isinstance(qm, BaseEntanglement):
+            return qubit
+        assert self._simulator is not None
+        assert qm.creation_time is not None
+        assert qm.name is not None
 
         # schedule an event at T_coh to decohere the qubit
         if self.decoherence_rate:
@@ -256,7 +274,7 @@ class QuantumMemory(Entity):
             self._simulator.add_event(event)
             qm.decoherence_time = decoherence_t
 
-        return self._storage[idx][0]    # return the memory qubit
+        return qubit
 
     def update(self, old_qm: str, new_qm: QuantumModel) -> bool:
         """
@@ -281,8 +299,6 @@ class QuantumMemory(Entity):
             - This method does not modify the coherence time or reschedule it—only updates
             the stored quantum model while maintaining timing integrity.
         """
-        assert self._simulator is not None
-
         idx = self._search(key=old_qm)
         if idx == -1:
             if old_qm in self.pending_decohere_events:
@@ -292,11 +308,18 @@ class QuantumMemory(Entity):
                 self.pending_decohere_events.pop(old_qm)
             return False
 
-        self._storage[idx] = (self._storage[idx][0], new_qm)
+        qubit = self._storage[idx][0]
+        self._storage[idx] = (qubit, new_qm)
 
         old_event = self.pending_decohere_events[old_qm]
         old_event.cancel()
         self.pending_decohere_events.pop(old_qm)
+
+        if not isinstance(new_qm, BaseEntanglement):
+            return True
+        assert self._simulator is not None
+        assert new_qm.decoherence_time is not None
+        assert new_qm.name is not None
 
         # schedule an event at old T_coh to decohere the qubit
         new_event = func_to_event(new_qm.decoherence_time, self.decohere_qubit, by=self, qubit=self._storage[idx][0], qm=new_qm)
@@ -455,7 +478,9 @@ class QuantumMemory(Entity):
                 continue
             if qubit.qchannel is None or qubit.qchannel.name != qchannel:
                 continue
-            if data.src.name != partner and data.dst.name != partner:
+            if not isinstance(data, BaseEntanglement):
+                continue
+            if data.src is None or data.dst is None or (data.src.name != partner and data.dst.name != partner):
                 continue
             if qubit.purif_rounds != purif_rounds:
                 continue
@@ -504,17 +529,22 @@ class QuantumMemory(Entity):
             so no event is raised again.
 
         """
-        assert self._simulator is not None
-        assert self.link_layer is not None
-
+        assert isinstance(qm, BaseEntanglement)
         qm.is_decoherenced = True
         if self.read(key=qm):
             log.debug(f"{self.node}: EPR decohered -> {qm.name} {qm.src}-{qm.dst}")
             qubit.fsm.to_release()
-            from qns.network.protocol.event import QubitDecoheredEvent
-            t = self._simulator.tc # + self._simulator.time(sec=0)
-            event = QubitDecoheredEvent(link_layer=self.link_layer, qubit=qubit, t=t, by=self)
-            self._simulator.add_event(event)
+            if self.link_layer is not None:
+                self._emit_decohered_event(qubit)
+
+    def _emit_decohered_event(self, qubit: MemoryQubit):
+        assert self._simulator is not None
+        assert self.link_layer is not None
+        from qns.network.protocol.event import QubitDecoheredEvent
+
+        t = self._simulator.tc # + self._simulator.time(sec=0)
+        event = QubitDecoheredEvent(link_layer=self.link_layer, qubit=qubit, t=t, by=self)
+        self._simulator.add_event(event)
 
     def count_unallocated_qubits(self) -> int:
         """Return the number of qubits not allocated to any path ID
