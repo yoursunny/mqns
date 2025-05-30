@@ -162,7 +162,7 @@ class QuantumMemory(Entity):
             return None
 
     def read(self, key: QuantumModel|str|None = None, address: int|None = None,
-             destructive = True) -> tuple[MemoryQubit, QuantumModel|None]|None:
+             destructive = True) -> tuple[MemoryQubit, QuantumModel]|None:
         """
         Reading of a qubit from the memory. This methods sets the fidelity of the EPR at read time.
 
@@ -269,7 +269,7 @@ class QuantumMemory(Entity):
         # schedule an event at T_coh to decohere the qubit
         if self.decoherence_rate:
             decoherence_t = qm.creation_time + Time(sec = 1 / self.decoherence_rate)
-            event = func_to_event(decoherence_t, self.decohere_qubit, by=self, qubit=self._storage[idx][0], qm=qm)
+            event = func_to_event(decoherence_t, self.decohere_qubit, by=self, qubit=qubit, qm=qm)
             self.pending_decohere_events[qm.name] = event
             self._simulator.add_event(event)
             qm.decoherence_time = decoherence_t

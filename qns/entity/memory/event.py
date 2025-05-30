@@ -18,8 +18,9 @@
 
 from typing import TYPE_CHECKING, Any
 
+from qns.entity.memory.memory_qubit import MemoryQubit
 from qns.entity.node import QNode
-from qns.models.core.backend import QuantumModel
+from qns.models.core import QuantumModel
 from qns.simulator import Event, Time
 
 if TYPE_CHECKING:
@@ -30,8 +31,8 @@ class MemoryReadRequestEvent(Event):
     """``MemoryReadRequestEvent`` is the event that request a memory read
     """
 
-    def __init__(self, memory: "QuantumMemory", key: QuantumModel | str,
-                 t: Time | None = None, name: str | None = None, by: Any | None = None):
+    def __init__(self, memory: "QuantumMemory", key: QuantumModel | str, *,
+                 t: Time|None = None, name: str|None = None, by: Any = None):
         super().__init__(t=t, name=name, by=by)
         self.memory = memory
         self.key = key
@@ -44,9 +45,9 @@ class MemoryReadResponseEvent(Event):
     """``MemoryReadResponseEvent`` is the event that returns the memory read result
     """
 
-    def __init__(self, node: QNode, result: QuantumModel | None = None,
-                 request: MemoryReadRequestEvent = None, t: Time | None = None, name: str | None = None,
-                 by: Any | None = None):
+    def __init__(self, node: QNode, *,
+                 result: tuple[MemoryQubit,QuantumModel|None]|None, request: MemoryReadRequestEvent,
+                 t: Time|None = None, name: str|None = None, by: Any = None):
         super().__init__(t=t, name=name, by=by)
         self.node = node
         self.result = result
@@ -60,8 +61,8 @@ class MemoryWriteRequestEvent(Event):
     """``MemoryWriteRequestEvent`` is the event that request a memory write
     """
 
-    def __init__(self, memory: "QuantumMemory", qubit: QuantumModel,
-                 t: Time | None = None, name: str | None = None, by: Any | None = None):
+    def __init__(self, memory: "QuantumMemory", qubit: QuantumModel, *,
+                 t: Time|None = None, name: str|None = None, by: Any = None):
         super().__init__(t=t, name=name, by=by)
         self.memory = memory
         self.qubit = qubit
@@ -74,9 +75,9 @@ class MemoryWriteResponseEvent(Event):
     """``MemoryWriteResponseEvent`` is the event that returns the memory write result
     """
 
-    def __init__(self, node: QNode, result: QuantumModel | None = None,
-                 request: MemoryReadRequestEvent = None, t: Time | None = None, name: str | None = None,
-                 by: Any | None = None):
+    def __init__(self, node: QNode, *,
+                 result: MemoryQubit|None = None, request: MemoryWriteRequestEvent,
+                 t: Time|None = None, name: str|None = None, by: Any = None):
         super().__init__(t=t, name=name, by=by)
         self.node = node
         self.result = result
