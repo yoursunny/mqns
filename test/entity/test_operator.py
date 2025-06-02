@@ -1,12 +1,7 @@
-from typing import Optional
-
-from qns.entity.node.app import Application
-from qns.entity.node.node import QNode
-from qns.entity.operator import OperateRequestEvent, QuantumOperator
-from qns.entity.operator.event import OperateResponseEvent
+from qns.entity.node import Application, QNode
+from qns.entity.operator import OperateRequestEvent, OperateResponseEvent, QuantumOperator
 from qns.models.qubit import H, Qubit
-from qns.simulator.event import Event
-from qns.simulator.simulator import Simulator
+from qns.simulator import Simulator
 
 
 def gate_z_and_measure(qubit: Qubit):
@@ -35,11 +30,14 @@ class RecvOperateApp(Application):
     def __init__(self):
         super().__init__()
         self.add_handler(self.OperateResponseEventhandler, [OperateResponseEvent], [])
+        self.count = 0
 
-    def OperateResponseEventhandler(self, node, event: Event) -> Optional[bool]:
+    def OperateResponseEventhandler(self, node, event: OperateResponseEvent) -> bool|None:
         result = event.result
-        assert (self._simulator.tc.sec == 0.5)
-        assert (result in [0, 1])
+        assert self._simulator is not None
+        assert self._simulator.tc.sec == 0.5
+        assert result in [0, 1]
+        self.count += 1
 
 
 def test_operator_async():
@@ -58,3 +56,4 @@ def test_operator_async():
     s.add_event(request)
 
     s.run()
+    assert a1.count == 1

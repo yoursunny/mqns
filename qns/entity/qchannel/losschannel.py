@@ -57,4 +57,4 @@ class QubitLossChannel(QuantumChannel):
         )
         self.p_init = p_init
         self.attenuation_rate = attenuation_rate
-        self.drop_rate = 1 - (1-self.p_init)*10**(- self.attenuation_rate * self.length / 10)
+        self.drop_rate = 1 - (1-self.p_init) * 10**(-self.attenuation_rate * self.length / 10)

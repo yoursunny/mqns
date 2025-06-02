@@ -15,12 +15,10 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Any, Optional
+from typing import Any
 
 from qns.entity.entity import Entity
-from qns.simulator.event import Event
-from qns.simulator.simulator import Simulator
-from qns.simulator.ts import Time
+from qns.simulator import Event, Simulator, Time
 
 
 class Timer(Entity):
@@ -45,24 +43,25 @@ class Timer(Entity):
         self.trigger_func = trigger_func
 
     def install(self, simulator: Simulator) -> None:
+        if self._is_installed:
+            return
 
-        if not self._is_installed:
-            self._simulator = simulator
+        self._is_installed = True
+        self._simulator = simulator
 
-            time_list = []
-            if self.end_time == 0:
-                time_list.append(Time(sec=self.start_time))
-            else:
-                t = self.start_time
-                while t <= self.end_time:
-                    time_list.append(t)
-                    t += self.step_time
+        time_list: list[float] = []
+        if self.end_time == 0:
+            time_list.append(self.start_time)
+        else:
+            t = self.start_time
+            while t <= self.end_time:
+                time_list.append(t)
+                t += self.step_time
 
-            for t in time_list:
-                time = self._simulator.time(sec=t)
-                event = TimerEvent(timer=self, t=time, by=self)
-                self._simulator.add_event(event)
-            self._is_installed = True
+        for t in time_list:
+            time = self._simulator.time(sec=t)
+            event = TimerEvent(timer=self, t=time, by=self)
+            self._simulator.add_event(event)
 
     def trigger(self):
         if self.trigger_func is not None:
@@ -75,7 +74,7 @@ class TimerEvent(Event):
     """TimerEvent is the event that triggers the Timer's `trigger_func`
     """
 
-    def __init__(self, timer: Timer, t: Optional[Time] = None, name: Optional[str] = None, by: Optional[Any] = None):
+    def __init__(self, timer: Timer, t: Time, name: str|None = None, by: Any = None):
         super().__init__(t=t, name=name, by=by)
         self.timer = timer
 

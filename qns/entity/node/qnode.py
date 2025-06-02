@@ -43,11 +43,10 @@ class QNode(Node):
     def install(self, simulator: Simulator) -> None:
         super().install(simulator)
         # initiate sub-entities
-
         from qns.entity import QuantumChannel, QuantumMemory, QuantumOperator
-        assert isinstance(self.memory, QuantumMemory)
-        self.memory.install(simulator)
-
+        if self.memory is not None:
+            assert isinstance(self.memory, QuantumMemory)
+            self.memory.install(simulator)
         for qchannel in self.qchannels:
             assert isinstance(qchannel, QuantumChannel)
             qchannel.install(simulator)
@@ -61,7 +60,9 @@ class QNode(Node):
         Args:
             memory (Memory): the quantum memory
 
+        This function is available prior to calling .install().
         """
+        assert self._simulator is None
         memory.node = self
         self.memory = memory
 
@@ -76,7 +77,9 @@ class QNode(Node):
         Args:
             operator (QuantumOperator): the quantum operator
 
+        This function is available prior to calling .install().
         """
+        assert self._simulator is None
         operator.set_own(self)
         self.operators.append(operator)
 
@@ -86,7 +89,9 @@ class QNode(Node):
         Args:
             qchannel (QuantumChannel): the quantum channel
 
+        This function is available prior to calling .install().
         """
+        assert self._simulator is None
         qchannel.node_list.append(self)
         self.qchannels.append(qchannel)
 

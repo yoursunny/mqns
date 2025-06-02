@@ -40,8 +40,8 @@ class QuantumChannel(Entity):
     """QuantumChannel is the channel for transmitting qubit
     """
 
-    def __init__(self, name: str|None = None, node_list: list[QNode] = [],
-                 bandwidth: int = 0, delay: DelayInput = 0,
+    def __init__(self, name: str|None = None, node_list: list[QNode] = [], *,
+                 bandwidth: int = 0, delay: DelayInput = 0, drop_rate: float = 0,
                  max_buffer_size: int = 0, length: float = 0, decoherence_rate: float = 0,
                  transfer_error_model_args: dict = {}):
         """Args:
@@ -49,6 +49,7 @@ class QuantumChannel(Entity):
         node_list (List[QNode]): a list of QNodes that it connects to
         bandwidth (int): the qubit per second on this channel. 0 represents unlimited
         delay (float): the time delay for transmitting a packet, or a ``DelayModel``
+        drop_rate (float): probability of photon loss. 0 means never, 1 means always.
         max_buffer_size (int): the max buffer size.
             If it is full, the next coming packet will be dropped. 0 represents unlimited.
 
@@ -61,11 +62,12 @@ class QuantumChannel(Entity):
         self.node_list = node_list.copy()
         self.bandwidth = bandwidth
         self.delay_model = parseDelay(delay)
+        self.drop_rate = drop_rate
+        assert 0.0 <= self.drop_rate <= 1.0
         self.max_buffer_size = max_buffer_size
         self.length = length
         self.decoherence_rate = decoherence_rate
         self.transfer_error_model_args = transfer_error_model_args
-        self.drop_rate = 0
 
     def install(self, simulator: Simulator) -> None:
         """``install`` is called before ``simulator`` runs to initialize or set initial events
@@ -111,13 +113,13 @@ class QuantumChannel(Entity):
             send_time = self._simulator.current_time
 
         # random drop
-        if get_rand() < (1 - self.drop_rate):
+        if self.drop_rate > 0 and get_rand() < self.drop_rate:
             log.debug(f"qchannel {self}: drop qubit {qubit} due to drop rate")
-            if not isinstance(qubit, BaseEntanglement):
-                return
-            qubit.set_decoherenced(True)     # photon is lost -> flag this pair as decoherenced to inform receiver node
+            if isinstance(qubit, BaseEntanglement):
+                qubit.set_decoherenced(True) # photon is lost -> flag this pair as decoherenced to inform receiver node
+            return
 
-        #  add delay
+        # add delay
         recv_time = send_time + self._simulator.time(sec=self.delay_model.calculate())
 
         # operation on the qubit

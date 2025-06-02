@@ -15,12 +15,12 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Callable, List, Optional, Union
+from typing import Callable
 
 from qns.entity.entity import Entity
 from qns.entity.node.qnode import QNode
-from qns.models.delay.constdelay import ConstantDelayModel
-from qns.models.delay.delay import DelayModel
+from qns.entity.operator.event import OperateRequestEvent, OperateResponseEvent
+from qns.models.delay import DelayInput, parseDelay
 from qns.simulator.event import Event
 from qns.simulator.simulator import Simulator
 
@@ -32,8 +32,8 @@ class QuantumOperator(Entity):
         Asynchronous mode, users will use events to operate quantum operations asynchronously
     """
 
-    def __init__(self, name: str = None, node: QNode = None,
-                 gate: Callable[..., Union[None, int, List[int]]] = None, delay: Union[float, DelayModel] = 0):
+    def __init__(self, name: str|None = None, *, node: QNode|None = None,
+                 gate: Callable[..., None|int|list[int]], delay: DelayInput = 0):
         """Args:
         name (str): its name
         node (QNode): the quantum node that equips this memory
@@ -44,14 +44,16 @@ class QuantumOperator(Entity):
         super().__init__(name=name)
         self.node = node
         self.gate = gate
-        self.delay_model = delay if isinstance(delay, DelayModel) else ConstantDelayModel(delay=delay)
+        self.delay_model = parseDelay(delay)
 
     def install(self, simulator: Simulator) -> None:
         return super().install(simulator)
 
     def handle(self, event: Event) -> None:
-        from qns.entity.operator.event import OperateRequestEvent, OperateResponseEvent
         if isinstance(event, OperateRequestEvent):
+            assert self._simulator is not None
+            assert self.node is not None
+
             qubits = event.qubits
             # operate qubits and get measure results
             result = self.operate(*qubits)
@@ -65,7 +67,7 @@ class QuantumOperator(Entity):
         """
         self.node = node
 
-    def operate(self, *qubits) -> Optional[Union[int, List[int]]]:
+    def operate(self, *qubits) -> int|list[int]|None:
         """Operate on qubits and return the measure result
 
         Args:

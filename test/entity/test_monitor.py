@@ -1,12 +1,8 @@
-from typing import Optional
-
-from qns.entity.monitor.monitor import Monitor
-from qns.entity.node.app import Application
-from qns.entity.node.node import QNode
-from qns.entity.qchannel.qchannel import QuantumChannel, RecvQubitPacket
-from qns.models.qubit.qubit import Qubit
-from qns.simulator.event import Event, func_to_event
-from qns.simulator.simulator import Simulator
+from qns.entity.monitor import Monitor
+from qns.entity.node import Application, QNode
+from qns.entity.qchannel import QuantumChannel, RecvQubitPacket
+from qns.models.qubit import Qubit
+from qns.simulator import Event, Simulator, func_to_event
 
 
 class SendApp(Application):
@@ -19,11 +15,12 @@ class SendApp(Application):
 
     def install(self, node, simulator: Simulator):
         super().install(node=node, simulator=simulator)
-        t = simulator.ts
-        event = func_to_event(t, self.send, by=self)
+        assert self._simulator is not None
+        event = func_to_event(self._simulator.ts, self.send, by=self)
         self._simulator.add_event(event)
 
     def send(self):
+        assert self._simulator is not None
         qubit = Qubit()
         self.qchannel.send(qubit=qubit, next_hop=self.dest)
         self.count += 1
@@ -38,14 +35,13 @@ class RecvApp(Application):
         self.count = 0
         self.add_handler(self.RecvQubitHandler, [RecvQubitPacket])
 
-    def RecvQubitHandler(self, node, event: Event) -> Optional[bool]:
+    def RecvQubitHandler(self, node, event: Event) -> bool|None:
         self.count += 1
 
 
 def test_monitor_1():
     n1 = QNode(name="n_1")
     n2 = QNode(name="n_2")
-    # l1 = QuantumChannel(name="l_1")
     l1 = QuantumChannel(name="l1", bandwidth=5, delay=0.5, drop_rate=0.2, max_buffer_size=5)
     n1.add_qchannel(l1)
     n2.add_qchannel(l1)
@@ -75,7 +71,8 @@ def test_monitor_1():
     m.at_event(RecvQubitPacket)
     m.install(s)
     s.run()
-    print(m.get_date())
+
+    print(m.get_data())
 
 
 if __name__ == "__main__":
