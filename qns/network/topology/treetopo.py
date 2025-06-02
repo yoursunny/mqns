@@ -15,8 +15,6 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Dict, List, Optional, Tuple
-
 from qns.entity.node.app import Application
 from qns.entity.node.qnode import QNode
 from qns.entity.qchannel.qchannel import QuantumChannel
@@ -28,20 +26,22 @@ class TreeTopology(Topology):
     The topology is a tree pattern, where each parent has `children_num` children.
     """
 
-    def __init__(self, nodes_number, children_number: int = 2, nodes_apps: List[Application] = [],
-                 qchannel_args: Dict = {}, cchannel_args: Dict = {},
-                 memory_args: Optional[List[Dict]] = {}):
+    def __init__(self, nodes_number, children_number: int = 2, *,
+                 nodes_apps: list[Application] = [],
+                 qchannel_args: dict = {}, cchannel_args: dict = {},
+                 memory_args: dict = {}):
         """Args:
         nodes_number (int): the total number of QNodes
         children_number (int): the number of children one parent has
 
         """
-        super().__init__(nodes_number, nodes_apps, qchannel_args, cchannel_args, memory_args)
+        super().__init__(nodes_number, nodes_apps=nodes_apps,
+                         qchannel_args=qchannel_args, cchannel_args=cchannel_args, memory_args=memory_args)
         self.children_number = children_number
 
-    def build(self) -> Tuple[List[QNode], List[QuantumChannel]]:
-        nl: List[QNode] = []
-        ll = []
+    def build(self) -> tuple[list[QNode], list[QuantumChannel]]:
+        nl: list[QNode] = []
+        ll: list[QuantumChannel] = []
 
         for i in range(self.nodes_number):
             n = QNode(f"n{i+1}")

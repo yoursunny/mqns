@@ -16,7 +16,6 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import itertools
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -31,10 +30,10 @@ class WaxmanTopology(Topology):
     """WaxmanTopology is the random topology generator using Waxman's model.
     """
 
-    def __init__(self, nodes_number: int, size: float, alpha: float, beta: float,
-                 nodes_apps: List[Application] = [],
-                 qchannel_args: Dict = {}, cchannel_args: Dict = {},
-                 memory_args: Optional[List[Dict]] = {}):
+    def __init__(self, nodes_number: int, size: float, alpha: float, beta: float, *,
+                 nodes_apps: list[Application] = [],
+                 qchannel_args: dict = {}, cchannel_args: dict = {},
+                 memory_args: dict = {}):
         """Args:
         nodes_number (int): the number of Qnodes
         size (float): the area size (meter)
@@ -42,17 +41,18 @@ class WaxmanTopology(Topology):
         beta (float): alpha parameter in Waxman's model
 
         """
-        super().__init__(nodes_number, nodes_apps, qchannel_args, cchannel_args, memory_args)
+        super().__init__(nodes_number, nodes_apps=nodes_apps,
+                         qchannel_args=qchannel_args, cchannel_args=cchannel_args, memory_args=memory_args)
         self.size = size
         self.alpha = alpha
         self.beta = beta
 
-    def build(self) -> Tuple[List[QNode], List[QuantumChannel]]:
-        nl: List[QNode] = []
-        ll: List[QuantumChannel] = []
+    def build(self) -> tuple[list[QNode], list[QuantumChannel]]:
+        nl: list[QNode] = []
+        ll: list[QuantumChannel] = []
 
-        location_table: Dict[QNode, Tuple[float, float]] = {}
-        distance_table: Dict[Tuple[QNode, QNode], float] = {}
+        location_table: dict[QNode, tuple[float, float]] = {}
+        distance_table: dict[tuple[QNode, QNode], float] = {}
 
         for i in range(self.nodes_number):
             n = QNode(f"n{i+1}")

@@ -15,8 +15,6 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Dict, List, Optional, Tuple
-
 from qns.entity.node.app import Application
 from qns.entity.node.qnode import QNode
 from qns.entity.qchannel.qchannel import QuantumChannel
@@ -27,14 +25,16 @@ class BasicTopology(Topology):
     """BasicTopology includes `nodes_number` Qnodes. None of them are connected with each other
     """
 
-    def __init__(self, nodes_number, nodes_apps: List[Application] = [],
-                 qchannel_args: Dict = {}, cchannel_args: Dict = {},
-                 memory_args: Optional[List[Dict]] = {}):
-        super().__init__(nodes_number, nodes_apps, qchannel_args, cchannel_args, memory_args)
+    def __init__(self, nodes_number: int, *,
+                 nodes_apps: list[Application] = [],
+                 qchannel_args: dict = {}, cchannel_args: dict = {},
+                 memory_args: dict = {}):
+        super().__init__(nodes_number, nodes_apps=nodes_apps,
+                         qchannel_args=qchannel_args, cchannel_args=cchannel_args, memory_args=memory_args)
 
-    def build(self) -> Tuple[List[QNode], List[QuantumChannel]]:
-        nl: List[QNode] = []
-        ll = []
+    def build(self) -> tuple[list[QNode], list[QuantumChannel]]:
+        nl: list[QNode] = []
+        ll: list[QuantumChannel] = []
         for i in range(self.nodes_number):
             n = QNode(f"n{i+1}")
             nl.append(n)

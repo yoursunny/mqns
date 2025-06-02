@@ -45,7 +45,7 @@ def get_rand(low: float = 0, high: float = 1) -> float:
     return low + np.random.random() * (high - low)
 
 
-def get_randint(low: int, high: int) -> float:
+def get_randint(low: int, high: int) -> int:
     """Get a random integer from [low, high]
 
     Args:

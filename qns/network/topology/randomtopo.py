@@ -15,8 +15,6 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Dict, List, Optional, Tuple
-
 from qns.entity.node.app import Application
 from qns.entity.node.qnode import QNode
 from qns.entity.qchannel.qchannel import QuantumChannel
@@ -28,20 +26,22 @@ class RandomTopology(Topology):
     """RandomTopology includes `nodes_number` Qnodes. The topology is randomly generated.
     """
 
-    def __init__(self, nodes_number, lines_number: int, nodes_apps: List[Application] = [],
-                 qchannel_args: Dict = {}, cchannel_args: Dict = {},
-                 memory_args: Optional[List[Dict]] = {}):
+    def __init__(self, nodes_number: int, lines_number: int, *,
+                 nodes_apps: list[Application] = [],
+                 qchannel_args: dict = {}, cchannel_args: dict = {},
+                 memory_args: dict = {}):
         """Args:
         nodes_number: the number of Qnodes
         lines_number: the number of lines (QuantumChannel)
 
         """
-        super().__init__(nodes_number, nodes_apps, qchannel_args, cchannel_args, memory_args)
+        super().__init__(nodes_number, nodes_apps=nodes_apps,
+                         qchannel_args=qchannel_args, cchannel_args=cchannel_args, memory_args=memory_args)
         self.lines_number = lines_number
 
-    def build(self) -> Tuple[List[QNode], List[QuantumChannel]]:
-        nl: List[QNode] = []
-        ll: List[QuantumChannel] = []
+    def build(self) -> tuple[list[QNode], list[QuantumChannel]]:
+        nl: list[QNode] = []
+        ll: list[QuantumChannel] = []
 
         mat = [[0 for i in range(self.nodes_number)] for j in range(self.nodes_number)]
 

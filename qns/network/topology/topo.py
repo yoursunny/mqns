@@ -28,13 +28,11 @@
 import copy
 import itertools
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
 
-from qns.entity.cchannel.cchannel import ClassicChannel
-from qns.entity.memory.memory import QuantumMemory
-from qns.entity.node.app import Application
-from qns.entity.node.qnode import QNode
-from qns.entity.qchannel.qchannel import QuantumChannel
+from qns.entity.cchannel import ClassicChannel
+from qns.entity.memory import QuantumMemory
+from qns.entity.node import Application, Controller, QNode
+from qns.entity.qchannel import QuantumChannel
 
 
 class ClassicTopology(Enum):
@@ -47,9 +45,10 @@ class Topology:
     """Topology is a factory for QuantumNetwork
     """
 
-    def __init__(self, nodes_number: int, nodes_apps: List[Application] = [],
-                 qchannel_args: Dict = {}, cchannel_args: Dict = {},
-                 memory_args: Optional[List[Dict]] = {}):
+    def __init__(self, nodes_number: int, *,
+                 nodes_apps: list[Application] = [],
+                 qchannel_args: dict = {}, cchannel_args: dict = {},
+                 memory_args: dict = {}):
         """Args:
         nodes_number: the number of Qnodes
         nodes_apps: apps will be installed to all nodes
@@ -63,18 +62,18 @@ class Topology:
         self.qchannel_args = qchannel_args
         self.memory_args = memory_args
         self.cchannel_args = cchannel_args
-        self.controller = None
+        self.controller: Controller|None = None
 
-    def build(self) -> Tuple[List[QNode], List[QuantumChannel]]:
+    def build(self) -> tuple[list[QNode], list[QuantumChannel]]:
         """Build the special topology
 
         Returns:
             the list of QNodes and the list of QuantumChannel
 
         """
-        pass
+        raise NotImplementedError
 
-    def _add_apps(self, nl: List[QNode]):
+    def _add_apps(self, nl: list[QNode]):
         """Add apps for all nodes in `nl`
 
         Args:
@@ -86,26 +85,19 @@ class Topology:
                 tmp_p = copy.deepcopy(p)
                 n.add_apps(tmp_p)
 
-    def _add_memories(self, nl: List[QNode]):
+    def _add_memories(self, nl: list[QNode]):
         """Add quantum memories to all nodes in `nl`
 
         Args:
             nl (List[QNode]): a list of quantum nodes
 
         """
-        if self.memory_args is None:
-            return
         for idx, n in enumerate(nl):
-            if isinstance(self.memory_args, list):
-                for margs in self.memory_args:
-                    m = QuantumMemory(name=f"m{idx}", node=n, **margs)
-                    n.add_memory(m)
-            else:
-                m = QuantumMemory(name=f"m{idx}", node=n, **self.memory_args)
-                n.add_memory(m)
+            m = QuantumMemory(name=f"m{idx}", node=n, **self.memory_args)
+            n.set_memory(m)
 
     def add_cchannels(self, classic_topo: ClassicTopology = ClassicTopology.Empty,
-                      nl: List[QNode] = [], ll: Optional[List[QuantumChannel]] = None):
+                      nl: list[QNode] = [], ll: list[QuantumChannel]|None = None) -> list[ClassicChannel]:
         """Build classic network topology
 
         Args:
@@ -117,7 +109,7 @@ class Topology:
             ll (List[qns.entity.qchannel.qchannel.QuantumChannel]): a list of quantum channels
 
         """
-        cchannel_list = []
+        cchannel_list: list[ClassicChannel] = []
         if classic_topo == ClassicTopology.All:
             topo = list(itertools.combinations(nl, 2))
             for idx, (src, dst) in enumerate(topo):
