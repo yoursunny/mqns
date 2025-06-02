@@ -15,22 +15,26 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable
 
 import pandas as pd
 
 from qns.entity.entity import Entity
-from qns.simulator.event import Event
-from qns.simulator.simulator import Simulator
-from qns.simulator.ts import Time
+from qns.simulator import Event, Simulator, Time
 
+if TYPE_CHECKING:
+    from qns.network import QuantumNetwork
+
+
+AttributionFunc = Callable[[Simulator, "QuantumNetwork|None", Event|None], Any]
+"""Callback function to calculate an attribution."""
 
 class MonitorEvent(Event):
     """the event that notify the monitor to write down network status
     """
 
-    def __init__(self, t: Optional[Time], monitor,
-                 name: Optional[str] = None, by: Optional[Any] = None):
+    def __init__(self, t: Time|None, monitor: "Monitor",
+                 name: str|None = None, by: Any = None):
         super().__init__(t, name, by)
         self.monitor = monitor
 
@@ -39,7 +43,7 @@ class MonitorEvent(Event):
 
 
 class Monitor(Entity):
-    def __init__(self, name: Optional[str] = None, network=None) -> None:
+    def __init__(self, name: str|None = None, network: "QuantumNetwork|None" = None) -> None:
         """Monitor is a virtual entity that helps users to collect network status.
 
         Args:
@@ -51,16 +55,18 @@ class Monitor(Entity):
         self.network = network
         self.data: pd.DataFrame = pd.DataFrame()
 
-        self.attributions = []
+        self.attributions: list[tuple[str, AttributionFunc]] = []
 
         self.watch_at_time = False
         self.watch_at_start = False
         self.watch_at_finish = False
-        self.watch_period = []
+        self.watch_period: list[float] = []
         self.watch_event = []
 
     def install(self, simulator: Simulator) -> None:
         super().install(simulator=simulator)
+        assert self._simulator is not None
+
         if self.watch_at_start or self.watch_at_finish or len(self.watch_period) > 0:
             self.watch_at_time = True
 
@@ -71,10 +77,9 @@ class Monitor(Entity):
             event = MonitorEvent(t=self._simulator.te, monitor=self, name="finish watch event", by=self)
             self._simulator.add_event(event)
         for p in self.watch_period:
-            tp = Time(sec=p)
             t = self._simulator.ts
             while t <= self._simulator.te:
-                t = t + tp
+                t = t + p
                 event = MonitorEvent(t=t, monitor=self, name=f"period watch event({p})", by=self)
                 self._simulator.add_event(event)
 
@@ -88,8 +93,9 @@ class Monitor(Entity):
         self.calculate_date(event)
 
     def calculate_date(self, event: Event):
+        assert self._simulator is not None
         current_time = self._simulator.tc.sec
-        record = {"time": current_time}
+        record: dict[str, Any] = {"time": current_time}
         for (name, calculate_func) in self.attributions:
             record[name] = [calculate_func(self._simulator, self.network, event)]
         record_pd = pd.DataFrame(record)
@@ -104,8 +110,7 @@ class Monitor(Entity):
         """
         return self.data
 
-    def add_attribution(self, name: str,
-                        calculate_func: Callable[[Simulator, Any, Optional[Event]], Any]) -> None:
+    def add_attribution(self, name: str, calculate_func: AttributionFunc) -> None:
         """Set an attribution that will be recorded. For example, an attribution could be the throughput, or the fidelity.
 
         Args:
@@ -153,11 +158,11 @@ class Monitor(Entity):
             m.at_period(3)
 
         """
-        assert (period_time > 0)
+        assert period_time > 0
         self.watch_period.append(period_time)
 
-    def at_event(self, event_type) -> None:
-        """Watch network status whenever the event happends
+    def at_event(self, event_type: type[Event]) -> None:
+        """Watch network status whenever the event happens
 
         Args:
             event_type (Event): the watching event

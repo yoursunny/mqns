@@ -52,7 +52,7 @@ class Simulator:
         self.status = {}
         self.total_events = 0
 
-        self.watch_event = {}
+        self.watch_event: dict[type[Event], list] = {}
 
         self._running = False
 
