@@ -109,7 +109,9 @@ class Node(Entity):
         Args:
             cchannel (ClassicChannel): the classic channel
 
+        This function is available prior to calling .install().
         """
+        assert self._simulator is None
         cchannel.node_list.append(self)
         self.cchannels.append(cchannel)
 
