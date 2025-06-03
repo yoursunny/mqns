@@ -8,13 +8,9 @@ def test_dijkstra():
     net.build_route()
 
     n1 = net.get_node("n1")
-    assert n1 is not None
     n2 = net.get_node("n2")
-    assert n2 is not None
     n3 = net.get_node("n3")
-    assert n3 is not None
     n4 = net.get_node("n4")
-    assert n4 is not None
 
     r11 = net.query_route(n1, n1)
     assert len(r11) == 0

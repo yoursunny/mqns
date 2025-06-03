@@ -132,7 +132,6 @@ class QuantumNetwork:
         for node in self.nodes:
             node.handle_sync_signal(SignalTypeEnum.EXTERNAL_START)
 
-
     def send_ext_signal(self):
         # insert the INT phase after t_ext
         t_int = self._simulator.tc + Time(sec=self.t_ext)
@@ -175,7 +174,7 @@ class QuantumNetwork:
         self.nodes.append(node)
         node.add_network(self)
 
-    def get_node(self, name: str):
+    def get_node(self, name: str) -> QNode:
         """Get the QNode by its name
 
         Args:
@@ -187,7 +186,7 @@ class QuantumNetwork:
         for n in self.nodes:
             if n.name == name:
                 return n
-        return None
+        raise IndexError(f"node {name} does not exist")
 
     def set_controller(self, controller: Controller):
         """Set the controller of this network.
@@ -199,7 +198,7 @@ class QuantumNetwork:
         self.controller = controller
         controller.add_network(self)
 
-    def get_controller(self):
+    def get_controller(self) -> Controller:
         """Get the Controller of this network
 
         Args:
@@ -208,6 +207,8 @@ class QuantumNetwork:
             the Controller
 
         """
+        if self.controller is None:
+            raise IndexError("network does not have a controller")
         return self.controller
 
     def add_qchannel(self, qchannel: QuantumChannel):
@@ -219,7 +220,7 @@ class QuantumNetwork:
         """
         self.qchannels.append(qchannel)
 
-    def get_qchannel(self, name: str):
+    def get_qchannel(self, name: str) -> QuantumChannel:
         """Get the QuantumChannel by its name
 
         Args:
@@ -231,7 +232,7 @@ class QuantumNetwork:
         for n in self.qchannels:
             if n.name == name:
                 return n
-        return None
+        raise IndexError(f"qchannel {name} does not exist")
 
     def add_cchannel(self, cchannel: ClassicChannel):
         """Add a ClassicChannel into this network.
@@ -242,7 +243,7 @@ class QuantumNetwork:
         """
         self.cchannels.append(cchannel)
 
-    def get_cchannel(self, name: str):
+    def get_cchannel(self, name: str) -> ClassicChannel:
         """Get the ClassicChannel by its name
 
         Args:
@@ -254,7 +255,7 @@ class QuantumNetwork:
         for n in self.cchannels:
             if n.name == name:
                 return n
-        return None
+        raise IndexError(f"cchannel {name} does not exist")
 
     def add_memories(self, capacity: int = 0, decoherence_rate: float = 0, store_error_model_args: dict = {}):
         """Add quantum memories to every nodes in this network
