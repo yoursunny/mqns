@@ -17,10 +17,14 @@
 
 import math
 
-from qns.entity.node.app import Application
-from qns.entity.node.qnode import QNode
-from qns.entity.qchannel.qchannel import QuantumChannel
-from qns.network.topology.topo import Topology
+from qns.entity.node import QNode
+from qns.entity.qchannel import QuantumChannel
+from qns.network.topology.topo import Topology, TopologyInitKwargs
+
+try:
+    from typing import Unpack
+except ImportError:
+    from typing_extensions import Unpack
 
 
 class GridTopology(Topology):
@@ -28,15 +32,10 @@ class GridTopology(Topology):
     The topology is a square grid pattern, where each node has 4 neighbors.
     """
 
-    def __init__(self, nodes_number: int, *,
-                 nodes_apps: list[Application] = [],
-                 qchannel_args: dict = {}, cchannel_args: dict = {},
-                 memory_args: dict = {}):
-        super().__init__(nodes_number, nodes_apps=nodes_apps,
-                         qchannel_args=qchannel_args, cchannel_args=cchannel_args, memory_args=memory_args)
-        size = int(math.sqrt(self.nodes_number))
-        self.size = size
-        assert (size ** 2 == self.nodes_number)
+    def __init__(self, nodes_number: int, **kwargs: Unpack[TopologyInitKwargs]):
+        super().__init__(nodes_number, **kwargs)
+        self.size = int(math.sqrt(self.nodes_number))
+        assert self.size ** 2 == self.nodes_number
 
     def build(self) -> tuple[list[QNode], list[QuantumChannel]]:
         nl: list[QNode] = []
