@@ -26,18 +26,13 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from enum import Enum, auto
-from typing import Dict, List, Optional, Tuple
 
 from qns.entity import ClassicChannel, Controller, QNode, QuantumChannel, QuantumMemory
 from qns.network.requests import Request
 from qns.network.route import DijkstraRouteAlgorithm, RouteImpl
-from qns.network.topology import Topology
-from qns.network.topology.topo import ClassicTopology
-from qns.simulator.event import func_to_event
-from qns.simulator.simulator import Simulator
-from qns.simulator.ts import Time
+from qns.network.topology import ClassicTopology, Topology
+from qns.simulator import Simulator, Time, func_to_event
 from qns.utils import log
-from qns.utils.rnd import get_randint
 
 
 class TimingModeEnum(Enum):
@@ -53,14 +48,15 @@ class SignalTypeEnum(Enum):
     APP = auto()                # used by SYNC to set the phase
 
 class QuantumNetwork:
-    """QuantumNetwork includes quantum nodes, quantum and classical channels, arraned in a given topology
+    """QuantumNetwork includes quantum nodes, quantum and classical channels, arranged in a given topology
     """
 
-    def __init__(self, topo: Optional[Topology] = None, route: Optional[RouteImpl] = None,
-                 classic_topo: Optional[ClassicTopology] = None,
-                 name: Optional[str] = None,
+    def __init__(self, *,
+                 topo: Topology|None = None, route: RouteImpl|None = None,
+                 classic_topo: ClassicTopology|None = None,
+                 name: str|None = None,
                  timing_mode: TimingModeEnum = TimingModeEnum.ASYNC,
-                 t_slot:float = 0, t_ext:float = 0, t_int:float = 0):
+                 t_slot: float = 0, t_ext: float = 0, t_int: float = 0):
         """Args:
         topo: a `Topology` class.
         route: the routing implement. If route is None, the dijkstra algorithm will be used.
@@ -74,12 +70,12 @@ class QuantumNetwork:
         self.t_int = t_int              # for SYNC
 
         self.name = name
-        self.controller = None
+        self.controller: Controller|None = None
 
         if topo is None:
-            self.nodes: List[QNode] = []
-            self.qchannels: List[QuantumChannel] = []
-            self.cchannels: List[ClassicChannel] = []
+            self.nodes: list[QNode] = []
+            self.qchannels: list[QuantumChannel] = []
+            self.cchannels: list[ClassicChannel] = []
         else:
             self.nodes, self.qchannels = topo.build()
             if classic_topo is not None:
@@ -101,7 +97,7 @@ class QuantumNetwork:
         else:
             self.route: RouteImpl = route
 
-        self.requests: List[Request] = []
+        self.requests: list[Request] = []
 
 
     def install(self, s: Simulator):
@@ -135,7 +131,6 @@ class QuantumNetwork:
         # TODO: add controller
         for node in self.nodes:
             node.handle_sync_signal(SignalTypeEnum.EXTERNAL_START)
-
 
     def send_ext_signal(self):
         # insert the INT phase after t_ext
@@ -179,7 +174,7 @@ class QuantumNetwork:
         self.nodes.append(node)
         node.add_network(self)
 
-    def get_node(self, name: str):
+    def get_node(self, name: str) -> QNode:
         """Get the QNode by its name
 
         Args:
@@ -191,7 +186,7 @@ class QuantumNetwork:
         for n in self.nodes:
             if n.name == name:
                 return n
-        return None
+        raise IndexError(f"node {name} does not exist")
 
     def set_controller(self, controller: Controller):
         """Set the controller of this network.
@@ -203,7 +198,7 @@ class QuantumNetwork:
         self.controller = controller
         controller.add_network(self)
 
-    def get_controller(self):
+    def get_controller(self) -> Controller:
         """Get the Controller of this network
 
         Args:
@@ -212,6 +207,8 @@ class QuantumNetwork:
             the Controller
 
         """
+        if self.controller is None:
+            raise IndexError("network does not have a controller")
         return self.controller
 
     def add_qchannel(self, qchannel: QuantumChannel):
@@ -223,7 +220,7 @@ class QuantumNetwork:
         """
         self.qchannels.append(qchannel)
 
-    def get_qchannel(self, name: str):
+    def get_qchannel(self, name: str) -> QuantumChannel:
         """Get the QuantumChannel by its name
 
         Args:
@@ -235,7 +232,7 @@ class QuantumNetwork:
         for n in self.qchannels:
             if n.name == name:
                 return n
-        return None
+        raise IndexError(f"qchannel {name} does not exist")
 
     def add_cchannel(self, cchannel: ClassicChannel):
         """Add a ClassicChannel into this network.
@@ -246,7 +243,7 @@ class QuantumNetwork:
         """
         self.cchannels.append(cchannel)
 
-    def get_cchannel(self, name: str):
+    def get_cchannel(self, name: str) -> ClassicChannel:
         """Get the ClassicChannel by its name
 
         Args:
@@ -258,9 +255,9 @@ class QuantumNetwork:
         for n in self.cchannels:
             if n.name == name:
                 return n
-        return None
+        raise IndexError(f"cchannel {name} does not exist")
 
-    def add_memories(self, capacity: int = 0, decoherence_rate: Optional[float] = 0, store_error_model_args: dict = {}):
+    def add_memories(self, capacity: int = 0, decoherence_rate: float = 0, store_error_model_args: dict = {}):
         """Add quantum memories to every nodes in this network
 
         Args:
@@ -272,14 +269,14 @@ class QuantumNetwork:
         for idx, n in enumerate(self.nodes):
             m = QuantumMemory(name=f"m{idx}", node=n, capacity=capacity, decoherence_rate=decoherence_rate,
                               store_error_model_args=store_error_model_args)
-            n.add_memory(m)
+            n.set_memory(m)
 
     def build_route(self):
         """Build static route tables for each nodes
         """
         self.route.build(self.nodes, self.qchannels)
 
-    def query_route(self, src: QNode, dest: QNode) -> List[Tuple[float, QNode, List[QNode]]]:
+    def query_route(self, src: QNode, dest: QNode) -> list[tuple[float, QNode, list[QNode]]]:
         """Query the metric, nexthop and the path
 
         Args:
@@ -293,7 +290,7 @@ class QuantumNetwork:
         """
         return self.route.query(src, dest)
 
-    def add_request(self, src: QNode, dest: QNode, attr: Dict = {}):
+    def add_request(self, src: QNode, dest: QNode, attr: dict = {}):
         """Add a request (SD-pair) to the network
 
         Args:
@@ -302,12 +299,13 @@ class QuantumNetwork:
             attr: other attributions
 
         """
-        req = Request(src=src, dest=dest, attr=attr)
-        self.requests.append(req)
-        src.add_request(req)
-        dest.add_request(req)
+        raise NotImplementedError
+        # req = Request(src=src, dest=dest, attr=attr)
+        # self.requests.append(req)
+        # src.add_request(req)
+        # dest.add_request(req)
 
-    def random_requests(self, number: int, allow_overlay: bool = False, attr: Dict = {}):
+    def random_requests(self, number: int, allow_overlay: bool = False, attr: dict = {}):
         """Generate random requests
 
         Args:
@@ -316,40 +314,41 @@ class QuantumNetwork:
             attr (Dict): request attributions
 
         """
-        used_nodes: List[int] = []
-        nnodes = len(self.nodes)
+        raise NotImplementedError
+        # used_nodes: list[int] = []
+        # nnodes = len(self.nodes)
 
-        if number < 1:
-            raise QNSNetworkError("number of requests should be large than 1")
+        # if number < 1:
+        #     raise QNSNetworkError("number of requests should be large than 1")
 
-        if not allow_overlay and number * 2 > nnodes:
-            raise QNSNetworkError("Too many requests")
+        # if not allow_overlay and number * 2 > nnodes:
+        #     raise QNSNetworkError("Too many requests")
 
-        for n in self.nodes:
-            n.clear_request()
-        self.requests.clear()
+        # for n in self.nodes:
+        #     n.clear_request()
+        # self.requests.clear()
 
-        for _ in range(number):
-            while True:
-                src_idx = get_randint(0, nnodes - 1)
-                dest_idx = get_randint(0, nnodes - 1)
-                if src_idx == dest_idx:
-                    continue
-                if not allow_overlay and src_idx in used_nodes:
-                    continue
-                if not allow_overlay and dest_idx in used_nodes:
-                    continue
-                if not allow_overlay:
-                    used_nodes.append(src_idx)
-                    used_nodes.append(dest_idx)
-                break
+        # for _ in range(number):
+        #     while True:
+        #         src_idx = get_randint(0, nnodes - 1)
+        #         dest_idx = get_randint(0, nnodes - 1)
+        #         if src_idx == dest_idx:
+        #             continue
+        #         if not allow_overlay and src_idx in used_nodes:
+        #             continue
+        #         if not allow_overlay and dest_idx in used_nodes:
+        #             continue
+        #         if not allow_overlay:
+        #             used_nodes.append(src_idx)
+        #             used_nodes.append(dest_idx)
+        #         break
 
-            src = self.nodes[src_idx]
-            dest = self.nodes[dest_idx]
-            req = Request(src=src, dest=dest, attr=attr)
-            self.requests.append(req)
-            src.add_request(req)
-            dest.add_request(req)
+        #     src = self.nodes[src_idx]
+        #     dest = self.nodes[dest_idx]
+        #     req = Request(src=src, dest=dest, attr=attr)
+        #     self.requests.append(req)
+        #     src.add_request(req)
+        #     dest.add_request(req)
 
 
 class QNSNetworkError(Exception):
