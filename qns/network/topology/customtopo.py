@@ -56,7 +56,10 @@ class Topo(TypedDict):
     controller: NotRequired[TopoController]
 
 class CustomTopology(Topology):
-    """TopologyCreator processed the topology dict.
+    """
+    CustomTopology builds a topology from a JSON-like dict structure.
+
+    Nodes and channels are individually specified and can have heterogeneous parameters.
     """
 
     def __init__(self, topo: Topo):
