@@ -211,10 +211,12 @@ class EntanglementDistributionApp(Application):
                 log.debug(f"{self.own}:perform swap generate {new_epr}")
 
                 src: QNode = transmit.src
-                app = src.get_app(EntanglementDistributionApp)
+                app: EntanglementDistributionApp = src.get_apps(
+                    EntanglementDistributionApp)[0]
                 app.set_second_epr(new_epr, transmit_id=transmit_id)
 
-                app = from_node.get_apps(EntanglementDistributionApp)
+                app: EntanglementDistributionApp = from_node.get_apps(
+                    EntanglementDistributionApp)[0]
                 app.set_first_epr(new_epr, transmit_id=transmit_id)
 
             classic_packet = ClassicPacket(

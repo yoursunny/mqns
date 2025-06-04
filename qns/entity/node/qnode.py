@@ -115,4 +115,6 @@ class QNode(Node):
         raise IndexError(f"qchannel from {repr(self)} to {repr(dst)} does not exist")
 
     def __repr__(self) -> str:
-        return f"<qnode {self.name}>"
+        if self.name is not None:
+            return f"<qnode {self.name}>"
+        return super().__repr__()

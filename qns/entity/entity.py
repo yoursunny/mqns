@@ -22,7 +22,7 @@ class Entity:
     """This is the basic entity class, including memories, channels and nodes.
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str|None = None):
         """Args:
         name (str): the name of this entity
 
@@ -63,4 +63,6 @@ class Entity:
         raise NotImplementedError
 
     def __repr__(self) -> str:
-        return f"<entity {self.name}>"
+        if self.name is not None:
+            return f"<entity {self.name}>"
+        return super().__repr__()

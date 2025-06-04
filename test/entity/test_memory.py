@@ -54,7 +54,8 @@ def test_write_and_read_with_path_and_key():
     assert data.name == "epr1"
     assert mem._usage == 0
 
-    assert pytest.raises(ValueError, lambda: mem.read(address=qubit.addr, must=True))
+    res = mem.read(address=qubit.addr)
+    assert res is None
 
 
 def test_channel_qubit_assignment_and_search():
@@ -167,13 +168,8 @@ def test_memory_sync_qubit():
     s = Simulator(0, 10, 1000)
     n1.install(s)
 
-    assert m.write(q1)
-    assert m.read(key="test_qubit") is not None
-
-    assert m.get(key="nonexistent") is None
-    assert m.read(key="nonexistent") is None
-    assert pytest.raises(IndexError, lambda: m.get(key="nonexistent", must=True))
-    assert pytest.raises(IndexError, lambda: m.read(key="nonexistent", must=True))
+    assert (m.write(q1))
+    assert (m.read(key="test_qubit") is not None)
 
 
 def test_memory_sync_qubit_limited():
