@@ -38,26 +38,26 @@ class LinkLayer(Application):
     """
 
     def __init__(self,
-                 attempt_rate: int = 1e6,
+                 attempt_rate: float = 1e6,
                  alpha_db_per_km: float = 0.2,
                  eta_d: float = 1.0,
                  eta_s: float = 1.0,
-                 frequency: int = 80e6,
-                 init_fidelity: int = 0.99,
-                 light_speed_kms = 2 * 10**5):
+                 frequency: float = 80e6,
+                 init_fidelity: float = 0.99,
+                 light_speed_kms: float = 2 * 10**5):
         """This constructor sets up the entanglement generation layer of a quantum node with key hardware parameters.
         It also initializes data structures for managing quantum channels, entanglement attempts,
         and synchronization.
 
         Parameters
         ----------
-            attempt_rate (int): Max entanglement attempts per second (default: 1e6).
+            attempt_rate (float): Max entanglement attempts per second (default: 1e6).
             alpha_db_per_km (float): Fiber loss in dB/km (default: 0.2).
             eta_d (float): Detector efficiency (default: 1.0).
             eta_s (float): Source efficiency (default: 1.0).
-            frequency (int): Entanglement source frequency (default: 80e6).
-            init_fidelity (int): Fidelity of generated entangled pairs (default: 0.99).
-            light_speed_kms (int): Speed of light in fiber in km/s (default: 2e5).
+            frequency (float): Entanglement source frequency (default: 80e6).
+            init_fidelity (float): Fidelity of generated entangled pairs (default: 0.99).
+            light_speed_kms (float): Speed of light in fiber in km/s (default: 2e5).
 
         """
 

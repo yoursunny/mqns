@@ -65,10 +65,7 @@ def test_channel_qubit_assignment_and_search():
     sim = Simulator(0, 10)
     node.install(sim)
 
-    ch = QuantumChannel(
-        "qch",
-        { "node1": "S", "node2":"R", "capacity": 1, "parameters": {"length": 10, "delay": 10 / light_speed} }
-        )
+    ch = QuantumChannel("qch", length=10, delay=10/light_speed)
     addr = mem.assign(ch)
     assert addr != -1
 
@@ -83,10 +80,7 @@ def test_channel_qubit_assignment_and_search():
 def test_decoherence_event_removes_qubit():
     mem = QuantumMemory("mem", decoherence_rate=1)
 
-    ch = QuantumChannel(
-        "qch",
-        { "node1": "S", "node2":"R", "capacity": 1, "parameters": {"length": 10, "delay": 10 / light_speed} }
-        )
+    ch = QuantumChannel("qch", length=10, delay=10/light_speed)
     mem.assign(ch)
 
     node = QNode("n3")

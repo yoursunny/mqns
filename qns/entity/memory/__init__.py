@@ -32,8 +32,8 @@ from qns.entity.memory.event import (
            MemoryWriteRequestEvent,
            MemoryWriteResponseEvent,
 )
-from qns.entity.memory.memory import QuantumMemory
+from qns.entity.memory.memory import QuantumMemory, QuantumMemoryInitKwargs
 from qns.entity.memory.memory_qubit import MemoryQubit
 
-__all__ = ["QuantumMemory", "MemoryQubit", "MemoryReadRequestEvent", "MemoryReadResponseEvent",
-           "MemoryWriteRequestEvent", "MemoryWriteResponseEvent"]
+__all__ = ["QuantumMemory", "QuantumMemoryInitKwargs", "MemoryQubit",
+           "MemoryReadRequestEvent", "MemoryReadResponseEvent", "MemoryWriteRequestEvent", "MemoryWriteResponseEvent"]

@@ -2,11 +2,14 @@
 from collections.abc import Sequence
 from typing import cast
 
+import pytest
+
 from qns.entity import ClassicChannel, QNode, QuantumChannel
 from qns.network.network import QuantumNetwork
 from qns.network.topology import (
     BasicTopology,
     ClassicTopology,
+    CustomTopology,
     GridTopology,
     LinearTopology,
     RandomTopology,
@@ -140,3 +143,75 @@ def test_classical_follow():
     qchannels = collect_channels(net, net.qchannels)
     cchannels = collect_channels(net, net.cchannels)
     assert cchannels == qchannels
+
+def test_custom_topo_empty():
+    topo = CustomTopology(topo={
+        "qnodes": [],
+        "qchannels": [],
+        "cchannels": [],
+    })
+    net = QuantumNetwork(topo=topo)
+
+    assert len(net.nodes) == 0
+    assert len(net.qchannels) == 0
+    assert len(net.cchannels) == 0
+    assert net.controller is None
+
+def test_custom_topo_basic():
+    topo = CustomTopology(topo={
+        "qnodes": [
+            { "name": "A", "memory": { "capacity": 1 }, "apps": [] },
+            { "name": "B", "memory": { "capacity": 4 }, "apps": [] },
+            { "name": "C", "memory": { "capacity": 3 }, "apps": [] },
+        ],
+        "qchannels": [
+            { "node1": "A", "node2": "B", "capacity": 1, "parameters": {} },
+            { "node1": "B", "node2": "C", "capacity": 3, "parameters": {} },
+        ],
+        "cchannels": [
+            { "node1": "A", "node2": "C", "parameters": {} },
+        ],
+        "controller": {
+            "name": "ctrl", "apps": [],
+        },
+    })
+    net = QuantumNetwork(topo=topo)
+
+    assert len(net.nodes) == 3
+    assert len(net.qchannels) == 2
+    assert len(net.cchannels) == 1
+
+    mA = net.get_node("A").get_memory()
+    mB = net.get_node("B").get_memory()
+    mC = net.get_node("C").get_memory()
+
+    qAB = net.get_qchannel("q_A,B")
+    qBC = net.get_qchannel("q_B,C")
+
+    assert mA.capacity == 1
+    assert mA.get(address=0, must=True)[0].qchannel == qAB
+    assert mB.capacity == 4
+    assert mB.get(address=0, must=True)[0].qchannel == qAB
+    assert mB.get(address=1, must=True)[0].qchannel == qBC
+    assert mB.get(address=2, must=True)[0].qchannel == qBC
+    assert mB.get(address=3, must=True)[0].qchannel == qBC
+    assert mC.capacity == 3
+    assert mC.get(address=0, must=True)[0].qchannel == qBC
+    assert mC.get(address=1, must=True)[0].qchannel == qBC
+    assert mC.get(address=2, must=True)[0].qchannel == qBC
+
+    assert net.controller is not None
+
+def test_custom_topo_low_memory():
+    topo = CustomTopology(topo={
+        "qnodes": [
+            { "name": "A", "memory": { "capacity": 1 }, "apps": [] },
+            { "name": "B", "memory": { "capacity": 2 }, "apps": [] },
+        ],
+        "qchannels": [
+            { "node1": "A", "node2": "B", "capacity": 2, "parameters": {} },
+        ],
+        "cchannels": [],
+    })
+    with pytest.raises(RuntimeError, match="Not enough qubits to assignment"):
+        _ = QuantumNetwork(topo=topo)

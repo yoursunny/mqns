@@ -26,13 +26,18 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import json
-from typing import Any
+from typing import Any, TypedDict
 
 from qns.entity.entity import Entity
 from qns.entity.node import Node
 from qns.models.delay import DelayInput, parseDelay
 from qns.simulator import Event, Simulator, Time
 from qns.utils import get_rand, log
+
+try:
+    from typing import Unpack
+except ImportError:
+    from typing_extensions import Unpack
 
 
 class ClassicPacket:
@@ -83,13 +88,18 @@ class ClassicPacket:
         return len(self.msg)
 
 
+class ClassicChannelInitKwargs(TypedDict, total=False):
+    bandwidth: int
+    delay: DelayInput
+    drop_rate: float
+    max_buffer_size: int
+    length: float
+
 class ClassicChannel(Entity):
     """ClassicChannel is the channel for classic message
     """
 
-    def __init__(self, name: str, node_list: list[Node] = [],
-                 bandwidth: int = 0, delay: DelayInput = 0, length: float = 0, drop_rate: float = 0,
-                 max_buffer_size: int = 0):
+    def __init__(self, name: str, node_list: list[Node] = [], **kwargs: Unpack[ClassicChannelInitKwargs]):
         """Args:
         name (str): the name of this channel
         node_list (List[Node]): a list of QNodes that it connects to
@@ -103,11 +113,12 @@ class ClassicChannel(Entity):
         """
         super().__init__(name=name)
         self.node_list = node_list.copy()
-        self.bandwidth = bandwidth
-        self.delay_model = parseDelay(delay)
-        self.drop_rate = drop_rate
-        self.length = length
-        self.max_buffer_size = max_buffer_size
+        self.bandwidth = kwargs.get("bandwidth", 0)
+        self.delay_model = parseDelay(kwargs.get("delay", 0))
+        self.drop_rate = kwargs.get("drop_rate", 0.0)
+        assert 0.0 <= self.drop_rate <= 1.0
+        self.max_buffer_size = kwargs.get("max_buffer_size", 0)
+        self.length = kwargs.get("length", 0.0)
         self._next_send_time: Time
 
     def install(self, simulator: Simulator) -> None:
@@ -118,7 +129,7 @@ class ClassicChannel(Entity):
 
         """
         super().install(simulator)
-        self._next_send_time = self.simulator.ts
+        self._next_send_time = simulator.ts
 
     def send(self, packet: ClassicPacket, next_hop: Node, delay: float = 0):
         """Send a classic packet to the next_hop

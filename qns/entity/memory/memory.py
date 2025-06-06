@@ -26,7 +26,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from typing import TYPE_CHECKING, Literal, overload
+from typing import TYPE_CHECKING, Literal, TypedDict, overload
 
 from qns.entity.entity import Entity
 from qns.entity.memory.event import (
@@ -43,10 +43,21 @@ from qns.models.epr import BaseEntanglement
 from qns.simulator import Event, Simulator, Time, func_to_event
 from qns.utils import log
 
+try:
+    from typing import Unpack
+except ImportError:
+    from typing_extensions import Unpack
+
 if TYPE_CHECKING:
     from qns.entity.qchannel import QuantumChannel
     from qns.network.protocol.link_layer import LinkLayer
 
+
+class QuantumMemoryInitKwargs(TypedDict, total=False):
+    capacity: int
+    delay: DelayInput
+    decoherence_rate: float
+    store_error_model_args: dict
 
 class QuantumMemory(Entity):
     """Quantum memory stores qubits or entangled pairs
@@ -56,9 +67,7 @@ class QuantumMemory(Entity):
         Asynchronous mode, users can use events to operate memories asynchronously
     """
 
-    def __init__(self, name: str, node: QNode|None = None, *,
-                 capacity: int = 1, delay: DelayInput = 0,
-                 decoherence_rate: float = 0, store_error_model_args: dict = {}):
+    def __init__(self, name: str, node: QNode|None = None, **kwargs: Unpack[QuantumMemoryInitKwargs]):
         """Args:
         name (str): memory name
         node (QNode): the quantum node that equips this memory
@@ -71,8 +80,8 @@ class QuantumMemory(Entity):
         """
         super().__init__(name=name)
         self.node = node
-        self.capacity = capacity
-        self.delay_model = parseDelay(delay)
+        self.capacity = kwargs.get("capacity", 1)
+        self.delay_model = parseDelay(kwargs.get("delay", 0))
 
         if self.capacity > 0:
             self._storage: list[tuple[MemoryQubit, QuantumModel|None]] = [
@@ -81,8 +90,8 @@ class QuantumMemory(Entity):
             raise ValueError("Error: unlimited memory capacity not supported")
 
         self._usage = 0
-        self.decoherence_rate = decoherence_rate
-        self.store_error_model_args = store_error_model_args
+        self.decoherence_rate = kwargs.get("decoherence_rate", 0.0)
+        self.store_error_model_args = kwargs.get("store_error_model_args", {})
 
         self.link_layer: "LinkLayer|None" = None
 
