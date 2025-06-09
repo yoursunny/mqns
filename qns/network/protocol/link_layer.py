@@ -21,11 +21,18 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from qns.entity.cchannel import ClassicPacket, RecvClassicPacket
-from qns.entity.memory.memory import MemoryQubit, QuantumMemory
+from qns.entity.memory import MemoryQubit, QuantumMemory
 from qns.entity.node import Application, Node, QNode
 from qns.entity.qchannel import QuantumChannel, RecvQubitPacket
 from qns.models.epr import WernerStateEntanglement
 from qns.network import SignalTypeEnum, TimingModeEnum
+from qns.network.protocol.event import (
+    ManageActiveChannels,
+    QubitDecoheredEvent,
+    QubitEntangledEvent,
+    QubitReleasedEvent,
+    TypeEnum,
+)
 from qns.simulator import Event, Simulator, Time, func_to_event
 from qns.utils import log
 
@@ -146,7 +153,7 @@ class LinkLayer(Application):
             else:
                 raise Exception(f"{self.own}: --> PROBLEM {data}")
 
-    def start_reservation(self, next_hop: Node, qchannel: QuantumChannel, qubit: MemoryQubit, path_id: int | None = None):
+    def start_reservation(self, next_hop: QNode, qchannel: QuantumChannel, qubit: MemoryQubit, path_id: int | None = None):
         """This method starts the exchange with neighbor node for reserving a qubit for entanglement
         generation over a specified quantum channel. It performs the following steps:
 
@@ -158,7 +165,7 @@ class LinkLayer(Application):
         - Sends a classical message to the next hop to request qubit reservation.
 
         Args:
-            next_hop (Node): The neighboring node with which the reservation is to be made.
+            next_hop (QNode): The neighboring node with which the reservation is to be made.
             qchannel (QuantumChannel): The quantum channel used for entanglement.
             qubit (MemoryQubit): The memory qubit to reserve.
             path_id (Optional[int]): Optional identifier for the entanglement path.
@@ -185,7 +192,7 @@ class LinkLayer(Application):
         )
         cchannel.send(classic_packet, next_hop=next_hop)
 
-    def generate_entanglement(self, qchannel: QuantumChannel, next_hop: Node, address: int, key: str):
+    def generate_entanglement(self, qchannel: QuantumChannel, next_hop: QNode, address: int, key: str):
         """Schedule a successful entanglement attempt using skip-ahead sampling.
         A `do_successful_attempt` event is scheduled to handle the result of this attempt.
 
@@ -197,7 +204,7 @@ class LinkLayer(Application):
 
         Args:
             qchannel (QuantumChannel): The quantum channel over which entanglement is to be generated.
-            next_hop (Node): The neighboring node with which the entanglement is attempted.
+            next_hop (QNode): The neighboring node with which the entanglement is attempted.
             address (int): The address of the memory qubit used for this attempt.
             key (str): A unique identifier for this entanglement reservation/attempt.
 
@@ -210,7 +217,6 @@ class LinkLayer(Application):
         simulator = self.simulator
         if qchannel.name not in self.active_channels:
             raise Exception(f"{self.own}: Qchannel not active")
-            return
 
         t_mem = 1 / self.memory.decoherence_rate
         if qchannel.length >= (2 * self.light_speed_kms * t_mem):
@@ -230,7 +236,7 @@ class LinkLayer(Application):
         )
         simulator.add_event(event)
 
-    def do_successful_attempt(self, qchannel: QuantumChannel, next_hop: Node, address, attempts: int, key: str):
+    def do_successful_attempt(self, qchannel: QuantumChannel, next_hop: QNode, address, attempts: int, key: str):
         """This method is invoked after a scheduled successful entanglement attempt. It:
             - Generates a new EPR pair between the current node and the next hop.
             - Stores the EPR locally at the specified memory address, accounting for the qubit initialization time.
@@ -310,7 +316,6 @@ class LinkLayer(Application):
     def notify_entangled_qubit(self, neighbor: QNode, qubit: MemoryQubit, delay: float = 0):
         """Schedule an event to notify the forwarder about a new entangled qubit"""
         simulator = self.simulator
-        from qns.network.protocol.event import QubitEntangledEvent
 
         qubit.fsm.to_entangled()
         t = simulator.tc + delay
@@ -323,7 +328,6 @@ class LinkLayer(Application):
         - `QubitDecoheredEvent` from memory informing that an entangled qubit has decohered and can be re-entangled.
         - `QubitReleasedEvent` from the forwarder informing that an entangled qubit has released and can be re-entangled.
         """
-        from qns.network.protocol.event import ManageActiveChannels, QubitDecoheredEvent, QubitReleasedEvent, TypeEnum
 
         if isinstance(event, ManageActiveChannels):
             log.debug(f"{self.own}: start qchannel with {event.neighbor}")
@@ -341,6 +345,7 @@ class LinkLayer(Application):
                 self.active_channels.pop(qchannel.name, "Not Found")
         elif isinstance(event, QubitDecoheredEvent):
             self.decoh_count += 1
+            assert event.qubit.qchannel is not None
             # check if this node is the EPR initiator of the qchannel associated with the memory of this qubit
             if event.qubit.qchannel.name:
                 if event.qubit.qchannel.name in self.active_channels:
@@ -356,6 +361,7 @@ class LinkLayer(Application):
             else:
                 raise Exception("TODO")
         elif isinstance(event, QubitReleasedEvent):
+            assert event.qubit.qchannel is not None
             # check if this node is the EPR initiator of the qchannel associated with the memory of this qubit
             if event.qubit.qchannel.name:
                 if event.qubit.qchannel.name in self.active_channels:  # i.e., this node is primary
@@ -398,7 +404,8 @@ class LinkLayer(Application):
         """
         msg = packet.packet.get()
         cchannel = packet.cchannel
-        from_node: QNode = cchannel.node_list[0] if cchannel.node_list[1] == self.own else cchannel.node_list[1]
+        from_node = cchannel.node_list[0] if cchannel.node_list[1] == self.own else cchannel.node_list[1]
+        assert isinstance(from_node, QNode)
         qchannel = self.own.get_qchannel(from_node)
 
         cmd = msg["cmd"]
@@ -465,14 +472,14 @@ class LinkLayer(Application):
                 for channel_name, (qchannel, next_hop) in self.active_channels.items():
                     self.handle_active_channel(qchannel, next_hop)
 
-    def _loss_based_success_prob(self, link_length_km):
+    def _loss_based_success_prob(self, link_length_km: float) -> float:
         """Compute success probability from fiber loss model for heralded entanglement."""
         p_bsa = 0.5
         p_fiber = 10 ** (-self.alpha_db_per_km * link_length_km / 10)
         p = p_bsa * (self.eta_s**2) * (self.eta_d**2) * p_fiber
         return p
 
-    def _skip_ahead_entanglement(self, link_length_km: float):
+    def _skip_ahead_entanglement(self, link_length_km: float) -> tuple[float, int]:
         reset_time = 1 / self.frequency
         tau = link_length_km / self.light_speed_kms
 

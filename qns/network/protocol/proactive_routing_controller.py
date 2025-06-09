@@ -15,11 +15,10 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from qns.entity.cchannel.cchannel import ClassicPacket
-from qns.entity.node.app import Application
-from qns.entity.node.controller import Controller
+from qns.entity.cchannel import ClassicPacket
+from qns.entity.node import Application, Controller, Node
 from qns.network import QuantumNetwork
-from qns.simulator.simulator import Simulator
+from qns.simulator import Simulator
 from qns.utils import log
 
 # from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -79,13 +78,15 @@ class ProactiveRoutingControllerApp(Application):
 
         """
         super().__init__()
-        self.net: QuantumNetwork  # contains QN physical topology and classical topology
-        self.own: Controller  # controller node running this app
+        self.net: QuantumNetwork
+        """QN physical topology and classical topology"""
+        self.own: Controller
+        """controller node running this app"""
 
-        if swapping not in swapping_settings:
-            raise Exception(f"{self.own}: Swapping {swapping} not configured")
-
-        self.swapping = swapping
+        try:
+            self.swapping_order = swapping_settings[swapping]
+        except KeyError:
+            raise KeyError(f"{self.own}: Swapping {swapping} not configured")
 
         # self.add_handler(self.RecvClassicPacketHandler, [RecvClassicPacket])
         # self.server = HTTPServer(('', 8080), self.RequestHandler)
@@ -97,7 +98,7 @@ class ProactiveRoutingControllerApp(Application):
     #         self.end_headers()
     #         self.wfile.write(b"Test function executed")
 
-    def install(self, node: Controller, simulator: Simulator):
+    def install(self, node: Node, simulator: Simulator):
         super().install(node, simulator)
         self.own = self.get_node(node_type=Controller)
         self.net = self.own.network
@@ -128,7 +129,7 @@ class ProactiveRoutingControllerApp(Application):
             Exception: If the computed route does not match the length expected by the current swapping configuration.
 
         Notes:
-            - The `swapping_settings[self.swapping]` provides the expected swapping instructions.
+            - `self.swapping_order` provides the expected swapping instructions.
             - Multiplexing strategy is hardcoded as "B" (buffer-space).
             - Path instructions are transmitted over classical channels using the `"install_path"` command.
             - This method is primarily intended for test or static configuration scenarios, not dynamic routing.
@@ -136,15 +137,9 @@ class ProactiveRoutingControllerApp(Application):
 
         """
         self.net.build_route()
-        network_nodes = self.net.get_nodes()
 
-        src = None
-        dst = None
-        for qn in network_nodes:
-            if qn.name == "S":
-                src = qn
-            if qn.name == "D":
-                dst = qn
+        src = self.net.get_node("S")
+        dst = self.net.get_node("D")
 
         route_result = self.net.query_route(src, dst)
         path_nodes = route_result[0][2]
@@ -152,21 +147,21 @@ class ProactiveRoutingControllerApp(Application):
 
         route = [n.name for n in path_nodes]
 
-        if len(route) != len(swapping_settings[self.swapping]):
+        if len(route) != len(self.swapping_order):
             raise Exception(
-                f"{self.own}: Swapping {swapping_settings[self.swapping]} \
+                f"{self.own}: Swapping {self.swapping_order} \
                 does not correspond to computed route: {route}"
             )
 
         m_v = []
-        src_capacity = self.net.get_node(path_nodes[0].name).memory.capacity
+        src_capacity = self.net.get_node(path_nodes[0].name).get_memory().capacity
         for i in range(len(path_nodes) - 1):
             m_v.append(src_capacity)
 
         for qnode in path_nodes:
             instructions = {
                 "route": route,
-                "swap": swapping_settings[self.swapping],
+                "swap": self.swapping_order,
                 "mux": "B",
                 "m_v": m_v,
                 # "purif": { 'S-R':1, 'R-D':1 },

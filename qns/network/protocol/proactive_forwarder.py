@@ -638,6 +638,9 @@ class ProactiveForwarder(Application):
                 else:
                     raise Exception(f"Unexpected: swapping EPRs {this_epr} x {other_epr}")
 
+                assert prev_partner is not None
+                assert next_partner is not None
+
                 # if elementary epr -> assign ch_index
                 if not prev_epr.orig_eprs:
                     prev_epr.ch_index = own_idx - 1
@@ -699,6 +702,8 @@ class ProactiveForwarder(Application):
         else:  # end-node
             _, qm = self.memory.read(address=qubit.addr, must=True)
             assert isinstance(qm, WernerStateEntanglement)
+            assert qm.src is not None
+            assert qm.dst is not None
             qubit.fsm.to_release()
             log.debug(f"{self.own}: consume EPR: {qm.name} -> {qm.src.name}-{qm.dst.name} | F={qm.fidelity}")
             self.e2e_count += 1
@@ -787,7 +792,7 @@ class ProactiveForwarder(Application):
         else:  # for statistical mux
             log.debug("Qubit not allocated to a path. Statistical mux not supported yet.")
 
-    def select_eligible_qubit(self, exc_qchannel: str, path_id: int = None) -> MemoryQubit | None:
+    def select_eligible_qubit(self, exc_qchannel: str, path_id: int | None = None) -> MemoryQubit | None:
         """Searches for an eligible qubit in memory that matches the specified path ID and
         is located on a different qchannel than the excluded one. This is used to
         find a swap candidate during entanglement forwarding. Currently returns the first

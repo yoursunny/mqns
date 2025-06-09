@@ -293,7 +293,7 @@ class QuantumNetwork:
             dest: the destination node
 
         Returns:
-            A list of route paths. The result should be sortted by the priority.
+            A list of route paths. The result should be sorted by the priority.
             The element is a tuple containing: metric, the next-hop and the whole path.
 
         """

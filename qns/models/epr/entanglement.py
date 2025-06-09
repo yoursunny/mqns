@@ -62,12 +62,14 @@ class BaseEntanglement(Generic[EntanglementT]):
         """dst node"""
         self.ch_index = -1
         """index of this EPR along the path"""
-        self.orig_eprs = []
+        self.orig_eprs: list[EntanglementT] = []
         """Elementary EPRs from which this EPR is created via swapping"""
         self.read = False
         """to know when both end-nodes are aware of the EPR"""
         self.key: str | None = None
         """to store the EPR in the right negotiated qubit at the dst node"""
+        self.attempts: int | None = None
+        self.path_id: int | None = None
 
     def set_decoherenced(self, value: bool):
         self.is_decoherenced = value
