@@ -25,7 +25,7 @@ from qns.entity.node import Application, Controller, Node, QNode
 from qns.models.epr import WernerStateEntanglement
 from qns.network import QuantumNetwork, SignalTypeEnum, TimingModeEnum
 from qns.network.protocol.event import QubitReleasedEvent
-from qns.network.protocol.fib import ForwardingInformationBase
+from qns.network.protocol.fib import FIBEntry, ForwardingInformationBase
 from qns.simulator import Event, Simulator
 from qns.utils import log
 
@@ -161,9 +161,8 @@ class ProactiveForwarder(Application):
             return
 
         # populate FIB
-        if self.fib.get_entry(path_id):
-            self.fib.delete_entry(path_id)
         self.fib.add_entry(
+            replace=True,
             path_id=path_id,
             path_vector=instructions["route"],
             swap_sequence=instructions["swap"],
@@ -347,7 +346,7 @@ class ProactiveForwarder(Application):
         else:
             log.debug(f"### {self.own}: VERIFY -> not the swapping dest and did not swap")
 
-    def eval_qubit_eligibility(self, fib_entry: dict, partner: str) -> bool:
+    def eval_qubit_eligibility(self, fib_entry: FIBEntry, partner: str) -> bool:
         """Evaluate if a qubit is eligible for purification.
         Compares the local node's swap rank to its partner's in the given path.
         A qubit is eligible for purification if the partner's swap rank is greater
@@ -375,7 +374,7 @@ class ProactiveForwarder(Application):
             return True
         return False
 
-    def purif(self, qubit: MemoryQubit, fib_entry: dict, partner: QNode):
+    def purif(self, qubit: MemoryQubit, fib_entry: FIBEntry, partner: QNode):
         """Called when a qubit transitions to the PURIF state.
         Determines the segment in which the qubit is entangled and number of required purification rounds from the FIB.
         If the required rounds are completed, the qubit becomes eligible. Otherwise, the node evaluates
@@ -587,7 +586,7 @@ class ProactiveForwarder(Application):
         else:  # node is not destination: forward message
             self.send_msg(dest=dest_node, msg=msg, route=fib_entry["path_vector"])
 
-    def eligible(self, qubit: MemoryQubit, fib_entry: dict):
+    def eligible(self, qubit: MemoryQubit, fib_entry: FIBEntry):
         """Called when a qubit enters the ELIGIBLE state, either to attempt entanglement swapping
         (if the node is intermediate) or to finalize consumption (if the node is an end node).
         Intermediate nodes look for a matching eligible qubit to perform swapping, generate a
