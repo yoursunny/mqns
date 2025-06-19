@@ -4,10 +4,73 @@
 
 ## Overview
 
-**Multiverse** is a quantum network simulator designed to streamline the comparative evaluation of entanglement routing under dynamic and heterogeneous network conditions. It addresses the need for a unified, flexible framework for rapidly prototyping and benchmarking a wide range of entanglement distribution strategies and quantum network architectures. The simulator supports systematic exploration of routing algorithms, swapping strategies, purification schedules, and resource management techniques across diverse network scenarios.
+**Multiverse** is a quantum network simulator designed to streamline the comparative evaluation of entanglement routing under dynamic and heterogeneous network conditions. It addresses the need for a unified, flexible framework for rapidly prototyping and benchmarking a wide range of entanglement distribution strategies and quantum network architectures. The simulator supports systematic exploration of routing algorithms, swapping strategies, purification schedules, and qubit/resource management across diverse network scenarios.
 
-This project is part of an ongoing research effort to evaluate the quantum networking approaches presented in our recent survey:
-🔗 [Entanglement Routing in Quantum Networks: A Comprehensive Survey](https://ieeexplore.ieee.org/document/10882978)
+This project is part of an ongoing research effort to evaluate the quantum networking approaches presented in our survey:
+🔗 [Entanglement Routing in Quantum Networks: A Comprehensive Survey](https://ieeexplore.ieee.org/document/10882978).
+
+
+## Current Features
+
+**Routing Model**
+
+* Assumes **proactive centralized routing** defined in the survey taxonomy.
+* Global path computation at simulation start:
+  * **Dijkstra's algorithm** for single-path routing.
+  * **Yen’s algorithm** for multipath routing.
+* Paths are pre-installed at quantum routers; simulation focuses on the **forwarding phase**.
+
+**Forwarding Phase Components**
+
+* **External and internal phases**:
+  * Synchronous and asynchronous modes.
+  * Elementary entanglement generation.
+  * Swapping and purification.
+
+* **Swapping strategies**:
+  * Sequential and Balanced Tree.
+  * Parallel (swap-asap).
+  * Per-path [heuristic-based ad-hoc strategies](https://arxiv.org/abs/2504.14040).
+
+* **Qubit lifecycle management**:
+  * Tracks reservation, entanglement, release, and intermediate states of a qubit.
+
+* **Memory management**:
+  * Policies for:
+    * Allocating qubits to paths.
+    * Choosing which qubits to swap when multiple are available.
+
+* **Purification schemes**:
+  * Limited support for:
+    * Selection of link/segment to purify on each path.
+    * Number of purification rounds.
+    * Bennett 96 protocol.
+
+**Entanglement Link Model**
+* Elementary link modeled using:
+  * Werner states EPR generation.
+  * Probability-based sampling.
+  * Estimated duration based on the 2-round Barrett-Kok protocol.
+
+
+## Roadmap
+
+* [WIP](https://github.com/amar-ox/dynamic-qnetsim/tree/dev/mux): **Qubit-path multiplexing** for:
+  * Single/multiple source-destination requests.
+  * Single/multiple paths.
+  * Includes **buffer-space** and **statistical multiplexing** schemes ([ref](https://www.spiedigitallibrary.org/conference-proceedings-of-spie/8163/1/Multiplexing-schemes-for-quantum-repeater-networks/10.1117/12.893272.short)) and other dynamic entanglement allocation strategies.
+* WIP: Model alternative **elementary link architectures and protocols**.
+* WIP: Full support of purification scheme with **number of rounds or threshold fidelity**.
+* Make **memory management and qubit selection policies** configurable.
+* Add **log visualization timeline** for better debugging and analysis.
+* Enable **runtime path computation and reconfiguration** based on request arrivals.
+* Support for:
+  * **Reactive centralized routing**.
+  * **Distributed proactive routing**.
+  * **Distributed reactive routing**.
+* Refactor codebase for:
+  * Better modularity and extensibility.
+  * Comparative evaluation of entanglement routing strategy combinations.
 
 > ⚠️ This is an active research and development project. Functionality and APIs are evolving.
 
