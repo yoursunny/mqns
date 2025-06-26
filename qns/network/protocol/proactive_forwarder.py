@@ -25,7 +25,7 @@ from qns.entity.node import Application, Controller, Node, QNode
 from qns.models.epr import WernerStateEntanglement
 from qns.network import QuantumNetwork, SignalTypeEnum, TimingModeEnum
 from qns.network.protocol.event import ManageActiveChannels, QubitEntangledEvent, QubitReleasedEvent, TypeEnum
-from qns.network.protocol.fib import FIBEntry, ForwardingInformationBase
+from qns.network.protocol.fib import FIBEntry, ForwardingInformationBase, find_index_and_swapping_rank
 from qns.simulator import Event, Simulator
 from qns.utils import log
 
@@ -285,17 +285,9 @@ class ProactiveForwarder(Application):
             bool: True if eligible for swap/purification, False otherwise.
 
         """
-        route = fib_entry["path_vector"]
-        swap_sequence = fib_entry["swap_sequence"]
-        partner_idx = route.index(partner)
-        partner_rank = swap_sequence[partner_idx]
-        own_idx = route.index(self.own.name)
-        own_rank = swap_sequence[own_idx]
-
-        # If partner rank is higher or equal -> go to PURIF
-        if partner_rank >= own_rank:
-            return True
-        return False
+        _, partner_rank = find_index_and_swapping_rank(fib_entry, partner)
+        _, own_rank = find_index_and_swapping_rank(fib_entry, self.own.name)
+        return partner_rank >= own_rank
 
     def purif(self, qubit: MemoryQubit, fib_entry: FIBEntry, partner: QNode):
         """Called when a qubit transitions to the PURIF state.
@@ -323,12 +315,8 @@ class ProactiveForwarder(Application):
         #                            t=simulator.tc, by=self)
         # simulator.add_event(event)
 
-        route = fib_entry["path_vector"]
-        swap_sequence = fib_entry["swap_sequence"]
-        partner_idx = route.index(partner.name)
-        partner_rank = swap_sequence[partner_idx]
-        own_idx = route.index(self.own.name)
-        own_rank = swap_sequence[own_idx]
+        partner_idx, partner_rank = find_index_and_swapping_rank(fib_entry, partner.name)
+        own_idx, own_rank = find_index_and_swapping_rank(fib_entry, self.own.name)
 
         segment_name = f"{self.own.name}-{partner.name}" if own_idx < partner_idx else f"{partner.name}-{self.own.name}"
         purif_scheme = fib_entry["purification_scheme"]
@@ -400,7 +388,7 @@ class ProactiveForwarder(Application):
             "measure_epr": other_epr.name,
             "round": qubit.purif_rounds,
         }
-        self.send_msg(dest=partner, msg=msg, route=route)
+        self.send_msg(dest=partner, msg=msg, route=fib_entry["path_vector"])
 
     def handle_purif_solicit(self, msg: PurifSolicitMsg, fib_entry: FIBEntry):
         """Processes a PURIF_SOLICIT message from a partner node as part of the purification protocol.
@@ -549,10 +537,7 @@ class ProactiveForwarder(Application):
         Partners are notified with SWAP_UPDATE messages.
         """
         simulator = self.simulator
-        swap_sequence = fib_entry["swap_sequence"]
-        route = fib_entry["path_vector"]
-        own_idx = route.index(self.own.name)
-        own_rank = swap_sequence[own_idx]
+        own_idx, own_rank = find_index_and_swapping_rank(fib_entry, self.own.name)
 
         # Read both qubits and remove them from memory.
         #
@@ -598,12 +583,12 @@ class ProactiveForwarder(Application):
             new_epr.dst = next_partner
 
             # Keep records to support potential parallel swapping with prev_partner.
-            prev_p_rank = swap_sequence[route.index(prev_partner.name)]
+            _, prev_p_rank = find_index_and_swapping_rank(fib_entry, prev_partner.name)
             if own_rank == prev_p_rank:
                 self.parallel_swappings[prev_epr.name] = (prev_epr, next_epr, new_epr)
 
             # Keep records to support potential parallel swapping with next_partner.
-            next_p_rank = swap_sequence[route.index(next_partner.name)]
+            _, next_p_rank = find_index_and_swapping_rank(fib_entry, next_partner.name)
             if own_rank == next_p_rank:
                 self.parallel_swappings[next_epr.name] = (next_epr, prev_epr, new_epr)
 
@@ -647,12 +632,8 @@ class ProactiveForwarder(Application):
             return
 
         simulator = self.simulator
-        route = fib_entry["path_vector"]
-        swap_sequence = fib_entry["swap_sequence"]
-        sender_idx = route.index(msg["swapping_node"])
-        sender_rank = swap_sequence[sender_idx]
-        own_idx = route.index(self.own.name)
-        own_rank = swap_sequence[own_idx]
+        _, sender_rank = find_index_and_swapping_rank(fib_entry, msg["swapping_node"])
+        _, own_rank = find_index_and_swapping_rank(fib_entry, self.own.name)
 
         # this node is the destination, which means:
         # - the node needs to update its local qubit wrt remote node (partner)
@@ -738,8 +719,7 @@ class ProactiveForwarder(Application):
                     self.parallel_swappings.pop(msg["epr"], None)
 
                     # update parallel swappings for next potential cases:
-                    p_idx = route.index(partner)
-                    p_rank = swap_sequence[p_idx]
+                    _, p_rank = find_index_and_swapping_rank(fib_entry, partner)
                     if (own_rank == p_rank) and (merged_epr is not None):
                         self.parallel_swappings[new_epr.name] = (new_epr, other_epr, merged_epr)
             else:
