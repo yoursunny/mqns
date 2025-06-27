@@ -307,7 +307,7 @@ class ProactiveForwarder(Application):
         simulator = self.simulator
         assert qubit.qchannel is not None
         # TODO: make this controllable
-        # # for isolated links -> consume immediatly
+        # # for isolated links -> consume immediately
         # _, qm = self.memory.read(address=qubit.addr, must=True)
         # qubit.fsm.to_release()
         # log.debug(f"{self.own}: consume entanglement: <{qubit.addr}> {qm.src.name} - {qm.dst.name}")
@@ -527,8 +527,9 @@ class ProactiveForwarder(Application):
 
         self.e2e_count += 1
         self.fidelity += qm.fidelity
-        event = QubitReleasedEvent(link_layer=self.link_layer, qubit=qubit, e2e=self.own.name == "S", t=simulator.tc, by=self)
-        simulator.add_event(event)
+        simulator.add_event(
+            QubitReleasedEvent(link_layer=self.link_layer, qubit=qubit, e2e=self.own.name == "S", t=simulator.tc, by=self)
+        )
 
     def do_swapping(self, mq0: MemoryQubit, mq1: MemoryQubit, fib_entry: FIBEntry):
         """
@@ -643,7 +644,6 @@ class ProactiveForwarder(Application):
             qubit, _ = qubit_pair
             self.parallel_swappings.pop(epr_name, None)
             self.su_sequential(msg, fib_entry, qubit, maybe_purif=(own_rank > sender_rank))
-            return
         elif own_rank == sender_rank and epr_name in self.parallel_swappings:
             self.su_parallel(msg, fib_entry, own_rank)
         else:
