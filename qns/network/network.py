@@ -25,13 +25,14 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from collections import deque
 from enum import Enum, auto
 
 from qns.entity import ClassicChannel, Controller, QNode, QuantumChannel, QuantumMemory
 from qns.network.requests import Request
 from qns.network.route import DijkstraRouteAlgorithm, RouteImpl
 from qns.network.topology import ClassicTopology, Topology
-from qns.simulator import Simulator, Time, func_to_event
+from qns.simulator import Simulator, func_to_event
 from qns.utils import log
 
 
@@ -45,6 +46,9 @@ class SignalTypeEnum(Enum):
     EXTERNAL = auto()  # used by SYNC to set the phase
     ROUTING = auto()  # used by SYNC to set the phase
     APP = auto()  # used by SYNC to set the phase
+
+
+SignalSequence = deque[tuple[SignalTypeEnum, float]]
 
 
 class QuantumNetwork:
@@ -114,30 +118,27 @@ class QuantumNetwork:
             self.controller.install(s)
 
         if self.timing_mode == TimingModeEnum.SYNC and self.t_ext > 0 and self.t_int > 0:
-            event = func_to_event(self._simulator.ts, self.send_ext_signal, by=self)
-            self._simulator.add_event(event)
+            signal_seq = SignalSequence(
+                [
+                    (SignalTypeEnum.EXTERNAL, self.t_ext),
+                    (SignalTypeEnum.INTERNAL, self.t_int),
+                ]
+            )
+            self._simulator.add_event(func_to_event(self._simulator.ts, self.send_sync_signal, signal_seq=signal_seq, by=self))
 
-    def send_ext_signal(self):
-        # insert the INT phase after t_ext
-        t_int = self._simulator.tc + Time(sec=self.t_ext)
-        int_event = func_to_event(t_int, self.send_int_signal, by=self)
-        self._simulator.add_event(int_event)
+    def send_sync_signal(self, signal_seq: SignalSequence):
+        this_phase = signal_seq.popleft()
+        signal_seq.append(this_phase)
+        phase_signal, phase_duration = this_phase
 
-        log.debug("TIME_SYNC: signal EXTERNAL phase")
+        self._simulator.add_event(
+            func_to_event(self._simulator.tc + phase_duration, self.send_sync_signal, signal_seq=signal_seq, by=self)
+        )
+
+        log.debug(f"TIME_SYNC: signal {phase_signal} phase")
         # TODO: add controller
         for node in self.nodes:
-            node.handle_sync_signal(SignalTypeEnum.EXTERNAL)
-
-    def send_int_signal(self):
-        # insert the EXT phase after t_int
-        t_ext = self._simulator.tc + Time(sec=self.t_int)
-        ext_event = func_to_event(t_ext, self.send_ext_signal, by=self)
-        self._simulator.add_event(ext_event)
-
-        log.debug("TIME_SYNC: signal INTERNAL phase")
-        # TODO: add controller
-        for node in self.nodes:
-            node.handle_sync_signal(SignalTypeEnum.INTERNAL)
+            node.handle_sync_signal(phase_signal)
 
     def get_nodes(self):
         return self.nodes
