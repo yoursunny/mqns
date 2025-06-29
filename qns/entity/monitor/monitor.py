@@ -24,7 +24,7 @@ from qns.entity.entity import Entity
 from qns.simulator import Event, Simulator, Time
 
 if TYPE_CHECKING:
-    from qns.network import QuantumNetwork
+    from qns.network.network import QuantumNetwork
 
 
 AttributionFunc = Callable[[Simulator, "QuantumNetwork|None", Event | None], Any]

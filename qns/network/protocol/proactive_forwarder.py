@@ -112,7 +112,6 @@ class ProactiveForwarder(Application):
         self.link_layer: "LinkLayer"
         """network function responsible for generating elementary EPRs"""
 
-        self.sync_current_phase = SignalTypeEnum.INTERNAL
         self.waiting_qubits: list[QubitEntangledEvent] = []
         """stores the qubits waiting for the INTERNAL phase (SYNC mode)"""
 
@@ -807,10 +806,6 @@ class ProactiveForwarder(Application):
             signal_type (SignalTypeEnum): The received synchronization signal.
 
         """
-        log.debug(f"{self.own}:[{self.own.timing_mode}] TIMING SIGNAL <{signal_type}>")
-        if self.own.timing_mode != TimingModeEnum.SYNC:
-            return
-        self.sync_current_phase = signal_type
         if signal_type == SignalTypeEnum.INTERNAL:
             # internal phase -> time to handle all entangled qubits
             log.debug(f"{self.own}: there are {len(self.waiting_qubits)} etg qubits to process")

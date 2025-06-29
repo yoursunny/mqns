@@ -22,7 +22,7 @@ from qns.simulator import Event, Simulator
 
 if TYPE_CHECKING:
     from qns.entity.node.node import Node
-    from qns.network import SignalTypeEnum
+    from qns.network.network import SignalTypeEnum
 
 NodeT = TypeVar("NodeT", bound="Node")
 """Represents a Node type."""
@@ -145,5 +145,11 @@ class Application:
             raise IndexError("application is not in a simulator")
         return self._simulator
 
+    @property
+    def sync_current_phase(self) -> "SignalTypeEnum":
+        """Phase set from last sync signal, only relevant with SYNC timing mode."""
+        return self.get_node().sync_current_phase
+
     def handle_sync_signal(self, signal_type: "SignalTypeEnum"):
+        """Invoked after receiving a sync signal."""
         pass

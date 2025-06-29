@@ -107,8 +107,6 @@ class LinkLayer(Application):
         self.decoh_count = 0
         """counts number of decohered qubits never swapped"""
 
-        self.sync_current_phase = SignalTypeEnum.EXTERNAL  # for SYNC timing mode
-
         # handlers for external events
         self.add_handler(self.RecvQubitHandler, RecvQubitPacket)
         self.add_handler(self.RecvClassicPacketHandler, RecvClassicPacket)
@@ -464,11 +462,6 @@ class LinkLayer(Application):
 
     def handle_sync_signal(self, signal_type: SignalTypeEnum):
         """Handles timing synchronization signals for SYNC mode (not very reliable at this time)."""
-        log.debug(f"{self.own}:[{self.own.timing_mode}] TIMING SIGNAL <{signal_type}>")
-        if self.own.timing_mode != TimingModeEnum.SYNC:
-            return
-
-        self.sync_current_phase = signal_type
         if signal_type == SignalTypeEnum.EXTERNAL:
             # clear all qubits and retry all active_channels until INTERNAL signal
             self.memory.clear()
