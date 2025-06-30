@@ -30,10 +30,11 @@ from typing import TYPE_CHECKING, TypeVar
 from qns.entity.entity import Entity
 from qns.entity.node.app import Application
 from qns.simulator import Event, Simulator
+from qns.utils import log
 
 if TYPE_CHECKING:
     from qns.entity import ClassicChannel
-    from qns.network import QuantumNetwork, SignalTypeEnum
+    from qns.network.network import QuantumNetwork, SignalTypeEnum
 
 ApplicationT = TypeVar("ApplicationT", bound=Application)
 
@@ -47,16 +48,18 @@ class Node(Entity):
         apps (List[Application]): the installing applications.
 
         """
+        from qns.network.network import SignalTypeEnum, TimingModeEnum  # noqa: PLC0415
+
         super().__init__(name=name)
         self._network: "QuantumNetwork|None" = None
         self.cchannels: list["ClassicChannel"] = []
-        self.croute_table = []  # XXX unused
         self.apps: list[Application] = [] if apps is None else apps
 
         # set default timing to ASYNC
-        from qns.network.network import TimingModeEnum  # noqa: PLC0415
-
-        self.timing_mode: TimingModeEnum = TimingModeEnum.ASYNC
+        self.timing_mode = TimingModeEnum.ASYNC
+        """Network timing mode."""
+        self.sync_current_phase = SignalTypeEnum.EXTERNAL
+        """Phase set from last sync signal, only relevant with SYNC timing mode."""
 
     def install(self, simulator: Simulator) -> None:
         """Called from Network.install()"""
@@ -171,6 +174,13 @@ class Node(Entity):
         return self._network
 
     def handle_sync_signal(self, signal_type: "SignalTypeEnum") -> None:
+        from qns.network.network import TimingModeEnum  # noqa: PLC0415
+
+        if self.timing_mode != TimingModeEnum.SYNC:
+            return
+
+        log.debug(f"{self}:[{self.timing_mode}] TIMING SIGNAL <{signal_type}>")
+        self.sync_current_phase = signal_type
         for app in self.apps:
             app.handle_sync_signal(signal_type)
 

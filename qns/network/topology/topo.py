@@ -67,7 +67,7 @@ class Topology:
 
         """
         self.nodes_number = nodes_number
-        self.nodes_apps = kwargs.get("node_apps", [])
+        self.nodes_apps = kwargs.get("nodes_apps", [])
         self.qchannel_args = kwargs.get("qchannel_args", {})
         self.cchannel_args = kwargs.get("cchannel_args", {})
         self.memory_args = kwargs.get("memory_args", {})

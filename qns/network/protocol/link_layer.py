@@ -107,13 +107,6 @@ class LinkLayer(Application):
         self.decoh_count = 0
         """counts number of decohered qubits never swapped"""
 
-        self.sync_current_phase = SignalTypeEnum.EXTERNAL  # for SYNC and LSYNC timing modes
-
-        self.waiting_channels: dict[str, tuple[QuantumChannel, QNode]] = {}
-        """in LSYNC mode: stores the qchannels that have all their qubits waiting for the next EXTERNAL phase"""
-        self.waiting_qubits = set()
-        """in LSYNC mode: stores the qubits waiting for the next EXTERNAL phase"""
-
         # handlers for external events
         self.add_handler(self.RecvQubitHandler, RecvQubitPacket)
         self.add_handler(self.RecvClassicPacketHandler, RecvClassicPacket)
@@ -355,8 +348,6 @@ class LinkLayer(Application):
                     self.active_channels[qchannel.name] = (qchannel, event.neighbor)
                     if self.own.timing_mode == TimingModeEnum.ASYNC:
                         self.handle_active_channel(qchannel, event.neighbor)
-                    elif self.own.timing_mode == TimingModeEnum.LSYNC:  # LSYNC
-                        self.waiting_channels[qchannel.name] = (qchannel, event.neighbor)
                 else:
                     raise Exception("Qchannel already handled")
             else:
@@ -367,8 +358,6 @@ class LinkLayer(Application):
             # check if this node is the EPR initiator of the qchannel associated with the memory of this qubit
             if event.qubit.qchannel.name:
                 if event.qubit.qchannel.name in self.active_channels:
-                    if self.own.timing_mode == TimingModeEnum.LSYNC:
-                        raise Exception(f"{self.own}: UNEXPECTED -> t_slot too short")
                     if self.own.timing_mode == TimingModeEnum.SYNC:
                         raise Exception(f"{self.own}: UNEXPECTED -> (t_ext + t_int) too short")
                     qchannel, next_hop = self.active_channels[event.qubit.qchannel.name]
@@ -388,9 +377,6 @@ class LinkLayer(Application):
                         self.start_reservation(
                             next_hop=next_hop, qchannel=qchannel, qubit=event.qubit, path_id=event.qubit.path_id
                         )
-                    elif self.own.timing_mode == TimingModeEnum.LSYNC:  # LSYNC
-                        entry = (qchannel, next_hop, event.qubit.qchannel.name, event.qubit.addr)
-                        self.waiting_qubits.add(entry)
                 else:
                     event.qubit.active = None
                     self.check_reservation_req()
@@ -475,20 +461,12 @@ class LinkLayer(Application):
         self.fifo_reservation_req.pop(0)
 
     def handle_sync_signal(self, signal_type: SignalTypeEnum):
-        """Handles timing synchronization signals for SYNC and LSYNC modes (not very reliable at this time)."""
-        log.debug(f"{self.own}:[{self.own.timing_mode}] TIMING SIGNAL <{signal_type}>")
-        if self.own.timing_mode == TimingModeEnum.LSYNC and signal_type == SignalTypeEnum.EXTERNAL_START:
+        """Handles timing synchronization signals for SYNC mode (not very reliable at this time)."""
+        if signal_type == SignalTypeEnum.EXTERNAL:
             # clear all qubits and retry all active_channels until INTERNAL signal
             self.memory.clear()
             for channel_name, (qchannel, next_hop) in self.active_channels.items():
                 self.handle_active_channel(qchannel, next_hop)
-        elif self.own.timing_mode == TimingModeEnum.SYNC:
-            self.sync_current_phase = signal_type
-            if signal_type == SignalTypeEnum.EXTERNAL:
-                # clear all qubits and retry all active_channels until INTERNAL signal
-                self.memory.clear()
-                for channel_name, (qchannel, next_hop) in self.active_channels.items():
-                    self.handle_active_channel(qchannel, next_hop)
 
     def _loss_based_success_prob(self, link_length_km: float) -> float:
         """Compute success probability from fiber loss model for heralded entanglement."""

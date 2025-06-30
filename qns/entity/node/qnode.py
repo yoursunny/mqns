@@ -38,7 +38,6 @@ class QNode(Node):
         self.qchannels: list["QuantumChannel"] = []
         self.memory: "QuantumMemory|None" = None
         self.operators: list["QuantumOperator"] = []
-        self.qroute_table = []  # XXX unused
 
     def install(self, simulator: Simulator) -> None:
         super().install(simulator)

@@ -112,7 +112,6 @@ class ProactiveForwarder(Application):
         self.link_layer: "LinkLayer"
         """network function responsible for generating elementary EPRs"""
 
-        self.sync_current_phase = SignalTypeEnum.INTERNAL
         self.waiting_qubits: list[QubitEntangledEvent] = []
         """stores the qubits waiting for the INTERNAL phase (SYNC mode)"""
 
@@ -790,7 +789,7 @@ class ProactiveForwarder(Application):
 
         """
         if isinstance(event, QubitEntangledEvent):
-            if self.own.timing_mode in (TimingModeEnum.ASYNC, TimingModeEnum.LSYNC):
+            if self.own.timing_mode == TimingModeEnum.ASYNC:
                 self.handle_entangled_qubit(event)
             elif self.sync_current_phase == SignalTypeEnum.EXTERNAL:
                 # Accept new etg while we are in EXT phase
@@ -807,15 +806,12 @@ class ProactiveForwarder(Application):
             signal_type (SignalTypeEnum): The received synchronization signal.
 
         """
-        log.debug(f"{self.own}:[{self.own.timing_mode}] TIMING SIGNAL <{signal_type}>")
-        if self.own.timing_mode == TimingModeEnum.SYNC:
-            self.sync_current_phase = signal_type
-            if signal_type == SignalTypeEnum.INTERNAL:
-                # internal phase -> time to handle all entangled qubits
-                log.debug(f"{self.own}: there are {len(self.waiting_qubits)} etg qubits to process")
-                for event in self.waiting_qubits:
-                    self.handle_entangled_qubit(event)
-                self.waiting_qubits = []
+        if signal_type == SignalTypeEnum.INTERNAL:
+            # internal phase -> time to handle all entangled qubits
+            log.debug(f"{self.own}: there are {len(self.waiting_qubits)} etg qubits to process")
+            for event in self.waiting_qubits:
+                self.handle_entangled_qubit(event)
+            self.waiting_qubits = []
 
     def handle_entangled_qubit(self, event: QubitEntangledEvent):
         """Handles newly entangled qubits based on their path allocation. If the qubit is assigned

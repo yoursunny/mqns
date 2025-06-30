@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from qns.network import QuantumNetwork, TimingModeEnum
+from qns.network import QuantumNetwork
 from qns.network.protocol import LinkLayer, ProactiveForwarder, ProactiveRoutingControllerApp
 from qns.network.route import DijkstraRouteAlgorithm
 from qns.network.topology.customtopo import CustomTopology, Topo, TopoCChannel, TopoController, TopoQChannel, TopoQNode
@@ -189,9 +189,7 @@ def run_simulation(p: ParameterSet, seed: int) -> tuple[float, float]:
     log.install(s)
 
     topology = CustomTopology(json_topology)
-    net = QuantumNetwork(
-        topo=topology, route=DijkstraRouteAlgorithm(), timing_mode=TimingModeEnum.ASYNC, t_slot=0, t_ext=0, t_int=0
-    )
+    net = QuantumNetwork(topo=topology, route=DijkstraRouteAlgorithm())
 
     net.install(s)
     s.run()
