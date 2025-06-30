@@ -26,8 +26,6 @@ from qns.utils import log
 if TYPE_CHECKING:
     from qns.network.protocol.proactive_forwarder import InstallPathInstructions, InstallPathMsg
 
-# from http.server import BaseHTTPRequestHandler, HTTPServer
-
 swapping_settings = {
     # disable swapping (for studying isolated links)
     "isolation_1": [0, 0, 0],
@@ -93,23 +91,10 @@ class ProactiveRoutingControllerApp(Application):
         except KeyError:
             raise KeyError(f"{self.own}: Swapping {swapping} not configured")
 
-        # self.add_handler(self.RecvClassicPacketHandler, [RecvClassicPacket])
-        # self.server = HTTPServer(('', 8080), self.RequestHandler)
-        # self.RequestHandler.test = self.test  # Pass test method to handler
-
-    # class RequestHandler(BaseHTTPRequestHandler):
-    #     def do_GET(self):
-    #         self.send_response(200)
-    #         self.end_headers()
-    #         self.wfile.write(b"Test function executed")
-
     def install(self, node: Node, simulator: Simulator):
         super().install(node, simulator)
         self.own = self.get_node(node_type=Controller)
         self.net = self.own.network
-
-        # print("Starting server on port 8080...")
-        # self.server.serve_forever()
 
         # install the test path on QNodes
         self.install_static_path()
@@ -177,33 +162,3 @@ class ProactiveRoutingControllerApp(Application):
             cchannel = self.own.get_cchannel(qnode)
             cchannel.send(ClassicPacket(msg, src=self.own, dest=qnode), next_hop=qnode)
             log.debug(f"{self.own}: send {msg} to {qnode}")
-
-    # def RecvClassicPacketHandler(self, node: Controller, event: Event):
-    #     self.handle_request(event)
-
-    # def handle_request(self, event: RecvClassicPacket):
-    #     msg = event.packet.get()
-    #     cchannel = event.cchannel
-
-    #     from_node: Node = cchannel.node_list[0] \
-    #         if cchannel.node_list[1] == self.own else cchannel.node_list[1]
-
-    #     log.debug(f"{self.own}: recv {msg} from {from_node}")
-
-    #     cmd = msg["cmd"]
-    #     request_id = msg["request_id"]
-
-    #     if cmd == "submit":
-    #         # process new request submitted and send instructions to QNodes
-    #         # can model processing time with events
-    #         nodes_in_path = []
-    #         for qnode in nodes_in_path:
-    #             classic_packet = ClassicPacket(
-    #                 msg={"cmd": "install_path", "request_id": request_id}, src=self.own, dest=qnode)
-    #             cchannel.send(classic_packet, next_hop=qnode)
-    #             log.debug(f"{self.own}: send {classic_packet.msg} to {qnode}")
-    #     elif cmd == "withdraw":
-    #         # remove request and send instructions to QNodes
-    #         pass
-    #     else:
-    #         pass
