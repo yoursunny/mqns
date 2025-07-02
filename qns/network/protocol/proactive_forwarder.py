@@ -180,11 +180,10 @@ class ProactiveForwarder(Application):
         No path allocation for qubits means statistical mux is required, but this is not implemented.
         """
         simulator = self.simulator
-        log.debug(f"{self.own.name}: routing instructions: {msg}")
-
         path_id = msg["path_id"]
         instructions = msg["instructions"]
         route = instructions["route"]
+        log.debug(f"{self.own.name}: routing instructions of path {path_id}: {instructions}")
 
         if "m_v" not in instructions:
             raise NotImplementedError(f"{self.own}: No m_v provided -> Statistical multiplexing not supported yet")
@@ -306,7 +305,6 @@ class ProactiveForwarder(Application):
             partner: The node with which the qubit shares an EPR.
 
         """
-        simulator = self.simulator
         assert qubit.fsm.state == QubitState.PURIF
         assert qubit.qchannel is not None
 
@@ -314,75 +312,36 @@ class ProactiveForwarder(Application):
         own_idx, own_rank = find_index_and_swapping_rank(fib_entry, self.own.name)
 
         segment_name = f"{self.own.name}-{partner.name}" if own_idx < partner_idx else f"{partner.name}-{self.own.name}"
-        purif_scheme = fib_entry["purification_scheme"]
+        want_rounds = fib_entry["purification_scheme"].get(segment_name, 0)
+        log.debug(
+            f"{self.own}: segment {segment_name} (qubit {qubit.addr}) has "
+            + f"{qubit.purif_rounds} and needs {want_rounds} purif rounds"
+        )
 
-        if segment_name not in purif_scheme:
-            log.debug(f"{self.own}: no purif instructions for segment {segment_name}")
-            qubit.fsm.to_eligible()
-            self.qubit_is_eligible(qubit, fib_entry)
-            return
-
-        purif_rounds = purif_scheme[segment_name]
-        log.debug(f"{self.own}: segment {segment_name} (qubit {qubit.addr}) needs {purif_rounds} purif rounds")
-
-        if qubit.purif_rounds == purif_rounds:
-            log.debug(f"{self.own}: {purif_rounds} purif rounds done for qubit {qubit.addr}")
+        if qubit.purif_rounds == want_rounds:
             qubit.purif_rounds = 0
             qubit.fsm.to_eligible()
             self.qubit_is_eligible(qubit, fib_entry)
             return
+        assert qubit.purif_rounds < want_rounds
 
-        primary = False
-        if own_rank < partner_rank:
-            primary = True
-        elif own_rank == partner_rank:
-            primary = own_idx < partner_idx
-
-        log.debug(f"{self.own}: is primary node {primary}")
-        if not primary:
+        is_primary = (own_rank, own_idx) < (partner_rank, partner_idx)
+        if not is_primary:
+            log.debug(f"{self.own}: is not primary node for segment {segment_name} purification")
             return
 
-        # primary node:
-        res = self._select_purif_qubit(
+        candidate = self._select_purif_qubit(
             exc_address=qubit.addr,
             partner=partner.name,
             qchannel=qubit.qchannel.name,
             path_id=fib_entry["path_id"],
             purif_rounds=qubit.purif_rounds,
         )
-        if not res:
-            log.debug(f"{self.own}: no other EPR is available for purif")
+        if not candidate:
+            log.debug(f"{self.own}: no candidate EPR for segment {segment_name} purification")
             return
 
-        log.debug(f"{self.own}: available qubit for purif {res} -> start purif")
-
-        # sets the fidelity for the partner at this time
-        _, epr = self.memory.read(address=qubit.addr, destructive=False, must=True)
-        assert isinstance(epr, WernerStateEntanglement)
-        assert epr.name is not None
-
-        # consume and release other_qubit
-        # this sets the fidelity for the partner at this time
-        other_qubit, other_epr = self.memory.read(address=res.addr, must=True)
-        assert isinstance(other_epr, WernerStateEntanglement)
-        assert other_epr.name is not None
-
-        other_qubit.fsm.to_release()
-        simulator.add_event(QubitReleasedEvent(self.own, other_qubit, t=simulator.tc, by=self))
-
-        qubit.fsm.to_pending()  # epr to keep goes to pending
-
-        # send purif_solicit to partner
-        msg: PurifSolicitMsg = {
-            "cmd": "PURIF_SOLICIT",
-            "path_id": fib_entry["path_id"],
-            "purif_node": self.own.name,
-            "partner": partner.name,
-            "epr": epr.name,
-            "measure_epr": other_epr.name,
-            "round": qubit.purif_rounds,
-        }
-        self.send_msg(dest=partner, msg=msg, route=fib_entry["path_vector"])
+        self._send_purif_solicit(qubit, candidate, fib_entry, partner)
 
     def _select_purif_qubit(
         self, exc_address: int, partner: str, qchannel: str, path_id: int, purif_rounds: int
@@ -413,63 +372,105 @@ class ProactiveForwarder(Application):
             # TODO: Other possible qubit selection criteria
         return None
 
+    def _send_purif_solicit(self, mq0: MemoryQubit, mq1: MemoryQubit, fib_entry: FIBEntry, partner: QNode):
+        """
+        Initiate purification protocol.
+
+        Args:
+            mq0: first memory qubit, which would be kept if purification succeeds.
+            mq1: second memory qubit, which is consumed during purification.
+            fib_entry: FIB entry.
+            partner: quantum node with which entanglements are shared.
+        """
+        simulator = self.simulator
+
+        # read qubits to set fidelity at this time
+        _, epr0 = self.memory.read(address=mq0.addr, destructive=False, must=True)
+        _, epr1 = self.memory.read(address=mq1.addr, must=True)
+        assert isinstance(epr0, WernerStateEntanglement)
+        assert epr0.name is not None
+        assert isinstance(epr1, WernerStateEntanglement)
+        assert epr1.name is not None
+
+        log.debug(
+            f"{self.own}: request purification qubit {mq0.addr} (F={epr0.fidelity}) and "
+            + f"{mq1.addr} (F={epr1.fidelity}) with partner {partner.name}"
+        )
+
+        mq0.fsm.to_pending()
+        mq1.fsm.to_release()
+        simulator.add_event(QubitReleasedEvent(self.own, mq1, t=simulator.tc, by=self))
+
+        # send purif_solicit to partner
+        msg: PurifSolicitMsg = {
+            "cmd": "PURIF_SOLICIT",
+            "path_id": fib_entry["path_id"],
+            "purif_node": self.own.name,
+            "partner": partner.name,
+            "epr": epr0.name,
+            "measure_epr": epr1.name,
+            "round": mq0.purif_rounds,
+        }
+        self.send_msg(dest=partner, msg=msg, route=fib_entry["path_vector"])
+
     def handle_purif_solicit(self, msg: PurifSolicitMsg, fib_entry: FIBEntry):
         """Processes a PURIF_SOLICIT message from a partner node as part of the purification protocol.
         Retrieves the target and auxiliary qubits from memory, verifies their states, and attempts
         purification. If successful, updates the EPR and sends a PURIF_RESPONSE with result=True;
         otherwise, marks both qubits for release and replies with result=False.
 
-        Parameters
-        ----------
-            msg (Dict): Message containing purification parameters and EPR names.
+        Args:
+            msg: Message containing purification parameters and EPR names.
             fib_entry: FIB entry associated with path_id in the message.
 
         """
         simulator = self.simulator
 
-        qubit, epr = self.memory.read(key=msg["epr"], destructive=False, must=True)  # gets the same fidelity as primary node
-        meas_qubit, meas_epr = self.memory.read(key=msg["measure_epr"], must=True)  # gets the same fidelity as primary node
-        # TODO: verify (should be decohered) in case either EPR is not found in memory
-        assert isinstance(epr, WernerStateEntanglement)
-        assert epr.name is not None
-        assert isinstance(meas_epr, WernerStateEntanglement)
-        assert meas_epr.name is not None
+        # mq0 is the "kept" memory whose fidelity would be increased if purification succeeds
+        # mq1 is the "measured" memory that is consumed during purification
+        mq0, epr0 = self.memory.read(key=msg["epr"], destructive=False, must=True)
+        mq1, epr1 = self.memory.read(key=msg["measure_epr"], must=True)
+        # TODO: handle the exception case when an EPR is decohered and not found in memory
+        assert isinstance(epr0, WernerStateEntanglement)
+        assert epr0.name is not None
+        assert isinstance(epr1, WernerStateEntanglement)
+        assert epr1.name is not None
 
-        if qubit.fsm.state != QubitState.ENTANGLED or meas_qubit.fsm.state != QubitState.ENTANGLED:
-            log.debug(f"{self.own}: qubit={qubit.fsm.state}, meas_qubit={meas_qubit.fsm.state}")
-            raise Exception(f"{self.own}: qubits not in ELIGIBLE states -> not supported yet")
-
-        # if qubits in ELIGIBLE -> do purif, release measured qubit, update purified qubit-pair, reply
-        dest = self.own.network.get_node(msg["purif_node"])
-        resp_msg: PurifResponseMsg = {
-            "cmd": "PURIF_RESPONSE",
-            "path_id": msg["path_id"],
-            "purif_node": msg["purif_node"],
-            "partner": self.own.name,
-            "epr": epr.name,
-            "measure_epr": meas_epr.name,
-            "round": msg["round"],
-            "result": False,
-        }
-
-        if epr.purify(meas_epr):  # purif succ
-            resp_msg["result"] = True
-            self.memory.update(old_qm=epr.name, new_qm=epr)
-            self.send_msg(dest=dest, msg=resp_msg, route=fib_entry["path_vector"])
-        else:  # purif failed
-            resp_msg["result"] = False
-            self.send_msg(dest=dest, msg=resp_msg, route=fib_entry["path_vector"])
-
-            self.memory.read(address=qubit.addr)  # destructive reading
-            qubit.fsm.to_release()
-            simulator.add_event(QubitReleasedEvent(self.own, qubit, t=simulator.tc, by=self))
-
-        # measured qubit already released
-        meas_qubit.fsm.to_release()
-        simulator.add_event(QubitReleasedEvent(self.own, meas_qubit, t=simulator.tc, by=self))
-
+        # TODO: support purif on qubit already in PURIF state but has fewer rounds
         # TODO: if qubits in PURIF -> do purif, release consumed qubit,
         # update pair + increment rounds (if succ, else release), reply
+        assert mq0.fsm.state == QubitState.ENTANGLED
+        assert mq1.fsm.state == QubitState.ENTANGLED
+
+        partner = self.own.network.get_node(msg["purif_node"])
+        log.debug(
+            f"{self.own}: perform purification qubit {mq0.addr} (F={epr0.fidelity}) and "
+            + f"{mq1.addr} (F={epr1.fidelity}) with partner {partner.name}"
+        )
+
+        # perform purification between EPRs
+        result = epr0.purify(epr1)
+        if result:
+            log.debug(f"{self.own}: purification succeeded on qubit {mq0.addr} (F={epr0.fidelity})")
+            self.memory.update(old_qm=epr0.name, new_qm=epr0)
+        else:
+            log.debug(f"{self.own}: purification failed on qubit {mq0.addr}")
+            # in case of purification failure, release mq0
+            self.memory.read(address=mq0.addr)  # destructive reading
+            mq0.fsm.to_release()
+            simulator.add_event(QubitReleasedEvent(self.own, mq0, t=simulator.tc, by=self))
+
+        # release mq1; destructive reading is already performed
+        mq1.fsm.to_release()
+        simulator.add_event(QubitReleasedEvent(self.own, mq1, t=simulator.tc, by=self))
+
+        # send response message
+        resp: PurifResponseMsg = {
+            **msg,
+            "cmd": "PURIF_RESPONSE",
+            "result": result,
+        }
+        self.send_msg(dest=partner, msg=resp, route=fib_entry["path_vector"])
 
     CLASSIC_SIGNALING_HANDLERS["PURIF_SOLICIT"] = handle_purif_solicit
 
@@ -481,26 +482,35 @@ class ProactiveForwarder(Application):
 
         Parameters
         ----------
-            msg (Dict): Response message containing the result and identifiers of the purified EPRs.
+            msg: Response message containing the result and identifiers of the purified EPRs.
             fib_entry: FIB entry associated with path_id in the message.
 
         """
         simulator = self.simulator
 
         qubit, epr = self.memory.get(key=msg["epr"], must=True)
-        # TODO: verify (should be decohered) in case EPR is not found in memory
-        if msg["result"]:  # purif succeeded
-            assert isinstance(epr, WernerStateEntanglement)
-            assert epr.name is not None
-            self.memory.update(old_qm=epr.name, new_qm=epr)
-            qubit.purif_rounds += 1
-            qubit.fsm.to_purif()
-            partner = self.own.network.get_node(msg["partner"])
-            self.qubit_is_purif(qubit, fib_entry, partner)
-        else:  # purif failed -> release qubit
+        # TODO: handle the exception case when an EPR is decohered and not found in memory
+        assert isinstance(epr, WernerStateEntanglement)
+        assert epr.name is not None
+
+        result = msg["result"]
+        log.debug(
+            f"{self.own}: completed purification {'succeeded' if result else 'failed'} "
+            + f"qubit {qubit.addr} (F={epr.fidelity}) with partner {msg['partner']}"
+        )
+
+        if not result:  # purif failed
             self.memory.read(address=qubit.addr)  # destructive reading
             qubit.fsm.to_release()
             simulator.add_event(QubitReleasedEvent(self.own, qubit, t=simulator.tc, by=self))
+            return
+
+        # purif succeeded
+        self.memory.update(old_qm=epr.name, new_qm=epr)
+        qubit.purif_rounds += 1
+        qubit.fsm.to_purif()
+        partner = self.own.network.get_node(msg["partner"])
+        self.qubit_is_purif(qubit, fib_entry, partner)
 
     CLASSIC_SIGNALING_HANDLERS["PURIF_RESPONSE"] = handle_purif_response
 
