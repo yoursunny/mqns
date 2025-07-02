@@ -153,6 +153,15 @@ class ProactiveRoutingControllerApp(Application):
         route = [n.name for n in path_nodes]
         self.install_path_on_route(route, path_id=0, swap=self.swapping_order, purif=self.purif)
 
+    def compute_m_v(self, route: list[str]) -> list[int]:
+        """
+        Compute buffer-space multiplexing vector based on minimum memory capacity.
+        """
+        c = [self.net.get_node(node_name).get_memory().capacity for node_name in route]
+        c[0] *= 2
+        c[-1] *= 2
+        return [min(c) // 2] * (len(route) - 1)
+
     def install_path_on_route(self, route: list[str], *, path_id: int, swap: list[int], purif: dict[str, int] = {}):
         if len(route) != len(swap) or len(route) == 0:
             raise ValueError("swapping order does not match route length")
@@ -161,10 +170,7 @@ class ProactiveRoutingControllerApp(Application):
             if len(tokens) != 2 or tokens[0] not in route or tokens[1] not in route:
                 raise ValueError(f"purification instruction {key} does not exist in route")
 
-        m_v: list[int] = []
-        src_capacity = self.net.get_node(route[0]).get_memory().capacity
-        for i in range(len(route) - 1):
-            m_v.append(src_capacity)
+        m_v = self.compute_m_v(route)
 
         for node_name in route:
             qnode = self.net.get_node(node_name)
