@@ -576,14 +576,6 @@ class QuantumMemory(Entity):
         qubit.fsm.to_release()
         simulator.add_event(QubitDecoheredEvent(self.node, qubit, t=simulator.tc, by=self))
 
-    def count_unallocated_qubits(self) -> int:
-        """Return the number of qubits not allocated to any path ID"""
-        free = self.capacity
-        for qubit, _ in self._storage:
-            if qubit.path_id:
-                free -= 1
-        return free
-
     def is_full(self) -> bool:
         """
         Check whether the memory is full

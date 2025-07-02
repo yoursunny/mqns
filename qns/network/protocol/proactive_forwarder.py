@@ -21,7 +21,7 @@ from typing import Literal, TypedDict
 from qns.entity.cchannel import ClassicPacket, RecvClassicPacket
 from qns.entity.memory import QuantumMemory
 from qns.entity.memory.memory_qubit import MemoryQubit, QubitState
-from qns.entity.node import Application, Controller, Node, QNode
+from qns.entity.node import Application, Node, QNode
 from qns.models.epr import WernerStateEntanglement
 from qns.network import QuantumNetwork, SignalTypeEnum, TimingModeEnum
 from qns.network.protocol.event import ManageActiveChannels, QubitEntangledEvent, QubitReleasedEvent, TypeEnum
@@ -147,11 +147,12 @@ class ProactiveForwarder(Application):
         Returns False for unrecognized message types, which allows the classic packet to go to the next application.
 
         """
-        if isinstance(event.packet.src, Controller):
-            return self.handle_control(event)
-
         msg = event.packet.get()
-        if not (isinstance(msg, dict) and msg["cmd"] in self.CLASSIC_SIGNALING_HANDLERS):
+        if not (isinstance(msg, dict) and "cmd" in msg):
+            return False
+        if msg["cmd"] == "install_path":
+            return self.handle_install_path(msg)
+        if msg["cmd"] not in self.CLASSIC_SIGNALING_HANDLERS:
             return False
 
         path_id: int = msg["path_id"]
@@ -166,91 +167,67 @@ class ProactiveForwarder(Application):
         self.CLASSIC_SIGNALING_HANDLERS[msg["cmd"]](self, msg, fib_entry)
         return True
 
-    def handle_control(self, packet: RecvClassicPacket) -> bool:
-        """Processes a classical packet containing routing instructions from the controller.
+    def handle_install_path(self, msg: InstallPathMsg) -> bool:
+        """
+        Processes an install_path message containing routing instructions from the controller.
+
         Determines left/right neighbors from the route, identifies corresponding quantum channels,
         and allocates qubits based on the multiplexing vector (for the buffer-space mode).
         Updates the FIB with path, swapping, and purification info, and triggers EPR generation via the
         link layer on the outgoing channel.
-        No path allocation for qubits (i.e., no `m_v` vector) means statistical mux is required, and it is currently ignored.
-
-        Parameters
-        ----------
-            packet (RecvClassicPacket): Classical packet containing routing instructions.
-
+        No path allocation for qubits means statistical mux is required, but this is not implemented.
         """
         simulator = self.simulator
-        msg: InstallPathMsg = packet.packet.get()
-        if msg["cmd"] != "install_path":
-            return False
         log.debug(f"{self.own.name}: routing instructions: {msg}")
 
         path_id = msg["path_id"]
         instructions = msg["instructions"]
+        route = instructions["route"]
 
-        left_neighbor = None
-        right_neighbor = None
-        ln = ""
-        rn = ""
+        if "m_v" not in instructions:
+            raise NotImplementedError(f"{self.own}: No m_v provided -> Statistical multiplexing not supported yet")
+        m_v = instructions["m_v"]
+        assert len(m_v) + 1 == len(route)
 
-        # get left and right nodes from route vector:
-        if self.own.name in instructions["route"]:
-            i = instructions["route"].index(self.own.name)
-            ln, rn = (
-                instructions["route"][i - 1] if i > 0 else None,
-                instructions["route"][i + 1] if i < len(instructions["route"]) - 1 else None,
-            )
-        else:
-            raise Exception(f"Node {self.own.name} not found in route vector {instructions['route']}")
-
-        # use left and right nodes to get qchannels
-        if ln:
-            left_neighbor = self.net.get_node(ln)
-            self.own.get_qchannel(left_neighbor)  # ensure qchannel exists
-
-        if rn:
-            right_neighbor = self.own.network.get_node(rn)
-            self.own.get_qchannel(right_neighbor)  # ensure qchannel exists
-
-        # use mux info to allocate qubits in each memory, keep qubit addresses
-        left_qubits: list[int] = []
-        right_qubits: list[int] = []
-
-        if instructions["m_v"]:
-            num_left, num_next = self.compute_qubit_allocation(instructions["route"], instructions["m_v"], self.own.name)
-            if num_left:
-                if num_left <= self.memory.count_unallocated_qubits():
-                    for i in range(num_left):
-                        left_qubits.append(self.memory.allocate(path_id=path_id))
-                else:
-                    raise Exception("Not enough qubits for left qchannel allocation")
-            if num_next:
-                if num_next <= self.memory.count_unallocated_qubits():
-                    for i in range(num_next):
-                        right_qubits.append(self.memory.allocate(path_id=path_id))
-                else:
-                    raise Exception("Not enough qubits for right qchannel allocation")
-            log.debug(f"Allocated qubits: left = {left_qubits} | right = {right_qubits}")
-        else:
-            log.debug(f"{self.own}: No m_v provided -> Statistical multiplexing not supported yet")
-            return
+        # identify left/right neighbors and allocate memory qubits to the path
+        _, l_qubits = self.find_neighbor_and_allocate_qubits(path_id, route, -1, m_v, -1)
+        r_neighbor, r_qubits = self.find_neighbor_and_allocate_qubits(path_id, route, 1, m_v, 0)
+        log.debug(f"Allocated qubits: left = {l_qubits} | right = {r_qubits}")
 
         # populate FIB
         self.fib.add_entry(
             replace=True,
             path_id=path_id,
-            path_vector=instructions["route"],
+            path_vector=route,
             swap_sequence=instructions["swap"],
             purification_scheme=instructions["purif"],
             qubit_addresses=[],
         )
 
-        # call network function responsible for generating EPRs on right qchannel
-        if right_neighbor:
-            simulator.add_event(ManageActiveChannels(self.own, right_neighbor, TypeEnum.ADD, t=simulator.tc, by=self))
+        # instruct LinkLayer to start generating EPRs on the qchannel toward the right neighbor
+        if r_neighbor:
+            simulator.add_event(ManageActiveChannels(self.own, r_neighbor, TypeEnum.ADD, t=simulator.tc, by=self))
 
         # TODO: remove path, type=TypeEnum.REMOVE
         return True
+
+    def find_neighbor_and_allocate_qubits(
+        self, path_id: int, route: list[str], route_offset: int, m_v: list[int], m_v_offset: int
+    ) -> tuple[QNode | None, list[int]]:
+        own_idx = route.index(self.own.name)
+        neigh_idx = own_idx + route_offset
+        if neigh_idx in (-1, len(route)):  # no left/right neighbor if own node is the left/right end node
+            return None, []
+
+        neighbor = self.net.get_node(route[neigh_idx])
+        self.own.get_qchannel(neighbor)  # ensure qchannel exists
+
+        n_qubits = m_v[own_idx + m_v_offset]
+        qubits = [self.memory.allocate(path_id=path_id) for _ in range(n_qubits)]
+        if -1 in qubits:
+            raise RuntimeError(f"{self.own}: insufficient memory qubits toward {neighbor} for path {path_id}")
+
+        return neighbor, qubits
 
     def eval_qubit_eligibility(self, fib_entry: FIBEntry, partner: str) -> bool:
         """Evaluate if a qubit is eligible for purification.
@@ -858,12 +835,3 @@ class ProactiveForwarder(Application):
             return qubits[0][0]  # pick up one qubit
             # TODO: Other possible qubit selection criteria
         return None
-
-    ###### Helper functions ######
-    def compute_qubit_allocation(self, path: list[str], m_v: list[int], node: str):
-        if node not in path:
-            return None, None  # Node not in path
-        idx = path.index(node)
-        left_qubits = m_v[idx - 1] if idx > 0 else None  # Allocate from left channel
-        right_qubits = m_v[idx] if idx < len(m_v) else None  # Allocate for right channel
-        return left_qubits, right_qubits
