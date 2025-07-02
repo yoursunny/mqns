@@ -51,6 +51,20 @@ def find_index_and_swapping_rank(fib_entry: FIBEntry, node_name: str) -> tuple[i
     return idx, fib_entry["swap_sequence"][idx]
 
 
+def is_isolated_links(fib_entry: FIBEntry) -> bool:
+    """
+    Determine whether a swap sequence indicates isolated links.
+
+    For isolated links, the forwarder will consume entanglement upon completing purification,
+    without attempting entanglement swapping.
+
+    Args:
+        fib_entry: a FIB entry.
+    """
+    swap = fib_entry["swap_sequence"]
+    return swap[0] == 0 == swap[-1]
+
+
 class ForwardingInformationBase:
     def __init__(self):
         # The FIB table stores multiple path entries

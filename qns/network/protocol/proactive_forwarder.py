@@ -25,7 +25,7 @@ from qns.entity.node import Application, Node, QNode
 from qns.models.epr import WernerStateEntanglement
 from qns.network import QuantumNetwork, SignalTypeEnum, TimingModeEnum
 from qns.network.protocol.event import ManageActiveChannels, QubitEntangledEvent, QubitReleasedEvent, TypeEnum
-from qns.network.protocol.fib import FIBEntry, ForwardingInformationBase, find_index_and_swapping_rank
+from qns.network.protocol.fib import FIBEntry, ForwardingInformationBase, find_index_and_swapping_rank, is_isolated_links
 from qns.simulator import Simulator
 from qns.utils import log
 
@@ -306,14 +306,6 @@ class ProactiveForwarder(Application):
         simulator = self.simulator
         assert qubit.fsm.state == QubitState.PURIF
         assert qubit.qchannel is not None
-        # TODO: make this controllable
-        # # for isolated links -> consume immediately
-        # _, qm = self.memory.read(address=qubit.addr, must=True)
-        # qubit.fsm.to_release()
-        # log.debug(f"{self.own}: consume entanglement: <{qubit.addr}> {qm.src.name} - {qm.dst.name}")
-        # event = QubitReleasedEvent(qubit=qubit, e2e=self.own.name=='S',
-        #                            t=simulator.tc, by=self)
-        # simulator.add_event(event)
 
         partner_idx, partner_rank = find_index_and_swapping_rank(fib_entry, partner.name)
         own_idx, own_rank = find_index_and_swapping_rank(fib_entry, self.own.name)
@@ -532,6 +524,10 @@ class ProactiveForwarder(Application):
             log.debug(f"{self.own}: INT phase is over -> stop swaps")
             return
 
+        if is_isolated_links(fib_entry):  # no swapping in isolated links
+            self.consume_and_release(qubit, e2e=False)
+            return
+
         route = fib_entry["path_vector"]
         own_idx = route.index(self.own.name)
         if own_idx in (0, len(route) - 1):  # this is an end node
@@ -544,10 +540,13 @@ class ProactiveForwarder(Application):
         if res:  # do swapping
             self.do_swapping(qubit, res, fib_entry)
 
-    def consume_and_release(self, qubit: MemoryQubit):
+    def consume_and_release(self, qubit: MemoryQubit, *, e2e=True):
         """
-        Consume an end-to-end entangled qubit at an end node.
-        The qubit must be in ELIGIBLE state and should be entangled with the other end node.
+        Consume an entangled qubit.
+
+        Args:
+            e2e: If true, this is an end node and the qubit is entangled with the other end node.
+                 Relevant counters are incremented.
         """
         simulator = self.simulator
 
@@ -558,9 +557,10 @@ class ProactiveForwarder(Application):
         qubit.fsm.to_release()
         log.debug(f"{self.own}: consume EPR: {qm.name} -> {qm.src.name}-{qm.dst.name} | F={qm.fidelity}")
 
-        self.e2e_count += 1
-        self.fidelity += qm.fidelity
-        simulator.add_event(QubitReleasedEvent(self.own, qubit, e2e=self.own.name == "S", t=simulator.tc, by=self))
+        if e2e:
+            self.e2e_count += 1
+            self.fidelity += qm.fidelity
+        simulator.add_event(QubitReleasedEvent(self.own, qubit, t=simulator.tc, by=self))
 
     def _select_eligible_qubit(self, exc_qchannel: str, path_id: int | None = None) -> MemoryQubit | None:
         """Searches for an eligible qubit in memory that matches the specified path ID and

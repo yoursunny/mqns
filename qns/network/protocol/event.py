@@ -77,7 +77,6 @@ class QubitReleasedEvent(Event):
         node: QNode,
         qubit: MemoryQubit,
         *,
-        e2e: bool = False,
         t: Time,
         name: str | None = None,
         by: Any = None,
@@ -85,7 +84,6 @@ class QubitReleasedEvent(Event):
         super().__init__(t=t, name=name, by=by)
         self.node = node
         self.qubit = qubit
-        self.e2e = e2e
 
     def invoke(self) -> None:
         self.node.handle(self)
