@@ -36,8 +36,11 @@ def set_default_level(dflt_level: Literal["CRITICAL", "FATAL", "ERROR", "WARN", 
     If `QNS_LOGLVL` environment variable contains a valid log level, it is used.
     Otherwise, `dflt_level` is used as the logging level.
     """
-    env_level = os.getenv("QNS_LOGLVL")
-    logger.setLevel(env_level if env_level in logging.getLevelNamesMapping() else dflt_level)
+    try:
+        env_level = os.getenv("QNS_LOGLVL", dflt_level)
+        logger.setLevel(env_level)
+    except ValueError:  # QNS_LOGLVL is not a valid level
+        logger.setLevel(dflt_level)
 
 
 def install(simulator: "Simulator"):
