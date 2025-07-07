@@ -16,61 +16,73 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+import os
 import sys
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from qns.simulator import Simulator
 
 logger = logging.getLogger("qns")
 """
 The default ``logger`` used by SimQN
 """
 
-logger.setLevel(logging.INFO)
-handle = logging.StreamHandler(sys.stdout)
-logger.addHandler(handle)
+
+def set_default_level(dflt_level: Literal["CRITICAL", "FATAL", "ERROR", "WARN", "INFO", "DEBUG"]):
+    """
+    Configure logging level.
+
+    If `QNS_LOGLVL` environment variable contains a valid log level, it is used.
+    Otherwise, `dflt_level` is used as the logging level.
+    """
+    env_level = os.getenv("QNS_LOGLVL")
+    logger.setLevel(env_level if env_level in logging.getLevelNamesMapping() else dflt_level)
 
 
-def install(s):
+def install(simulator: "Simulator"):
     """Install the logger to the simulator
 
     Args:
         s (Simulator): the simulator
 
     """
-    logger._simulator = s
+    logger._simulator = simulator
 
 
 def debug(msg, *args):
     if hasattr(logger, "_simulator"):
-        logger.debug(f"[{logger._simulator.tc}] " + msg, *args)
+        logger.debug(f"[{logger._simulator.tc}] " + msg, *args, stacklevel=2)
     else:
-        logger.debug(msg, *args)
+        logger.debug(msg, *args, stacklevel=2)
 
 
 def info(msg, *args):
     if hasattr(logger, "_simulator"):
-        logger.info(f"[{logger._simulator.tc}] " + msg, *args)
+        logger.info(f"[{logger._simulator.tc}] " + msg, *args, stacklevel=2)
     else:
-        logger.info(msg, *args)
+        logger.info(msg, *args, stacklevel=2)
 
 
 def error(msg, *args):
     if hasattr(logger, "_simulator"):
-        logger.error(f"[{logger._simulator.tc}] " + msg, *args)
+        logger.error(f"[{logger._simulator.tc}] " + msg, *args, stacklevel=2)
     else:
-        logger.error(msg, *args)
+        logger.error(msg, *args, stacklevel=2)
 
 
 def warn(msg, *args):
     if hasattr(logger, "_simulator"):
-        logger.warn(f"[{logger._simulator.tc}] " + msg, *args)
+        logger.warning(f"[{logger._simulator.tc}] " + msg, *args, stacklevel=2)
     else:
-        logger.warn(msg, *args)
+        logger.warning(msg, *args, stacklevel=2)
 
 
 def critical(msg, *args):
     if hasattr(logger, "_simulator"):
-        logger.critical(f"[{logger._simulator.tc}] " + msg, *args)
+        logger.critical(f"[{logger._simulator.tc}] " + msg, *args, stacklevel=2)
     else:
-        logger.critical(msg, *args)
+        logger.critical(msg, *args, stacklevel=2)
 
 
 def monitor(*args, sep: str = ",", with_time: bool = False):
@@ -80,3 +92,8 @@ def monitor(*args, sep: str = ",", with_time: bool = False):
     attrs_s = [str(a) for a in attrs]
     msg = sep.join(attrs_s)
     logger.info(msg)
+
+
+set_default_level("INFO")
+handle = logging.StreamHandler(sys.stdout)
+logger.addHandler(handle)
