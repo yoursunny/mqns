@@ -65,13 +65,20 @@ def test_proactive_isolated():
     net, simulator = build_linear_network(3)
     ctrl = net.get_controller().get_app(ProactiveRoutingControllerApp)
     f1 = net.get_node("n1").get_app(ProactiveForwarder)
+    f2 = net.get_node("n2").get_app(ProactiveForwarder)
     f3 = net.get_node("n3").get_app(ProactiveForwarder)
 
     ctrl.install_path_on_route(["n1", "n2", "n3"], path_id=0, swap=[0, 0, 0])
     simulator.run()
 
-    assert f1.e2e_count == 0
-    assert f3.e2e_count == 0
+    for app in (f1, f2, f3):
+        print((app.own.name, app.cnt))
+
+    assert f1.cnt.n_entg == f1.cnt.n_eligible == f1.cnt.n_consumed > 0
+    assert f2.cnt.n_entg == f2.cnt.n_eligible == f2.cnt.n_consumed > 0
+    assert f3.cnt.n_entg == f3.cnt.n_eligible == f3.cnt.n_consumed > 0
+    assert f1.cnt.n_swapped == f2.cnt.n_swapped == f3.cnt.n_swapped == 0
+    assert f1.cnt.n_consumed + f3.cnt.n_consumed == f2.cnt.n_consumed
 
 
 def test_proactive_basic():
@@ -86,12 +93,13 @@ def test_proactive_basic():
     simulator.run()
 
     for app in (f1, f2, f3):
-        print((app.own.name, app.e2e_count, app.fidelity / app.e2e_count if app.e2e_count != 0 else None))
+        print((app.own.name, app.cnt))
 
-    assert f1.e2e_count == f3.e2e_count > 20
-    assert f1.fidelity / f1.e2e_count == pytest.approx(f3.fidelity / f3.e2e_count, abs=1e-3)
-    assert f1.fidelity / f1.e2e_count >= 0.7
-    assert f2.e2e_count == 0
+    assert f1.cnt.n_entg + f3.cnt.n_entg == f2.cnt.n_entg > 0
+    assert f1.cnt.n_eligible + f3.cnt.n_eligible >= f2.cnt.n_swapped > 0
+    assert f2.cnt.n_swapped >= f1.cnt.n_consumed == f3.cnt.n_consumed > 0
+    assert f2.cnt.n_consumed == 0
+    assert 0.7 <= f1.cnt.consumed_avg_fidelity == pytest.approx(f3.cnt.consumed_avg_fidelity, abs=1e-3)
 
 
 def test_proactive_purif_link1r():
@@ -106,11 +114,11 @@ def test_proactive_purif_link1r():
     simulator.run()
 
     for app in (f1, f2, f3):
-        print((app.own.name, app.e2e_count, app.fidelity / app.e2e_count if app.e2e_count != 0 else None))
+        print((app.own.name, app.cnt))
 
-    assert f1.e2e_count == f3.e2e_count > 10
-    assert f1.fidelity / f1.e2e_count == pytest.approx(f3.fidelity / f3.e2e_count, abs=1e-3)
-    assert f1.fidelity / f1.e2e_count >= 0.7
+    assert f1.cnt.n_purif[0] + f3.cnt.n_purif[0] == f2.cnt.n_purif[0] >= f2.cnt.n_swapped
+    assert f1.cnt.n_consumed == f3.cnt.n_consumed >= f2.cnt.n_swapped > 10
+    assert 0.7 <= f1.cnt.consumed_avg_fidelity == pytest.approx(f3.cnt.consumed_avg_fidelity, abs=1e-3)
 
 
 def test_proactive_purif_link2r():
@@ -125,8 +133,9 @@ def test_proactive_purif_link2r():
     simulator.run()
 
     for app in (f1, f2, f3):
-        print((app.own.name, app.e2e_count, app.fidelity / app.e2e_count if app.e2e_count != 0 else None))
+        print((app.own.name, app.cnt))
 
-    assert f1.e2e_count == f3.e2e_count > 10
-    assert f1.fidelity / f1.e2e_count == pytest.approx(f3.fidelity / f3.e2e_count, abs=1e-3)
-    assert f1.fidelity / f1.e2e_count >= 0.8
+    assert f1.cnt.n_purif[0] + f3.cnt.n_purif[0] == f2.cnt.n_purif[0]
+    assert f1.cnt.n_purif[1] + f3.cnt.n_purif[1] == f2.cnt.n_purif[1] >= f2.cnt.n_swapped
+    assert f1.cnt.n_consumed == f3.cnt.n_consumed >= f2.cnt.n_swapped > 10
+    assert 0.8 <= f1.cnt.consumed_avg_fidelity == pytest.approx(f3.cnt.consumed_avg_fidelity, abs=1e-3)

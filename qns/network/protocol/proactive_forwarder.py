@@ -76,10 +76,43 @@ class SwapUpdateMsg(TypedDict):
     new_epr: WernerStateEntanglement | None  # None means swapping failed
 
 
+class ProactiveForwarderCounters:
+    def __init__(self):
+        self.n_entg = 0
+        """how many elementary entanglements received from link layer"""
+        self.n_purif: list[int] = []
+        """how many entanglements completed i-th purif round (zero-based index)"""
+        self.n_eligible = 0
+        """how many entanglements completed all purif rounds and became eligible"""
+        self.n_swapped = 0
+        """how many swaps succeeded"""
+        self.n_consumed = 0
+        """how many entanglements were consumed (either end-to-end or in isolated links mode)"""
+        self.consumed_sum_fidelity = 0.0
+        """sum of fidelity of consumed entanglements"""
+
+    def increment_n_purif(self, i: int):
+        if len(self.n_purif) <= i:
+            self.n_purif += [0] * (i + 1 - len(self.n_purif))
+        self.n_purif[i] += 1
+
+    @property
+    def consumed_avg_fidelity(self) -> float:
+        """average fidelity of consumed entanglements"""
+        return 0.0 if self.n_consumed == 0 else self.consumed_sum_fidelity / self.n_consumed
+
+    def __repr__(self) -> str:
+        return (
+            f"entg={self.n_entg} purif={self.n_purif} eligible={self.n_eligible} swapped={self.n_swapped} "
+            + f"consumed={self.n_consumed} (F={self.consumed_avg_fidelity})"
+        )
+
+
 class ProactiveForwarder(Application):
-    """ProactiveForwarder is the forwarder of QNodes and receives routing instructions from the controller.
+    """
+    ProactiveForwarder is the forwarder of QNodes and receives routing instructions from the controller.
     It implements the forwarding phase (i.e., entanglement generation and swapping) while the centralized
-    routing is done at the controller. Purification will be moved to a separate network function.
+    routing is done at the controller.
     """
 
     def __init__(self, ps: float = 1.0):
@@ -120,10 +153,7 @@ class ProactiveForwarder(Application):
         ] = {}
         """manage potential parallel swappings"""
 
-        self.e2e_count = 0
-        """counts number of e2e generated EPRs"""
-        self.fidelity = 0.0
-        """sum of fidelity of generated EPRs"""
+        self.cnt = ProactiveForwarderCounters()
 
     def install(self, node: Node, simulator: Simulator):
         """called at initialization of the node"""
@@ -256,6 +286,8 @@ class ProactiveForwarder(Application):
             self.waiting_qubits.append(event)
             return
 
+        self.cnt.n_entg += 1
+
         qubit = event.qubit
         assert qubit.fsm.state == QubitState.ENTANGLED
         if qubit.path_id is not None:  # for buffer-space mux
@@ -319,6 +351,7 @@ class ProactiveForwarder(Application):
         )
 
         if qubit.purif_rounds == want_rounds:
+            self.cnt.n_eligible += 1
             qubit.purif_rounds = 0
             qubit.fsm.to_eligible()
             self.qubit_is_eligible(qubit, fib_entry)
@@ -455,6 +488,7 @@ class ProactiveForwarder(Application):
         )
 
         if result:
+            self.cnt.increment_n_purif(mq0.purif_rounds)
             mq0.purif_rounds += 1
             self.memory.update(old_qm=epr0.name, new_qm=epr0)
             mq0.fsm.to_purif()
@@ -510,11 +544,11 @@ class ProactiveForwarder(Application):
             return
 
         # purif succeeded
-        self.memory.update(old_qm=epr.name, new_qm=epr)
+        self.cnt.increment_n_purif(qubit.purif_rounds)
         qubit.purif_rounds += 1
+        self.memory.update(old_qm=epr.name, new_qm=epr)
         qubit.fsm.to_purif()
-        partner = self.own.network.get_node(msg["partner"])
-        self.qubit_is_purif(qubit, fib_entry, partner)
+        self.qubit_is_purif(qubit, fib_entry, self.own.network.get_node(msg["partner"]))
 
     CLASSIC_SIGNALING_HANDLERS["PURIF_RESPONSE"] = handle_purif_response
 
@@ -542,7 +576,7 @@ class ProactiveForwarder(Application):
             return
 
         if is_isolated_links(fib_entry):  # no swapping in isolated links
-            self.consume_and_release(qubit, e2e=False)
+            self.consume_and_release(qubit)
             return
 
         route = fib_entry["path_vector"]
@@ -557,7 +591,7 @@ class ProactiveForwarder(Application):
         if res:  # do swapping
             self.do_swapping(qubit, res, fib_entry)
 
-    def consume_and_release(self, qubit: MemoryQubit, *, e2e=True):
+    def consume_and_release(self, qubit: MemoryQubit):
         """
         Consume an entangled qubit.
 
@@ -574,9 +608,8 @@ class ProactiveForwarder(Application):
         qubit.fsm.to_release()
         log.debug(f"{self.own}: consume EPR: {qm.name} -> {qm.src.name}-{qm.dst.name} | F={qm.fidelity}")
 
-        if e2e:
-            self.e2e_count += 1
-            self.fidelity += qm.fidelity
+        self.cnt.n_consumed += 1
+        self.cnt.consumed_sum_fidelity += qm.fidelity
         simulator.add_event(QubitReleasedEvent(self.own, qubit, t=simulator.tc, by=self))
 
     def _select_eligible_qubit(self, exc_qchannel: str, path_id: int | None = None) -> MemoryQubit | None:
@@ -656,6 +689,8 @@ class ProactiveForwarder(Application):
         log.debug(f"{self.own}: SWAP {'SUCC' if new_epr else 'FAILED'} | {prev_qubit} x {next_qubit}")
 
         if new_epr is not None:  # swapping succeeded
+            self.cnt.n_swapped += 1
+
             # Update properties in newly generated EPR.
             new_epr.src = prev_partner
             new_epr.dst = next_partner
@@ -825,6 +860,9 @@ class ProactiveForwarder(Application):
         assert partner is not None
         assert partner.name == msg["partner"]
         assert destination is not None
+
+        if merged_epr is not None:
+            self.cnt.n_swapped += 1
 
         # Inform the "destination" of the swap result and new "partner".
         su_msg: SwapUpdateMsg = {
