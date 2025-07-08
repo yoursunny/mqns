@@ -39,7 +39,7 @@ from qns.utils import log
 
 class ReserveMsg(TypedDict):
     cmd: Literal["RESERVE_QUBIT", "RESERVE_QUBIT_OK"]
-    path_id: int
+    path_id: int | None
     key: str
 
 
@@ -95,7 +95,7 @@ class LinkLayer(Application):
 
         self.pending_init_reservation: dict[str, tuple[QuantumChannel, QNode, int]] = {}
         """stores reservation requests sent by this node"""
-        self.fifo_reservation_req: list[tuple[str, int, ClassicChannel, QNode]] = []
+        self.fifo_reservation_req: list[tuple[str, int | None, ClassicChannel, QNode]] = []
         """stores received reservations requests awaiting for qubits"""
 
         self.etg_count = 0
@@ -320,6 +320,7 @@ class LinkLayer(Application):
         """Schedule an event to notify the forwarder about a new entangled qubit"""
         simulator = self.simulator
 
+        qubit.purif_rounds = 0
         qubit.fsm.to_entangled()
         simulator.add_event(QubitEntangledEvent(self.own, neighbor, qubit, t=simulator.tc + delay, by=self))
 

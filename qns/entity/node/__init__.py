@@ -27,7 +27,7 @@
 
 from qns.entity.node.app import Application
 from qns.entity.node.controller import Controller
-from qns.entity.node.node import Node
+from qns.entity.node.node import Node, NodeT
 from qns.entity.node.qnode import QNode
 
-__all__ = ["Node", "QNode", "Controller", "Application"]
+__all__ = ["NodeT", "Node", "QNode", "Controller", "Application"]

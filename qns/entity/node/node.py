@@ -186,3 +186,7 @@ class Node(Entity):
 
     def __repr__(self) -> str:
         return f"<node {self.name}>"
+
+
+NodeT = TypeVar("NodeT", bound=Node)
+"""Type argument for Node or its subclass."""

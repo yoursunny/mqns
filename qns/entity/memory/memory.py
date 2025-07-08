@@ -40,7 +40,7 @@ from qns.entity.node import QNode
 from qns.models.core import QuantumModel
 from qns.models.delay import DelayInput, parseDelay
 from qns.models.epr import BaseEntanglement
-from qns.simulator import Event, Simulator, func_to_event
+from qns.simulator import Event, func_to_event
 from qns.utils import log
 
 try:
@@ -81,7 +81,9 @@ class QuantumMemory(Entity):
         super().__init__(name=name)
         self.node = node
         self.capacity = kwargs.get("capacity", 1)
+        """how many qubits can be stored"""
         self.delay_model = parseDelay(kwargs.get("delay", 0))
+        """read/write delay, only applicable to async access"""
 
         if self.capacity > 0:
             self._storage: list[tuple[MemoryQubit, QuantumModel | None]] = [
@@ -96,9 +98,6 @@ class QuantumMemory(Entity):
 
         self.pending_decohere_events: dict[str, Event] = {}
         """map of future qubit decoherence events"""
-
-    def install(self, simulator: Simulator) -> None:
-        super().install(simulator)
 
     def _search(self, key: QuantumModel | str | None = None, address: int | None = None) -> int:
         """This method searches through the internal storage for a matching qubit based on either
@@ -252,10 +251,9 @@ class QuantumMemory(Entity):
 
         if destructive:
             # cancel scheduled decoherence event
-            if data.name in self.pending_decohere_events:
-                event = self.pending_decohere_events[data.name]
+            event = self.pending_decohere_events.pop(data.name, None)
+            if event is not None:
                 event.cancel()
-                self.pending_decohere_events.pop(data.name)
 
     def write(
         self, qm: QuantumModel, path_id: int | None = None, address: int | None = None, key: str | None = None
@@ -340,11 +338,10 @@ class QuantumMemory(Entity):
         """
         idx = self._search(key=old_qm)
         if idx == -1:
-            if old_qm in self.pending_decohere_events:
+            old_event = self.pending_decohere_events.pop(old_qm, None)
+            if old_event is not None:
                 print("UNEXPECTED ==> decohere event not cleared")
-                old_event = self.pending_decohere_events[old_qm]
                 old_event.cancel()
-                self.pending_decohere_events.pop(old_qm)
             return False
 
         qubit = self._storage[idx][0]
@@ -578,14 +575,6 @@ class QuantumMemory(Entity):
         log.debug(f"{self.node}: EPR decohered -> {qm.name} {qm.src}-{qm.dst}")
         qubit.fsm.to_release()
         simulator.add_event(QubitDecoheredEvent(self.node, qubit, t=simulator.tc, by=self))
-
-    def count_unallocated_qubits(self) -> int:
-        """Return the number of qubits not allocated to any path ID"""
-        free = self.capacity
-        for qubit, _ in self._storage:
-            if qubit.path_id:
-                free -= 1
-        return free
 
     def is_full(self) -> bool:
         """

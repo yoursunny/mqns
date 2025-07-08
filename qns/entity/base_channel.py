@@ -1,7 +1,7 @@
-from typing import TYPE_CHECKING, Generic, TypedDict, TypeVar
+from typing import Generic, TypedDict
 
 from qns.entity.entity import Entity
-from qns.entity.node import Node
+from qns.entity.node import NodeT
 from qns.models.delay import DelayInput, parseDelay
 from qns.simulator import Simulator, Time
 from qns.utils import get_rand, log
@@ -10,11 +10,6 @@ try:
     from typing import Unpack
 except ImportError:
     from typing_extensions import Unpack
-
-NodeT = TypeVar("NodeT", bound=Node)
-
-if TYPE_CHECKING:
-    from qns.entity.node import Node
 
 default_light_speed: float = 2e5
 """

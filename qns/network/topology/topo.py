@@ -32,7 +32,7 @@ from typing import TypedDict
 
 from qns.entity.cchannel import ClassicChannel, ClassicChannelInitKwargs
 from qns.entity.memory import QuantumMemory, QuantumMemoryInitKwargs
-from qns.entity.node import Application, Controller, Node, QNode
+from qns.entity.node import Application, Controller, NodeT, QNode
 from qns.entity.qchannel import QuantumChannel, QuantumChannelInitKwargs
 
 try:
@@ -137,7 +137,7 @@ class Topology:
 
         return cchannel_list
 
-    def connect_controller(self, nl: list[Node], **kwargs: Unpack[ClassicChannelInitKwargs]) -> list[ClassicChannel]:
+    def connect_controller(self, nl: list[NodeT], **kwargs: Unpack[ClassicChannelInitKwargs]) -> list[ClassicChannel]:
         """
         Create a cchannel from the controller to each node.
 
