@@ -302,32 +302,11 @@ class ProactiveForwarder(Application):
             fib_entry = self.fib.get_entry(qubit.path_id)
             if not fib_entry:
                 raise Exception(f"No FIB entry found for path_id {qubit.path_id}")
-            if self._can_enter_purif(fib_entry, event.neighbor.name):
-                self.own.get_qchannel(event.neighbor)  # ensure qchannel exists
-                qubit.fsm.to_purif()
-                self.qubit_is_purif(qubit, fib_entry, event.neighbor)
+            qubit.purif_rounds = 0
+            qubit.fsm.to_purif()
+            self.qubit_is_purif(qubit, fib_entry, event.neighbor)
         else:  # for statistical mux
             log.debug("Qubit not allocated to a path. Statistical mux not supported yet.")
-
-    def _can_enter_purif(self, fib_entry: FIBEntry, partner: str) -> bool:
-        """Evaluate if a qubit is eligible for purification.
-        Compares the local node's swap rank to its partner's in the given path.
-        A qubit is eligible for purification if the partner's swap rank is greater
-        than or equal to the local node's rank.
-
-        Parameters
-        ----------
-            fib_entry (Dict): FIB entry containing the path and swap sequence.
-            partner (str): Name of the partner node to compare against.
-
-        Returns
-        -------
-            bool: True if eligible for swap/purification, False otherwise.
-
-        """
-        _, partner_rank = find_index_and_swapping_rank(fib_entry, partner)
-        _, own_rank = find_index_and_swapping_rank(fib_entry, self.own.name)
-        return partner_rank >= own_rank
 
     def qubit_is_purif(self, qubit: MemoryQubit, fib_entry: FIBEntry, partner: QNode):
         """
@@ -350,6 +329,9 @@ class ProactiveForwarder(Application):
 
         partner_idx, partner_rank = find_index_and_swapping_rank(fib_entry, partner.name)
         own_idx, own_rank = find_index_and_swapping_rank(fib_entry, self.own.name)
+        if own_rank > partner_rank:
+            # swapping order disallows initiating purif / swap / consumption
+            return
 
         segment_name = f"{self.own.name}-{partner.name}" if own_idx < partner_idx else f"{partner.name}-{self.own.name}"
         want_rounds = fib_entry["purification_scheme"].get(segment_name, 0)
@@ -478,7 +460,7 @@ class ProactiveForwarder(Application):
         assert epr1.name is not None
 
         for mq in (mq0, mq1):
-            assert mq.fsm.state in (QubitState.ENTANGLED, QubitState.PURIF)
+            assert mq.fsm.state == QubitState.PURIF
             assert mq.purif_rounds == msg["round"]
 
         assert msg["partner"] == self.own.name
@@ -500,6 +482,7 @@ class ProactiveForwarder(Application):
             mq0.purif_rounds += 1
             self.memory.update(old_qm=epr0.name, new_qm=epr0)
             mq0.fsm.to_purif()
+            self.qubit_is_purif(mq0, fib_entry, primary)
         else:
             # in case of purification failure, release mq0
             self.memory.read(address=mq0.addr)  # destructive reading
@@ -776,7 +759,7 @@ class ProactiveForwarder(Application):
             log.debug(f"### {self.own}: VERIFY -> EPR update {updated}")
             return
 
-        if maybe_purif and self._can_enter_purif(fib_entry, msg["partner"]):
+        if maybe_purif:
             # If own rank is higher than sender rank but lower than new partner rank,
             # it is our turn to purify the qubit and progress toward swapping.
             qubit.purif_rounds = 0
