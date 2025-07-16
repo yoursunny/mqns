@@ -256,7 +256,7 @@ class LinkLayer(Application):
             - The quantum channel is assumed to have no photon loss in this step since it executes only the successful attempt.
 
         """
-        epr = WernerStateEntanglement(fidelity=self.init_fidelity, name=uuid.uuid4().hex)
+        epr = WernerStateEntanglement(fidelity=self.init_fidelity)
         # qubit init at 2tau and we are at 6tau
         epr.creation_time = self.simulator.tc - (4 * qchannel.delay_model.calculate())
         epr.src = self.own

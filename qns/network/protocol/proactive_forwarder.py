@@ -411,9 +411,7 @@ class ProactiveForwarder(Application):
         _, epr0 = self.memory.read(address=mq0.addr, destructive=False, must=True)
         _, epr1 = self.memory.read(address=mq1.addr, must=True)
         assert isinstance(epr0, WernerStateEntanglement)
-        assert epr0.name is not None
         assert isinstance(epr1, WernerStateEntanglement)
-        assert epr1.name is not None
 
         log.debug(
             f"{self.own}: request purif qubit {mq0.addr} (F={epr0.fidelity}) and "
@@ -455,9 +453,7 @@ class ProactiveForwarder(Application):
         mq1, epr1 = self.memory.read(key=msg["measure_epr"], must=True)
         # TODO: handle the exception case when an EPR is decohered and not found in memory
         assert isinstance(epr0, WernerStateEntanglement)
-        assert epr0.name is not None
         assert isinstance(epr1, WernerStateEntanglement)
-        assert epr1.name is not None
 
         for mq in (mq0, mq1):
             assert mq.fsm.state == QubitState.PURIF
@@ -520,7 +516,6 @@ class ProactiveForwarder(Application):
         qubit, epr = self.memory.get(key=msg["epr"], must=True)
         # TODO: handle the exception case when an EPR is decohered and not found in memory
         assert isinstance(epr, WernerStateEntanglement)
-        assert epr.name is not None
 
         result = msg["result"]
         log.debug(
@@ -642,11 +637,9 @@ class ProactiveForwarder(Application):
         assert prev_partner is not None
         assert prev_qubit is not None
         assert prev_epr is not None
-        assert prev_epr.name is not None
         assert next_partner is not None
         assert next_qubit is not None
         assert next_epr is not None
-        assert next_epr.name is not None
 
         # Save ch_index metadata field onto elementary EPR.
         if not prev_epr.orig_eprs:
@@ -685,7 +678,7 @@ class ProactiveForwarder(Application):
                 "path_id": fib_entry["path_id"],
                 "swapping_node": self.own.name,
                 "partner": new_partner.name,
-                "epr": cast(str, old_epr.name),
+                "epr": old_epr.name,
                 "new_epr": new_epr,
             }
             self.send_msg(dest=partner, msg=su_msg, route=fib_entry["path_vector"])
@@ -775,7 +768,6 @@ class ProactiveForwarder(Application):
         new_epr = msg["new_epr"]  # is the epr from neighbor swap
         (shared_epr, other_epr, my_new_epr) = self.parallel_swappings.pop(msg["epr"])
         _ = shared_epr
-        assert my_new_epr.name is not None
 
         # msg["swapping_node"] is the node that performed swapping and sent this message.
         # Assuming swapping_node is to the right of own node, various nodes and EPRs are as follows:
@@ -848,7 +840,6 @@ class ProactiveForwarder(Application):
         # Update records to support potential parallel swapping with "partner".
         _, p_rank = find_index_and_swapping_rank(fib_entry, partner.name)
         if own_rank == p_rank and merged_epr is not None:
-            assert new_epr.name is not None
             self.parallel_swappings[new_epr.name] = (new_epr, other_epr, merged_epr)
 
     def consume_and_release(self, qubit: MemoryQubit):

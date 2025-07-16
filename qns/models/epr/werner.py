@@ -26,7 +26,6 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import hashlib
-from typing import cast
 
 import numpy as np
 
@@ -81,8 +80,8 @@ class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"], Quant
         ne.w = self.w * epr.w
         ne.orig_eprs = self._merge_orig_eprs(epr)
 
-        if ne.name is None:
-            eprs_name_list = [cast(str, e.name) for e in ne.orig_eprs]
+        if name is None:
+            eprs_name_list = [e.name for e in ne.orig_eprs]
             ne.name = hash("-".join(eprs_name_list))
 
         assert self.decoherence_time is not None
