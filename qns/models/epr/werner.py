@@ -71,8 +71,7 @@ class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"], Quant
         if self.is_decoherenced or epr.is_decoherenced:
             return None
 
-        r = get_rand()
-        if r >= ps:  # swap failed
+        if ps < 1.0 and get_rand() >= ps:  # swap failed
             epr.is_decoherenced = True
             self.is_decoherenced = True
             return None
