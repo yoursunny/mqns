@@ -73,7 +73,7 @@ class SwapUpdateMsg(TypedDict):
     swapping_node: str
     partner: str
     epr: str
-    new_epr: WernerStateEntanglement | None  # None means swapping failed
+    new_epr: str | None  # None means swapping failed
 
 
 class ProactiveForwarderCounters:
@@ -160,6 +160,18 @@ class ProactiveForwarder(Application):
             str, tuple[WernerStateEntanglement, WernerStateEntanglement, WernerStateEntanglement]
         ] = {}
         """manage potential parallel swappings"""
+
+        self.remote_swapped_eprs: dict[str, WernerStateEntanglement] = {}
+        """
+        EPRs that have been swapped remotely but the SwapUpdateMsg have not arrived.
+        Each key is an EPR name; each value is the EPR.
+
+        When a remote forwarder performs a swapping in which this node is either src or dst of the new EPR,
+        it deposits the swapped EPR here and transmits the corresponding SwapUpdateMsg.
+        Upon receiving the SwapUpdateMsg, the local forwarder pops the EPR.
+
+        XXX Current approach assumes cchannels do not have packet loss.
+        """
 
         self.cnt = ProactiveForwarderCounters()
 
@@ -411,9 +423,7 @@ class ProactiveForwarder(Application):
         _, epr0 = self.memory.read(address=mq0.addr, destructive=False, must=True)
         _, epr1 = self.memory.read(address=mq1.addr, must=True)
         assert isinstance(epr0, WernerStateEntanglement)
-        assert epr0.name is not None
         assert isinstance(epr1, WernerStateEntanglement)
-        assert epr1.name is not None
 
         log.debug(
             f"{self.own}: request purif qubit {mq0.addr} (F={epr0.fidelity}) and "
@@ -455,9 +465,7 @@ class ProactiveForwarder(Application):
         mq1, epr1 = self.memory.read(key=msg["measure_epr"], must=True)
         # TODO: handle the exception case when an EPR is decohered and not found in memory
         assert isinstance(epr0, WernerStateEntanglement)
-        assert epr0.name is not None
         assert isinstance(epr1, WernerStateEntanglement)
-        assert epr1.name is not None
 
         for mq in (mq0, mq1):
             assert mq.fsm.state == QubitState.PURIF
@@ -520,7 +528,6 @@ class ProactiveForwarder(Application):
         qubit, epr = self.memory.get(key=msg["epr"], must=True)
         # TODO: handle the exception case when an EPR is decohered and not found in memory
         assert isinstance(epr, WernerStateEntanglement)
-        assert epr.name is not None
 
         result = msg["result"]
         log.debug(
@@ -642,11 +649,9 @@ class ProactiveForwarder(Application):
         assert prev_partner is not None
         assert prev_qubit is not None
         assert prev_epr is not None
-        assert prev_epr.name is not None
         assert next_partner is not None
         assert next_qubit is not None
         assert next_epr is not None
-        assert next_epr.name is not None
 
         # Save ch_index metadata field onto elementary EPR.
         if not prev_epr.orig_eprs:
@@ -680,13 +685,16 @@ class ProactiveForwarder(Application):
             (prev_partner, prev_epr, next_partner),
             (next_partner, next_epr, prev_partner),
         ):
+            if new_epr is not None:
+                partner.get_app(ProactiveForwarder).remote_swapped_eprs[new_epr.name] = new_epr
+
             su_msg: SwapUpdateMsg = {
                 "cmd": "SWAP_UPDATE",
                 "path_id": fib_entry["path_id"],
                 "swapping_node": self.own.name,
                 "partner": new_partner.name,
-                "epr": cast(str, old_epr.name),
-                "new_epr": new_epr,
+                "epr": old_epr.name,
+                "new_epr": None if new_epr is None else new_epr.name,
             }
             self.send_msg(dest=partner, msg=su_msg, route=fib_entry["path_vector"])
 
@@ -703,7 +711,7 @@ class ProactiveForwarder(Application):
 
         Parameters
         ----------
-            msg (Dict): The SWAP_UPDATE message.
+            msg: The SWAP_UPDATE message.
             fib_entry: FIB entry associated with path_id in the message.
 
         """
@@ -717,20 +725,30 @@ class ProactiveForwarder(Application):
             log.debug(f"### {self.own}: VERIFY -> rcvd SU from higher-rank node")
             return
 
+        new_epr_name = msg["new_epr"]
+        new_epr = None if new_epr_name is None else self.remote_swapped_eprs.pop(new_epr_name)
+
         epr_name = msg["epr"]
         qubit_pair = self.memory.get(key=epr_name)
         if qubit_pair is not None:
             qubit, _ = qubit_pair
             self.parallel_swappings.pop(epr_name, None)
-            self._su_sequential(msg, fib_entry, qubit, maybe_purif=(own_rank > sender_rank))
+            self._su_sequential(msg, fib_entry, qubit, new_epr, maybe_purif=(own_rank > sender_rank))
         elif own_rank == sender_rank and epr_name in self.parallel_swappings:
-            self._su_parallel(msg, fib_entry, own_rank)
+            self._su_parallel(msg, fib_entry, own_rank, new_epr)
         else:
             log.debug(f"### {self.own}: EPR {epr_name} decohered during SU transmissions")
 
     CLASSIC_SIGNALING_HANDLERS["SWAP_UPDATE"] = handle_swap_update
 
-    def _su_sequential(self, msg: SwapUpdateMsg, fib_entry: FIBEntry, qubit: MemoryQubit, maybe_purif: bool):
+    def _su_sequential(
+        self,
+        msg: SwapUpdateMsg,
+        fib_entry: FIBEntry,
+        qubit: MemoryQubit,
+        new_epr: WernerStateEntanglement | None,
+        maybe_purif: bool,
+    ):
         """
         Process SWAP_UPDATE message where the local MemoryQubit still exists.
         This means the swapping was performed sequentially and local MemoryQubit has not decohered.
@@ -740,7 +758,6 @@ class ProactiveForwarder(Application):
                          Set to True if own rank is higher than sender rank.
         """
         simulator = self.simulator
-        new_epr = msg["new_epr"]
         if (
             new_epr is None  # swapping failed
             or (new_epr.decoherence_time is not None and new_epr.decoherence_time <= simulator.tc)  # oldest pair decohered
@@ -767,15 +784,13 @@ class ProactiveForwarder(Application):
             partner = self.own.network.get_node(msg["partner"])
             self.qubit_is_purif(qubit, fib_entry, partner)
 
-    def _su_parallel(self, msg: SwapUpdateMsg, fib_entry: FIBEntry, own_rank: int):
+    def _su_parallel(self, msg: SwapUpdateMsg, fib_entry: FIBEntry, own_rank: int, new_epr: WernerStateEntanglement | None):
         """
         Process SWAP_UPDATE message during parallel swapping.
         """
         simulator = self.simulator
-        new_epr = msg["new_epr"]  # is the epr from neighbor swap
         (shared_epr, other_epr, my_new_epr) = self.parallel_swappings.pop(msg["epr"])
         _ = shared_epr
-        assert my_new_epr.name is not None
 
         # msg["swapping_node"] is the node that performed swapping and sent this message.
         # Assuming swapping_node is to the right of own node, various nodes and EPRs are as follows:
@@ -835,20 +850,22 @@ class ProactiveForwarder(Application):
             self.cnt.n_swapped_p += 1
 
         # Inform the "destination" of the swap result and new "partner".
+        if merged_epr is not None:
+            destination.get_app(ProactiveForwarder).remote_swapped_eprs[merged_epr.name] = merged_epr
+
         su_msg: SwapUpdateMsg = {
             "cmd": "SWAP_UPDATE",
             "path_id": msg["path_id"],
             "swapping_node": msg["swapping_node"],
             "partner": partner.name,
             "epr": my_new_epr.name,
-            "new_epr": merged_epr,
+            "new_epr": None if merged_epr is None else merged_epr.name,
         }
         self.send_msg(dest=destination, msg=su_msg, route=fib_entry["path_vector"])
 
         # Update records to support potential parallel swapping with "partner".
         _, p_rank = find_index_and_swapping_rank(fib_entry, partner.name)
         if own_rank == p_rank and merged_epr is not None:
-            assert new_epr.name is not None
             self.parallel_swappings[new_epr.name] = (new_epr, other_epr, merged_epr)
 
     def consume_and_release(self, qubit: MemoryQubit):
@@ -891,7 +908,9 @@ class ProactiveForwarder(Application):
             signal_type (SignalTypeEnum): The received synchronization signal.
 
         """
-        if signal_type == SignalTypeEnum.INTERNAL:
+        if signal_type == SignalTypeEnum.EXTERNAL:
+            self.remote_swapped_eprs.clear()
+        elif signal_type == SignalTypeEnum.INTERNAL:
             # internal phase -> time to handle all entangled qubits
             log.debug(f"{self.own}: there are {len(self.waiting_qubits)} etg qubits to process")
             for event in self.waiting_qubits:

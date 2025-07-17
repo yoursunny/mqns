@@ -25,6 +25,7 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import uuid
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 import numpy as np
@@ -52,7 +53,7 @@ class BaseEntanglement(Generic[EntanglementT]):
 
         """
         self.fidelity = fidelity
-        self.name = name
+        self.name = uuid.uuid4().hex if name is None else name
         self.is_decoherenced = False
         self.creation_time: Time | None = None
         self.decoherence_time: Time | None = None

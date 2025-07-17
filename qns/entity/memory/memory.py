@@ -239,7 +239,6 @@ class QuantumMemory(Entity):
     def _read_epr(self, data: QuantumModel, destructive: bool):
         assert isinstance(data, BaseEntanglement)
         assert data.creation_time is not None
-        assert data.name is not None
 
         t_now = self.simulator.current_time
         sec_diff = t_now.sec - data.creation_time.sec
@@ -281,6 +280,7 @@ class QuantumMemory(Entity):
         """
 
         if self.is_full():
+            assert isinstance(self.node, QNode)
             log.debug(f"{self.node.name}: Memory full!")
             return None
 
@@ -301,7 +301,6 @@ class QuantumMemory(Entity):
         if not isinstance(qm, BaseEntanglement):
             return qubit
         assert qm.creation_time is not None
-        assert qm.name is not None
 
         # schedule an event at T_coh to decohere the qubit
         if self.decoherence_rate:
@@ -353,7 +352,6 @@ class QuantumMemory(Entity):
         if not isinstance(new_qm, BaseEntanglement):
             return True
         assert new_qm.decoherence_time is not None
-        assert new_qm.name is not None
 
         # schedule an event at old T_coh to decohere the qubit
         new_event = func_to_event(new_qm.decoherence_time, self.decohere_qubit, by=self, qubit=qubit, qm=new_qm)

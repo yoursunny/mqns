@@ -26,7 +26,6 @@ def test_swap_success(monkeypatch):
     assert ne.creation_time == Time(time_slot=1, accuracy=1000)
     assert ne.decoherence_time == Time(time_slot=3, accuracy=1000)
     assert not ne.is_decoherenced
-    assert isinstance(ne.name, str)
 
 
 def test_swap_failure(monkeypatch):
