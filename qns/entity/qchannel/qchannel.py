@@ -84,7 +84,6 @@ class QuantumChannel(BaseChannel[QNode]):
             packet_repr=f"qubit {qubit}",
             packet_len=1,
             next_hop=next_hop,
-            delay=0,
         )
 
         if drop:

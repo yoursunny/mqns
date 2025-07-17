@@ -65,7 +65,7 @@ class ClassicPacket:
         assert isinstance(self.msg, bytes)
         return self.msg
 
-    def get(self):
+    def get(self) -> Any:
         """Get the message from packet
 
         Return:
@@ -88,28 +88,26 @@ class ClassicChannel(BaseChannel[Node]):
     def __init__(self, name: str, **kwargs: Unpack[ClassicChannelInitKwargs]):
         super().__init__(name, **kwargs)
 
-    def send(self, packet: ClassicPacket, next_hop: Node, delay: float = 0):
+    def send(self, packet: ClassicPacket, next_hop: Node):
         """Send a classic packet to the next_hop
 
         Args:
             packet (ClassicPacket): the packet
             next_hop (Node): the next hop Node
         Raises:
-            qns.entity.cchannel.cchannel.NextHopNotConnectionException:
-                the next_hop is not connected to this channel
+            NextHopNotConnectionException: the next_hop is not connected to this channel
 
         """
         drop, recv_time = self._send(
             packet_repr=f"packet {packet}",
             packet_len=len(packet),
             next_hop=next_hop,
-            delay=delay,
         )
 
         if drop:
             return
 
-        send_event = RecvClassicPacket(t=recv_time, name=None, by=self, cchannel=self, packet=packet, dest=next_hop)
+        send_event = RecvClassicPacket(t=recv_time, by=self, cchannel=self, packet=packet, dest=next_hop)
         self.simulator.add_event(send_event)
 
     def __repr__(self) -> str:

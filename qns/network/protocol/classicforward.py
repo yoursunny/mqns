@@ -54,5 +54,5 @@ class ClassicPacketForwardApp(Application):
         except IndexError:
             # not found the classic channel, drop the packet
             return True
-        cchannel.send(packet=packet, next_hop=next_hop)
+        cchannel.send(packet, next_hop=next_hop)
         return True

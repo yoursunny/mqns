@@ -74,7 +74,7 @@ class BaseChannel(Entity, Generic[NodeT]):
         super().install(simulator)
         self._next_send_time = simulator.ts
 
-    def _send(self, *, packet_repr: str, packet_len: int, next_hop: NodeT, delay: float) -> tuple[bool, Time]:
+    def _send(self, *, packet_repr: str, packet_len: int, next_hop: NodeT) -> tuple[bool, Time]:
         simulator = self.simulator
 
         if next_hop not in self.node_list:
@@ -98,7 +98,7 @@ class BaseChannel(Entity, Generic[NodeT]):
             return True, Time()
 
         # add delay
-        recv_time = send_time + (self.delay_model.calculate() + delay)
+        recv_time = send_time + self.delay_model.calculate()
         return False, recv_time
 
     def find_peer(self, own: NodeT) -> NodeT:
