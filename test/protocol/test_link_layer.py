@@ -1,6 +1,7 @@
 import pytest
 
-from qns.entity import Application, Node, QNode
+from qns.entity.node import Application, Node, QNode
+from qns.entity.qchannel import LinkType
 from qns.network.network import ClassicTopology, QuantumNetwork
 from qns.network.protocol.event import (
     ManageActiveChannels,
@@ -12,6 +13,7 @@ from qns.network.protocol.event import (
 from qns.network.protocol.link_layer import LinkLayer
 from qns.network.topology import LinearTopology
 from qns.simulator import Simulator
+from qns.utils import log
 
 
 class NetworkLayer(Application):
@@ -45,7 +47,7 @@ def test_link_layer_basic():
     topo = LinearTopology(
         nodes_number=2,
         nodes_apps=[NetworkLayer(), LinkLayer()],
-        qchannel_args={"delay": 0.1},
+        qchannel_args={"delay": 0.1, "link_architecture": LinkType.DIM_BK_SEQ},
         cchannel_args={"delay": 0.2},
         memory_args={"decoherence_rate": 1 / 4.1},
     )
@@ -56,6 +58,7 @@ def test_link_layer_basic():
     net.get_qchannel("l0,1").assign_memory_qubits(capacity=1)
 
     simulator = Simulator(0.0, 10.0)
+    log.install(simulator)
     net.install(simulator)
 
     a1 = n1.get_app(NetworkLayer)
@@ -88,12 +91,12 @@ def test_link_layer_basic():
         # t=4.2, n2 releases qubit and sends RESERVE_QUBIT_OK
         # t=4.4, n1 receives RESERVE_QUBIT_OK and sends qubit
         # t=4.5, n2 receives qubit, entanglement established
-        # t=4.0 is assumed time of entanglement creation, 4x qchannel.delay prior to sending qubit
+        # t=4.1 is assumed time of entanglement creation, 3x qchannel.delay prior to sending qubit
         assert app.entangle[1] == pytest.approx(4.5, abs=1e-3)
-        # t=8.1, qubits decohered 4.1 seconds since entanglement creation
-        assert app.decohere[0] == pytest.approx(8.1, abs=1e-3)
-        # t=8.6, entanglement established after 0.5 seconds
-        assert app.entangle[2] == pytest.approx(8.6, abs=1e-3)
+        # t=8.2, qubits decohered 4.1 seconds since entanglement creation
+        assert app.decohere[0] == pytest.approx(8.2, abs=1e-3)
+        # t=8.7, entanglement established after 0.5 seconds
+        assert app.entangle[2] == pytest.approx(8.7, abs=1e-3)
 
 
 def test_link_layer_skip_ahead():
