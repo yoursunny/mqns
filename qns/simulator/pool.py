@@ -16,7 +16,6 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import heapq
-from typing import cast
 
 from qns.simulator.event import Event
 from qns.simulator.ts import Time
@@ -25,21 +24,14 @@ from qns.simulator.ts import Time
 class DefaultEventPool:
     """The default implement of the event pool"""
 
-    def __init__(self, ts: Time, te: Time):
-        """Args:
-        ts: the start time
-        te: the end time
-
-        """
+    def __init__(self, ts: Time, te: Time | None):
         self.ts = ts
+        """Event list start time."""
         self.te = te
+        """Event list end time. None means infinity."""
         self.tc = ts
+        """Current time."""
         self.event_list: list[Event] = []
-
-    @property
-    def current_time(self) -> Time:
-        """Get the current time"""
-        return self.tc
 
     def add_event(self, event: Event) -> bool:
         """Insert an event into the pool
@@ -50,7 +42,7 @@ class DefaultEventPool:
             if the event is inserted successfully
 
         """
-        if event.t < self.tc or event.t > self.te:
+        if event.t < self.tc or (self.te is not None and event.t > self.te):
             return False
 
         heapq.heappush(self.event_list, event)
@@ -65,8 +57,9 @@ class DefaultEventPool:
         """
         try:
             event = heapq.heappop(self.event_list)
-            self.tc = cast(Time, event.t)
+            self.tc = event.t
+            return event
         except IndexError:
-            event = None
-            self.tc = self.te
-        return event
+            if self.te is not None:
+                self.tc = self.te
+            return None

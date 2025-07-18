@@ -1,39 +1,89 @@
-import logging
+import math
+from collections import defaultdict
+from typing import cast
 
-from qns.simulator.event import Event
-from qns.simulator.simulator import Simulator
-from qns.utils import log
-
-log.logger.setLevel(logging.DEBUG)
+from qns.simulator import Event, Simulator, Time
 
 
-class TimerEvent(Event):
+class SimpleEvent(Event):
+    invoke_count = defaultdict[str, int](lambda: 0)
+
     def invoke(self) -> None:
-        log.info(f"{self.name}: it is {self.t} seconds")
-
-    def __repr__(self) -> str:
-        return f"<{self.name}-{self.t}>"
+        self.invoke_count[cast(str, self.name)] += 1
 
 
-def test_simulator_with_log():
-    s = Simulator(0, 15, 1000)
-    assert s.total_events == 0
+class StopEvent(SimpleEvent):
+    def __init__(self, t: Time, name: str, simulator: Simulator):
+        super().__init__(t, name)
+        self.simulator = simulator
+
+    def invoke(self) -> None:
+        super().invoke()
+        self.simulator.stop()
+
+
+def test_simulator_run():
+    SimpleEvent.invoke_count.clear()
+    simulator = Simulator(0, 15, 1000)
+    assert simulator.total_events == 0
+
+    e = SimpleEvent(simulator.time(sec=1), name="t0")
+    simulator.add_event(e)
+    e.cancel()
+    # 1 instance of t0 scheduled at 1.0 but will not be invoked
+    assert simulator.total_events == 1
 
     t = 0
     while t <= 12:
-        e = TimerEvent(t=s.time(sec=t), name="t1")
-        s.add_event(e)
+        e = SimpleEvent(simulator.time(sec=t), name="t1")
+        simulator.add_event(e)
         t += 0.5
     # 25 instances of t1 scheduled at 0.0, 0.5, 1.0, .., 11.5, 12.0
-    assert s.total_events == 25
+    assert simulator.total_events == 1 + 25
 
     t = 5
     while t <= 20:
-        e = TimerEvent(t=s.time(sec=t), name="t2")
-        s.add_event(e)
+        e = SimpleEvent(simulator.time(sec=t), name="t2")
+        simulator.add_event(e)
         t += 1
     # 11 instances of t2 scheduled at 5, 6, .., 14, 15
-    assert s.total_events == 25 + 11
+    assert simulator.total_events == 1 + 25 + 11
 
-    log.install(s)
-    s.run()
+    simulator.run()
+    assert simulator.tc == simulator.te
+
+    assert SimpleEvent.invoke_count["t0"] == 0
+    assert SimpleEvent.invoke_count["t1"] == 25
+    assert SimpleEvent.invoke_count["t2"] == 11
+
+
+def do_test_stop(*, te: float):
+    SimpleEvent.invoke_count.clear()
+    simulator = Simulator(0, te, 1000)
+
+    e = StopEvent(simulator.time(sec=9.5), name="s0", simulator=simulator)
+    simulator.add_event(e)
+    # 1 instance of s0 scheduled at 9.5
+    assert simulator.total_events == 1
+
+    t = 1
+    while t <= 60:
+        e = SimpleEvent(simulator.time(sec=t), name="t1")
+        simulator.add_event(e)
+        t += 1
+    # up to 60 instances of t2 scheduled at 1, 2, .., MIN(60, te_sec)
+    assert simulator.total_events == 1 + min(60, te)
+
+    simulator.run()
+    assert simulator.tc.sec < te
+
+    assert SimpleEvent.invoke_count["t1"] == 9
+    assert SimpleEvent.invoke_count["s0"] == 1
+
+
+def test_simulator_run_stop():
+    do_test_stop(te=15)
+
+
+def test_simulator_continuous_stop():
+    do_test_stop(te=math.inf)
