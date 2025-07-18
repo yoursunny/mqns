@@ -71,7 +71,7 @@ class Simulator:
     @property
     def tc(self) -> Time:
         """Current simulator time."""
-        return self.event_pool.current_time
+        return self.event_pool.tc
 
     def time(self, time_slot: int | None = None, sec: int | float | None = None) -> Time:
         """Produce a ``Time`` using either ``time_slot`` or ``sec``

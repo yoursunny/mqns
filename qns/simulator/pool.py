@@ -25,20 +25,13 @@ class DefaultEventPool:
     """The default implement of the event pool"""
 
     def __init__(self, ts: Time, te: Time | None):
-        """Args:
-        ts: the start time
-        te: the end time
-
-        """
         self.ts = ts
+        """Event list start time."""
         self.te = te
+        """Event list end time. None means infinity."""
         self.tc = ts
+        """Current time."""
         self.event_list: list[Event] = []
-
-    @property
-    def current_time(self) -> Time:
-        """Get the current time"""
-        return self.tc
 
     def add_event(self, event: Event) -> bool:
         """Insert an event into the pool
