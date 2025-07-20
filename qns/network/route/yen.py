@@ -16,13 +16,9 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from typing import Callable
-
 import networkx as nx
 
-from qns.network.route.route import ChannelT, NetworkRouteError, NodeT, RouteImpl
-
-MetricFunc = Callable[[ChannelT], float]
+from qns.network.route.route import ChannelT, MetricFunc, NetworkRouteError, NodeT, RouteImpl
 
 
 class YenRouteAlgorithm(RouteImpl[NodeT, ChannelT]):

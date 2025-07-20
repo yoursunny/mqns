@@ -15,14 +15,18 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from collections.abc import Callable
 from typing import Generic, TypeVar
 
 from qns.entity.cchannel import ClassicChannel
-from qns.entity.node import Node, QNode
+from qns.entity.node import NodeT
 from qns.entity.qchannel import QuantumChannel
 
-NodeT = TypeVar("NodeT", bound=Node | QNode)
 ChannelT = TypeVar("ChannelT", bound=ClassicChannel | QuantumChannel)
+"""Either ClassicChannel or QuantumChannel used in routing algorithms."""
+
+MetricFunc = Callable[[ChannelT], float]
+"""Callback function that returns the edge cost of a channel."""
 
 
 class NetworkRouteError(Exception):
