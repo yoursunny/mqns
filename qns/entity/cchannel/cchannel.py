@@ -49,12 +49,7 @@ class ClassicPacket:
         dest (Node): the destination of this message
 
         """
-        self.is_json: bool = False
-        # if not isinstance(msg, (str, bytes)):
-        #    self.msg = json.dumps(msg)
-        #    self.is_json = True
-        # else:
-        self.msg = msg
+        self.is_json, self.msg = (False, msg) if isinstance(msg, (str, bytes)) else (True, json.dumps(msg))
         self.src = src
         self.dest = dest
 
@@ -70,16 +65,14 @@ class ClassicPacket:
         assert isinstance(self.msg, bytes)
         return self.msg
 
-    def get(self):
+    def get(self) -> Any:
         """Get the message from packet
 
         Return:
             (Union[str, bytes, Any])
 
         """
-        if self.is_json:
-            return json.loads(self.msg)
-        return self.msg
+        return json.loads(self.msg) if self.is_json else self.msg
 
     def __len__(self) -> int:
         return len(self.msg)
@@ -95,15 +88,14 @@ class ClassicChannel(BaseChannel[Node]):
     def __init__(self, name: str, **kwargs: Unpack[ClassicChannelInitKwargs]):
         super().__init__(name, **kwargs)
 
-    def send(self, packet: ClassicPacket, next_hop: Node, delay: float = 0):
+    def send(self, packet: ClassicPacket, next_hop: Node):
         """Send a classic packet to the next_hop
 
         Args:
             packet (ClassicPacket): the packet
             next_hop (Node): the next hop Node
         Raises:
-            qns.entity.cchannel.cchannel.NextHopNotConnectionException:
-                the next_hop is not connected to this channel
+            NextHopNotConnectionException: the next_hop is not connected to this channel
 
         """
         drop, recv_time = self._send(
@@ -115,7 +107,7 @@ class ClassicChannel(BaseChannel[Node]):
         if drop:
             return
 
-        send_event = RecvClassicPacket(t=recv_time, name=None, by=self, cchannel=self, packet=packet, dest=next_hop)
+        send_event = RecvClassicPacket(t=recv_time, by=self, cchannel=self, packet=packet, dest=next_hop)
         self.simulator.add_event(send_event)
 
     def __repr__(self) -> str:

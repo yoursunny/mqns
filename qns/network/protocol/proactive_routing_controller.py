@@ -25,7 +25,7 @@ from qns.simulator import Simulator
 from qns.utils import log
 
 if TYPE_CHECKING:
-    from qns.network.protocol.proactive_forwarder import InstallPathInstructions, InstallPathMsg
+    from qns.network.protocol.proactive_forwarder import InstallPathInstructions, InstallPathMsg, MultiplexingVector
 
 
 class QubitAllocationType(Enum):
@@ -334,7 +334,7 @@ class ProactiveRoutingControllerApp(Application):
         req_id: int,
         mux: str,
         swap: list[int],
-        m_v: list[(int, int)] | None = None,
+        m_v: "MultiplexingVector|None" = None,
         purif: dict[str, int] = {},
     ):
         """
