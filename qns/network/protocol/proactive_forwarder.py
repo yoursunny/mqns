@@ -24,6 +24,7 @@ from qns.entity.memory import QuantumMemory
 from qns.entity.memory.memory_qubit import MemoryQubit, PathDirection, QubitState
 from qns.entity.node import Application, Node, QNode
 from qns.entity.qchannel import QuantumChannel
+from qns.models.core import QuantumModel
 from qns.models.epr import WernerStateEntanglement
 from qns.network import QuantumNetwork, SignalTypeEnum, TimingModeEnum
 from qns.network.protocol.event import ManageActiveChannels, QubitEntangledEvent, QubitReleasedEvent, TypeEnum
@@ -37,11 +38,15 @@ except ImportError:
     from typing_extensions import NotRequired
 
 
+MultiplexingVector = list[tuple[int, int]]
+
+
 class InstallPathInstructions(TypedDict):
+    req_id: int
     route: list[str]
     swap: list[int]
     mux: Literal["B", "S"]
-    m_v: NotRequired[list[int]]
+    m_v: NotRequired[MultiplexingVector]
     purif: dict[str, int]
 
 
@@ -252,7 +257,7 @@ class ProactiveForwarder(Application):
         path_id: int,
         route: list[str],
         route_offset: int,  # to locate which side of the route we want (left/right)
-        m_v: list[int] | None,
+        m_v: MultiplexingVector | None,
         m_v_offset: int,  # to locate which qchannel we want in m_v
         ch_side: int,  # \in {0,1} to specify which side of the qchannel we want in m_v (i.e., inverse of the offset direction)
         path_direction: PathDirection,  # to void loops in non-isolated multipaths (see Memory)
@@ -323,6 +328,8 @@ class ProactiveForwarder(Application):
             log.debug(f"{self.own}: Qubit not allocated to any path.")
             if qubit.qchannel is not None:  # Expected in all our cases so far
                 if qubit.qchannel.name in self.qchannel_paths_map:
+                    epr = None
+
                     # available for every elementary EPR:
                     possible_path_ids = self.qchannel_paths_map[qubit.qchannel.name]
 
@@ -333,9 +340,10 @@ class ProactiveForwarder(Application):
                         if not res:
                             raise Exception(f"Cannot retrieve qubit {event.qubit}")
                         _, epr = res
+                        assert isinstance(epr, WernerStateEntanglement)
                         log.debug(f"{self.own}: qubit {qubit}, set possible path IDs = {possible_path_ids}")
                         epr.tmp_path_ids = list(possible_path_ids)  # to coordinate decisions along the path
-                        if self._can_enter_purif(partner=event.neighbor.name):
+                        if self._can_enter_purif(None, event.neighbor.name):
                             qchannel: QuantumChannel = self.own.get_qchannel(event.neighbor)
                             if qchannel:
                                 qubit.fsm.to_purif()
@@ -352,12 +360,15 @@ class ProactiveForwarder(Application):
                     res = self.memory.get(address=qubit.addr)
                     if res:
                         _, epr = res
+                        assert isinstance(epr, WernerStateEntanglement)
                         # TODO: watch if this creates any misbehavior!
                         if epr.tmp_path_ids is None:  # whatever neighbor is first
                             random_path_id = random.choice(possible_path_ids)
                             log.debug(f"{self.own}: Dynamically (random) affect EPR {epr.name} to path {random_path_id}")
                             epr.tmp_path_ids = [random_path_id]
 
+                    assert isinstance(epr, WernerStateEntanglement)
+                    assert epr.tmp_path_ids is not None
                     fib_entry = self.fib.get_entry(epr.tmp_path_ids[0])
                     if fib_entry:
                         if self._can_enter_purif(fib_entry, event.neighbor.name):
@@ -374,7 +385,7 @@ class ProactiveForwarder(Application):
             else:
                 raise Exception(f"{self.own}: No qubit-qchannel assignment. Not supported.")
 
-    def _can_enter_purif(self, fib_entry: FIBEntry | None = None, partner: str | None = None) -> bool:
+    def _can_enter_purif(self, fib_entry: FIBEntry | None, partner: str) -> bool:
         """Evaluate if a qubit is eligible for purification.
         Compares the local node's swap rank to its partner's in the given path.
         A qubit is eligible for purification if the partner's swap rank is greater
@@ -396,6 +407,7 @@ class ProactiveForwarder(Application):
         if fib_entry is None:  # limitted support for statistical mux
             if self.own.name.startswith("R"):  # any entangled qubit at intermediate node is always eligible
                 return True
+            assert partner is not None
             # entangled qubit at end-node is eligible only if entangled with another end-node
             if (
                 self.own.name.startswith("S")
@@ -434,6 +446,7 @@ class ProactiveForwarder(Application):
             self.qubit_is_eligible(qubit, fib_entry)
             return
 
+        assert partner is not None
         partner_idx, partner_rank = find_index_and_swapping_rank(fib_entry, partner.name)
         own_idx, own_rank = find_index_and_swapping_rank(fib_entry, self.own.name)
 
@@ -686,6 +699,7 @@ class ProactiveForwarder(Application):
         # this is an intermediate node
         # look for another eligible qubit
         res = None
+        epr: QuantumModel | None = None
         if fib_entry is not None:
             if qubit.path_id is not None:  # static qubit-path allocation is provided
                 possible_path_ids = [fib_entry["path_id"]]
@@ -706,6 +720,8 @@ class ProactiveForwarder(Application):
             if not res:
                 raise Exception(f"Cannot retrieve EPR for qubit {qubit}")
             _, epr = res
+            assert isinstance(epr, WernerStateEntanglement)
+            assert epr.tmp_path_ids is not None
             # use path_ids to look for acceptable qchannels for swapping, excluding the qubit's qchannel
             target_set = set(epr.tmp_path_ids)
             matched_channels = {
@@ -725,6 +741,10 @@ class ProactiveForwarder(Application):
                 if not res2:
                     raise Exception(f"Cannot retrieve EPR for other qubit {qubit}")
                 _, epr2 = res2
+                assert isinstance(epr, WernerStateEntanglement)
+                assert epr.tmp_path_ids is not None
+                assert isinstance(epr2, WernerStateEntanglement)
+                assert epr2.tmp_path_ids is not None
                 path_ids = select_common_element(epr.tmp_path_ids, epr2.tmp_path_ids)
                 if not path_ids:
                     raise Exception(f"Cannot select path ID from {epr.tmp_path_ids} and {epr2.tmp_path_ids}")
@@ -759,6 +779,8 @@ class ProactiveForwarder(Application):
             #     else:
             #         raise Exception("Cannot find EPR endpoints in installed paths")
 
+            assert fib_entry is not None
+            assert other_fib_entry is not None
             self.do_swapping(qubit, res, fib_entry, other_fib_entry, path_ids)
 
     def consume_and_release(self, qubit: MemoryQubit, *, e2e=True):
@@ -876,11 +898,11 @@ class ProactiveForwarder(Application):
         assert prev_partner is not None
         assert prev_qubit is not None
         assert prev_epr is not None
-        assert prev_epr.name is not None
+        assert prev_fib_entry is not None
         assert next_partner is not None
         assert next_qubit is not None
         assert next_epr is not None
-        assert next_epr.name is not None
+        assert next_fib_entry is not None
 
         prev_own_idx, prev_own_rank = find_index_and_swapping_rank(prev_fib_entry, self.own.name)
         next_own_idx, next_own_rank = find_index_and_swapping_rank(next_fib_entry, self.own.name)
@@ -1095,6 +1117,7 @@ class ProactiveForwarder(Application):
                 assert new_epr.tmp_path_ids == other_epr.tmp_path_ids
                 merged_epr.tmp_path_ids = list(new_epr.tmp_path_ids)
             else:  # statistical mux
+                assert other_epr.tmp_path_ids is not None
                 path_ids = select_common_element(new_epr.tmp_path_ids, other_epr.tmp_path_ids)
                 if not path_ids:
                     raise Exception(f"Cannot select path ID from {new_epr.tmp_path_ids} and {other_epr.tmp_path_ids}")
@@ -1157,11 +1180,11 @@ class ProactiveForwarder(Application):
             # internal phase -> time to handle all entangled qubits
             log.debug(f"{self.own}: there are {len(self.waiting_qubits)} etg qubits to process")
             for event in self.waiting_qubits:
-                self.qubit_is_entangled(self.own, event)
+                self.qubit_is_entangled(event)
             self.waiting_qubits = []
 
 
-def select_common_element(list1: list[int], list2: list[int]) -> [int]:
+def select_common_element(list1: list[int], list2: list[int]) -> list[int] | None:
     set1 = set(list1)
     set2 = set(list2)
 
