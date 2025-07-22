@@ -16,6 +16,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import uuid
+from collections import deque
 from typing import Literal, TypedDict
 
 import numpy as np
@@ -23,7 +24,7 @@ import numpy as np
 from qns.entity.cchannel import ClassicChannel, ClassicPacket, RecvClassicPacket
 from qns.entity.memory import MemoryQubit, QuantumMemory
 from qns.entity.node import Application, Node, QNode
-from qns.entity.qchannel import QuantumChannel, RecvQubitPacket
+from qns.entity.qchannel import LinkType, QuantumChannel, RecvQubitPacket
 from qns.models.epr import WernerStateEntanglement
 from qns.network import SignalTypeEnum, TimingModeEnum
 from qns.network.protocol.event import (
@@ -90,12 +91,12 @@ class LinkLayer(Application):
         self.memory: QuantumMemory
         """quantum memory of the node"""
 
-        self.active_channels: dict[str, tuple[QuantumChannel, QNode]] = {}
+        self.active_channels: dict[str, tuple[QuantumChannel, QNode, list[int | None]]] = {}
         """stores the qchannels activated by the forwarding function at path installation"""
 
         self.pending_init_reservation: dict[str, tuple[QuantumChannel, QNode, int]] = {}
         """stores reservation requests sent by this node"""
-        self.fifo_reservation_req: list[tuple[str, int | None, ClassicChannel, QNode]] = []
+        self.fifo_reservation_req = deque[tuple[str, int | None, ClassicChannel, QNode, QuantumChannel]]()
         """stores received reservations requests awaiting for qubits"""
 
         self.etg_count = 0
@@ -103,13 +104,14 @@ class LinkLayer(Application):
         self.decoh_count = 0
         """counts number of decohered qubits never swapped"""
 
+        self.tau_0 = 0  # time to prepare qubit + emit/absorbe photon
+
         # event handlers
         self.add_handler(self.receive_qubit, RecvQubitPacket)
         self.add_handler(self.handle_manage_active_channels, ManageActiveChannels)
         self.add_handler(self.handle_decoh_rel, [QubitDecoheredEvent, QubitReleasedEvent])
         self.add_handler(self.RecvClassicPacketHandler, RecvClassicPacket)
 
-    # called at initialization of the node
     def install(self, node: Node, simulator: Simulator):
         super().install(node, simulator)
         self.own = self.get_node(node_type=QNode)
@@ -149,21 +151,15 @@ class LinkLayer(Application):
             if qb.path_id != path_id:
                 continue
             if qb.active is None:
-                if data is None:
-                    simulator.add_event(
-                        func_to_event(
-                            simulator.tc + i * 1 / self.attempt_rate,
-                            self.start_reservation,
-                            by=self,
-                            next_hop=next_hop,
-                            qchannel=qchannel,
-                            qubit=qb,
-                        )
-                    )
-                else:
+                if data is not None:
                     raise Exception(f"{self.own}: qubit has data {data}")
+                simulator.add_event(
+                    func_to_event(
+                        simulator.tc + i * 1 / self.attempt_rate, self.start_reservation, next_hop, qchannel, qb, by=self
+                    )
+                )
 
-    def start_reservation(self, next_hop: Node, qchannel: QuantumChannel, qubit: MemoryQubit):
+    def start_reservation(self, next_hop: QNode, qchannel: QuantumChannel, qubit: MemoryQubit):
         """This method starts the exchange with neighbor node for reserving a qubit for entanglement
         generation over a specified quantum channel. It performs the following steps:
 
@@ -228,7 +224,9 @@ class LinkLayer(Application):
         if qchannel.length >= (2 * self.light_speed_kms * t_mem):
             raise Exception("Qchannel too long for entanglement attempt.")
 
-        succ_attempt_time, attempts = self._skip_ahead_entanglement(qchannel.length)
+        log.debug(f"{self.own}: link type = {qchannel.link_architecture}")
+
+        succ_attempt_time, attempts = self._skip_ahead_entanglement(qchannel)
         simulator.add_event(
             func_to_event(
                 simulator.tc + succ_attempt_time,
@@ -261,14 +259,17 @@ class LinkLayer(Application):
 
         """
         epr = WernerStateEntanglement(fidelity=self.init_fidelity, name=uuid.uuid4().hex)
-        # qubit init at 2tau and we are at 6tau
-        epr.creation_time = self.simulator.tc - (4 * qchannel.delay_model.calculate())
         epr.src = self.own
         epr.dst = next_hop
         epr.attempts = attempts
         epr.key = key
 
+        d_c, d_n = self._calculate_protocol_delays(qchannel)
+
+        epr.creation_time = self.simulator.tc - d_c
+
         local_qubit = self.memory.write(qm=epr, address=address)
+        assert local_qubit is not None
         log.debug(f"{self.own}: send half-EPR {epr.name} to {next_hop} | key {epr.key} | path {local_qubit.path_id}")
 
         if not local_qubit:
@@ -278,8 +279,8 @@ class LinkLayer(Application):
         qchannel.send(epr, next_hop)  # no drop
         self.etg_count += 1
         self.notify_entangled_qubit(
-            neighbor=next_hop, qubit=local_qubit, delay=qchannel.delay_model.calculate() + 1e-6
-        )  # wait 1tau to notify (+ a small delay to ensure events order)
+            neighbor=next_hop, qubit=local_qubit, delay=d_n + 1e-6
+        )  # d_n to align with protocol + a small delay to ensure events order
 
     def receive_qubit(self, event: RecvQubitPacket):
         """This method is called when a quantum channel delivers an entangled qubit (half of an EPR pair)
@@ -311,7 +312,6 @@ class LinkLayer(Application):
         if epr.decoherence_time <= self.simulator.tc:
             raise Exception(f"{self.own}: Decoherence time already passed | {epr}")
 
-        # qubit init at 2tau and we are at 7*tau
         local_qubit = self.memory.write(qm=epr, path_id=epr.path_id, key=epr.key)
 
         if local_qubit is None:
@@ -339,7 +339,7 @@ class LinkLayer(Application):
             else:  # happens when installing multiple paths
                 qchannel, neighbor, path_ids = self.active_channels[qchannel.name]
                 if event.path_id not in path_ids:
-                    upd_path_ids = path_ids.append(event.path_id)
+                    upd_path_ids = path_ids + [event.path_id]
                     self.active_channels[qchannel.name] = (qchannel, neighbor, upd_path_ids)
                     log.debug(f"{self.own}: add path {event.path_id} to qchannel {qchannel.name}")
                     if self.own.timing_mode == TimingModeEnum.ASYNC:
@@ -362,7 +362,7 @@ class LinkLayer(Application):
             # this node is the EPR initiator of the qchannel associated with the memory of this qubit
             qchannel, next_hop, path_ids = self.active_channels[qubit.qchannel.name]
             if self.own.timing_mode == TimingModeEnum.ASYNC:
-                self.start_reservation(next_hop=next_hop, qchannel=qchannel, qubit=qubit)
+                self.start_reservation(next_hop, qchannel, qubit)
             elif is_decoh and self.own.timing_mode == TimingModeEnum.SYNC:
                 raise Exception(f"{self.own}: UNEXPECTED -> (t_ext + t_int) too short")
         else:
@@ -446,35 +446,118 @@ class LinkLayer(Application):
         avail_qubits[0].active = key
         msg: ReserveMsg = {"cmd": "RESERVE_QUBIT_OK", "path_id": path_id, "key": key}
         cchannel.send(ClassicPacket(msg, src=self.own, dest=from_node), next_hop=from_node)
-        self.fifo_reservation_req.pop(0)
+        self.fifo_reservation_req.popleft()
 
     def handle_sync_signal(self, signal_type: SignalTypeEnum):
         """Handles timing synchronization signals for SYNC mode (not very reliable at this time)."""
         if signal_type == SignalTypeEnum.EXTERNAL:
             # clear all qubits and retry all active_channels until INTERNAL signal
             self.memory.clear()
-            for channel_name, (qchannel, next_hop) in self.active_channels.items():
-                self.handle_active_channel(qchannel, next_hop)
+            for _, (qchannel, next_hop, path_ids) in self.active_channels.items():
+                for path_id in path_ids:
+                    self.handle_active_channel(qchannel, next_hop, path_id)
 
-    def _loss_based_success_prob(self, link_length_km: float) -> float:
-        """Compute success probability from fiber loss model for heralded entanglement."""
+    ###### For entanglement link architectures ######
+    def _skip_ahead_entanglement(self, qchannel: QuantumChannel) -> tuple[float, int]:
+        """
+        Calculate the time until the successful attempt.
+        Then, the last tau of the the successful attempt is simulated by sending the EPR
+        from primary node to secondary node.
+        """
+        reset_time = 1 / self.frequency  # minimum time between two consecutive photon excitations/absorptions
+        tau_l = qchannel.length / self.light_speed_kms  # time to send photon/message one way
+
+        match qchannel.link_architecture:
+            case LinkType.DIM_BK_SEQ:
+                p = self._success_prob_dim_bk(qchannel.length)
+                k = np.random.geometric(p)  # k-th attempt will succeed
+
+                tau = tau_l + self.tau_0
+                attempt_duration = max(5.5 * tau, reset_time)  # includes 1*tau_l between attempts (in each round)
+                # substract 2*tau_l consumed for reservation (just to alignt with sequence)
+                t_success = ((k - 1) * attempt_duration) + (4 * tau)
+                return t_success, k
+            case LinkType.DIM_BK:
+                p = self._success_prob_dim_bk(qchannel.length)
+                k = np.random.geometric(p)  # k-th attempt will succeed
+
+                tau = 2 * (tau_l + self.tau_0)
+                attempt_duration = max(tau, reset_time)  # simple always-two consecutive rounds
+
+                t_success = (k * attempt_duration) - tau_l  # leave 1*tau_l to be simulated
+                return t_success, k
+            case LinkType.SR:
+                p = self._success_prob_sr(qchannel.length)
+                k = np.random.geometric(p)  # k-th attempt will succeed
+
+                tau = 2 * tau_l + self.tau_0
+                attempt_duration = max(tau, reset_time)
+
+                t_success = (k * attempt_duration) - tau_l  # leave 1*tau_l to be simulated
+                return t_success, k
+            case LinkType.SIM:
+                p = self._success_prob_sim(qchannel.length)
+                k = np.random.geometric(p)  # k-th attempt will succeed
+
+                tau = tau_l + self.tau_0
+                attempt_duration = max(tau, reset_time)  # EPPS emits at high-enough frequency
+
+                t_success = (k * attempt_duration) - tau_l  # leave 1*tau_l to be simulated
+                return t_success, k
+            case _:
+                return 0, 0
+
+    def _success_prob_dim_bk(self, link_length_km: float, transduction: bool = False) -> float:
+        """Compute success probability of a single attempt in
+        LinkType.DIM_BK and LinkType.DIM_BK_SEQ link types.
+        """
         p_bsa = 0.5
-        p_fiber = 10 ** (-self.alpha_db_per_km * link_length_km / 10)
-        p = p_bsa * (self.eta_s**2) * (self.eta_d**2) * p_fiber
+        p_l_sb = 10 ** (-self.alpha_db_per_km * link_length_km / 2 / 10)
+        eta_sb = self.eta_s * self.eta_d * p_l_sb
+        p = p_bsa * eta_sb**2
         return p
 
-    def _skip_ahead_entanglement(self, link_length_km: float) -> tuple[float, int]:
-        reset_time = 1 / self.frequency
-        tau = link_length_km / self.light_speed_kms
+    def _success_prob_sr(self, link_length_km: float, transduction: bool = False) -> float:
+        """Compute success probability of a single attempt in
+        LinkType.SR link type.
+        """
+        p_l_sr = 10 ** (-self.alpha_db_per_km * link_length_km / 10)
+        eta_sr = self.eta_s * self.eta_d * p_l_sr
+        p = eta_sr
+        return p
 
-        # probability assumes that each attempt has always 2-rounds
-        p = self._loss_based_success_prob(link_length_km)
-        k = np.random.geometric(p)  # k-th attempt will succeed
+    def _success_prob_sim(self, link_length_km: float, transduction: bool = False) -> float:
+        """Compute success probability of a single attempt in
+        LinkType.SIM link type.
+        """
+        p_l_sb = 10 ** (-self.alpha_db_per_km * link_length_km / 2 / 10)
+        eta_rr = (self.eta_d * p_l_sb) ** 2
+        p = eta_rr
+        return p
 
-        attempt_duration = max(5.5 * tau, reset_time)  # includes 1*tau between attempts (not rounds)
+    def _calculate_protocol_delays(self, qchannel: QuantumChannel) -> tuple[float, float]:
+        """
+        Calculate the (negative) delta_c to adjust EPR creation time (i.e., qubit init).
+        Calculate the delta_n to wait before primary node notifies itself with EPR success creation.
+        """
+        tau_l = qchannel.delay_model.calculate()  # time to send photon/message one way
 
-        # calculate time right before the successful attempt
-        # the last 1-tau of the successful attempt will be executed
-        # substract 2tau consumed for reservation (just to alignt with sequence)
-        t_success = ((k - 1) * attempt_duration) + (4 * tau)
-        return t_success, k
+        match qchannel.link_architecture:
+            case LinkType.DIM_BK_SEQ:
+                delta_c = 4 * tau_l  # qubit init at 2tau and we are at 6tau
+                delta_n = tau_l
+                return delta_c, delta_n
+            case LinkType.DIM_BK:
+                delta_c = self.tau_0 + tau_l
+                delta_n = tau_l
+                return delta_c, delta_n
+            case LinkType.SR:
+                delta_c = tau_l
+                delta_n = 0
+                return delta_c, delta_n
+            case LinkType.SIM:
+                delta_c = 0
+                delta_n = tau_l
+                return delta_c, delta_n
+            case _:
+                return 0, 0

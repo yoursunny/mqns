@@ -132,7 +132,14 @@ class ProactiveForwarder(Application):
     routing is done at the controller.
     """
 
-    def __init__(self, *, ps: float = 1.0, isolate_paths: bool = True, statistical_mux: bool = False):
+    def __init__(
+        self,
+        *,
+        ps: float = 1.0,
+        isolate_paths: bool = True,
+        statistical_mux: bool = False,
+        path_select_fn: Callable[[list[FIBEntry]], int] | None = None,
+    ):
         """This constructor sets up a node's entanglement forwarding logic in a quantum network.
         It configures the swapping success probability and preparing internal
         state for managing memory, routing instructions (via FIB), synchronization,
@@ -145,6 +152,7 @@ class ProactiveForwarder(Application):
             but serving the same S-D request.
             statistical_mux (bool): When qubit-path allocation is disabled, use statistical multiplexing
             or the default dynamic random EPR affectation.
+            path_select_fn: custom path selection function for dynamic EPR allocation
         """
         super().__init__()
 
@@ -170,6 +178,9 @@ class ProactiveForwarder(Application):
 
         self.qchannel_paths_map = defaultdict[str, list[int]](lambda: [])
         """stores path-qchannel relationship (for statistical mux)"""
+
+        self.path_select_fn = path_select_fn or random_path_selector
+        """stores path selection function for dynamic EPR allocation"""
 
         # event handlers
         self.add_handler(self.RecvClassicPacketHandler, RecvClassicPacket)
@@ -241,9 +252,7 @@ class ProactiveForwarder(Application):
         log.debug(f"{self.own.name}: {msg}")
 
         path_id: int = msg["path_id"]
-        fib_entry = self.fib.get_entry(path_id)
-        if not fib_entry:
-            raise IndexError(f"{self.own}: FIB entry not found for path {path_id}")
+        fib_entry = self.fib.get_entry(path_id, must=True)
 
         assert packet.dest is not None
         if packet.dest.name != self.own.name:  # node is not destination: forward message
@@ -376,9 +385,7 @@ class ProactiveForwarder(Application):
         qubit = event.qubit
         assert qubit.fsm.state == QubitState.ENTANGLED
         if qubit.path_id is not None:  # for buffer-space mux
-            fib_entry = self.fib.get_entry(qubit.path_id)
-            if not fib_entry:
-                raise Exception(f"No FIB entry found for path_id {qubit.path_id}")
+            fib_entry = self.fib.get_entry(qubit.path_id, must=True)
             qubit.purif_rounds = 0
             qubit.fsm.to_purif()
             self.qubit_is_purif(qubit, fib_entry, event.neighbor)
@@ -407,19 +414,16 @@ class ProactiveForwarder(Application):
             # Dynamic EPR effectation (not statistical mux)
             # TODO: if paths have different swap policies
             #       -> consider only paths for which this qubit may be eligible ??
-            # Currently affects EPR to paths randomly
+            # Default is to affect EPR to paths randomly
             log.debug(f"{self.own}: Dynamic EPR affectation enabled")
             _, epr = self.memory.get(address=qubit.addr, must=True)
             assert isinstance(epr, WernerStateEntanglement)
-            # TODO: watch if this creates any misbehavior!
             if epr.tmp_path_ids is None:  # whatever neighbor is first
-                random_path_id = random.choice(possible_path_ids)
-                log.debug(f"{self.own}: Dynamically (random) affect EPR {epr.name} to path {random_path_id}")
-                epr.tmp_path_ids = [random_path_id]
+                fib_entries = [self.fib.get_entry(pid, must=True) for pid in possible_path_ids]
+                path_id = self.path_select_fn(fib_entries)
+                epr.tmp_path_ids = [path_id]
 
-            fib_entry = self.fib.get_entry(epr.tmp_path_ids[0])
-            if not fib_entry:
-                raise Exception(f"No FIB entry found for path_id {possible_path_ids[0]}")
+            fib_entry = self.fib.get_entry(epr.tmp_path_ids[0], must=True)
             self.own.get_qchannel(event.neighbor)  # ensure qchannel exists
             qubit.fsm.to_purif()
             self.qubit_is_purif(qubit, fib_entry, event.neighbor)
@@ -750,7 +754,7 @@ class ProactiveForwarder(Application):
                 path_ids = select_common_element(epr.tmp_path_ids, epr2.tmp_path_ids)
                 if not path_ids:
                     raise Exception(f"Cannot select path ID from {epr.tmp_path_ids} and {epr2.tmp_path_ids}")
-                fib_entry = self.fib.get_entry(random.choice(path_ids))  # no need to be coordinated accross the path
+                fib_entry = self.fib.get_entry(random.choice(path_ids), must=True)  # no need to be coordinated accross the path
 
             # Get both qubits
             # other_qubit, other_epr = self.memory.get(address=res.addr)
@@ -781,8 +785,6 @@ class ProactiveForwarder(Application):
             #     else:
             #         raise Exception("Cannot find EPR endpoints in installed paths")
 
-            assert fib_entry is not None
-            assert other_fib_entry is not None
             self.do_swapping(qubit, res, fib_entry, other_fib_entry, path_ids)
 
     def _select_eligible_qubit(
@@ -1212,3 +1214,7 @@ def select_common_element(list1: list[int], list2: list[int]) -> list[int] | Non
     # Case 2: both have more than one element
     common = list(set1 & set2)
     return common
+
+
+def random_path_selector(fibs: list[FIBEntry]) -> int:
+    return random.choice(fibs)["path_id"]

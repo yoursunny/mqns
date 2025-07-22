@@ -15,7 +15,7 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import TypedDict
+from typing import Literal, TypedDict, overload
 
 try:
     from typing import Unpack
@@ -71,6 +71,29 @@ class ForwardingInformationBase:
         # The FIB table stores multiple path entries
         self.table: dict[int, FIBEntry] = {}
 
+    @overload
+    def get_entry(self, path_id: int) -> FIBEntry | None:
+        """
+        Retrieve an entry, return None if not found.
+        """
+        pass
+
+    @overload
+    def get_entry(self, path_id: int, *, must: Literal[True]) -> FIBEntry:
+        """
+        Retrieve an entry, raise IndexError if not found.
+        """
+        pass
+
+    def get_entry(self, path_id: int, *, must: bool | None = None) -> FIBEntry | None:
+        """Retrieve an entry from the table."""
+        entry = self.table.get(path_id, None)
+        if entry:
+            return entry
+        if must:
+            raise IndexError(f"FIB entry not found for path_id={path_id}")
+        return None
+
     def add_entry(self, *, replace=False, **entry: Unpack[FIBEntry]):
         """
         Add a new path entry to the forwarding table.
@@ -84,10 +107,6 @@ class ForwardingInformationBase:
             raise ValueError(f"Path ID '{path_id}' already exists.")
 
         self.table[path_id] = entry
-
-    def get_entry(self, path_id: int) -> FIBEntry | None:
-        """Retrieve an entry from the table."""
-        return self.table.get(path_id, None)
 
     def update_entry(self, path_id: int, **kwargs):
         """Update an existing entry with new data."""

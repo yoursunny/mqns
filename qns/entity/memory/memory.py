@@ -388,7 +388,7 @@ class QuantumMemory(Entity):
 
         """
         for qubit, _ in self._storage:
-            if ch_name is not None and qubit.qchannel.name != ch_name:
+            if ch_name is not None and (qubit.qchannel is None or qubit.qchannel.name != ch_name):
                 continue
             if qubit.path_id is not None:
                 continue
@@ -470,7 +470,7 @@ class QuantumMemory(Entity):
             If None, no exclusion is applied.
             path_id (Optional[list[int]]): The list of path IDs the qubit must be allocated to.
             If None, any path ID is accepted.
-            tmp_path_id (list[int], optional): List of identifiers for the paths to match agains epr.tmp_path_id
+            tmp_path_id (list[int], optional): List of identifiers for the paths to match against epr.tmp_path_id
             in dynamic qubit allocation or statistical multiplexing.
 
         Returns:
@@ -490,9 +490,13 @@ class QuantumMemory(Entity):
                 continue
             if exc_direction is not None and (qubit.path_direction == exc_direction):
                 continue
-            if inc_qchannels is not None and qubit.qchannel.name not in inc_qchannels:
+            if inc_qchannels is not None and (qubit.qchannel is None or qubit.qchannel.name not in inc_qchannels):
                 continue
-            if tmp_path_id is not None and not set(tmp_path_id) & set(data.tmp_path_ids):
+            if tmp_path_id is not None and (
+                not isinstance(data, BaseEntanglement)
+                or data.tmp_path_ids is None
+                or len(set(tmp_path_id) & set(data.tmp_path_ids)) == 0
+            ):
                 continue
             qubits.append((qubit, data))
         return qubits
