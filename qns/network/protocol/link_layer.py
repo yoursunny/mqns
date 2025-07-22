@@ -90,12 +90,12 @@ class LinkLayer(Application):
         self.memory: QuantumMemory
         """quantum memory of the node"""
 
-        self.active_channels: dict[str, tuple[QuantumChannel, QNode]] = {}
+        self.active_channels: dict[str, tuple[QuantumChannel, QNode, list[int | None]]] = {}
         """stores the qchannels activated by the forwarding function at path installation"""
 
         self.pending_init_reservation: dict[str, tuple[QuantumChannel, QNode, int]] = {}
         """stores reservation requests sent by this node"""
-        self.fifo_reservation_req: list[tuple[str, int | None, ClassicChannel, QNode]] = []
+        self.fifo_reservation_req: list[tuple[str, int | None, ClassicChannel, QNode, QuantumChannel]] = []
         """stores received reservations requests awaiting for qubits"""
 
         self.etg_count = 0
@@ -111,7 +111,6 @@ class LinkLayer(Application):
         self.add_handler(self.handle_decoh_rel, [QubitDecoheredEvent, QubitReleasedEvent])
         self.add_handler(self.RecvClassicPacketHandler, RecvClassicPacket)
 
-    # called at initialization of the node
     def install(self, node: Node, simulator: Simulator):
         super().install(node, simulator)
         self.own = self.get_node(node_type=QNode)
@@ -151,21 +150,15 @@ class LinkLayer(Application):
             if qb.path_id != path_id:
                 continue
             if qb.active is None:
-                if data is None:
-                    simulator.add_event(
-                        func_to_event(
-                            simulator.tc + i * 1 / self.attempt_rate,
-                            self.start_reservation,
-                            by=self,
-                            next_hop=next_hop,
-                            qchannel=qchannel,
-                            qubit=qb,
-                        )
-                    )
-                else:
+                if data is not None:
                     raise Exception(f"{self.own}: qubit has data {data}")
+                simulator.add_event(
+                    func_to_event(
+                        simulator.tc + i * 1 / self.attempt_rate, self.start_reservation, next_hop, qchannel, qb, by=self
+                    )
+                )
 
-    def start_reservation(self, next_hop: Node, qchannel: QuantumChannel, qubit: MemoryQubit):
+    def start_reservation(self, next_hop: QNode, qchannel: QuantumChannel, qubit: MemoryQubit):
         """This method starts the exchange with neighbor node for reserving a qubit for entanglement
         generation over a specified quantum channel. It performs the following steps:
 
@@ -275,6 +268,7 @@ class LinkLayer(Application):
         epr.creation_time = self.simulator.tc - d_c
 
         local_qubit = self.memory.write(qm=epr, address=address)
+        assert local_qubit is not None
         log.debug(f"{self.own}: send half-EPR {epr.name} to {next_hop} | key {epr.key} | path {local_qubit.path_id}")
 
         if not local_qubit:
@@ -344,7 +338,7 @@ class LinkLayer(Application):
             else:  # happens when installing multiple paths
                 qchannel, neighbor, path_ids = self.active_channels[qchannel.name]
                 if event.path_id not in path_ids:
-                    upd_path_ids = path_ids.append(event.path_id)
+                    upd_path_ids = path_ids + [event.path_id]
                     self.active_channels[qchannel.name] = (qchannel, neighbor, upd_path_ids)
                     log.debug(f"{self.own}: add path {event.path_id} to qchannel {qchannel.name}")
                     if self.own.timing_mode == TimingModeEnum.ASYNC:
@@ -367,7 +361,7 @@ class LinkLayer(Application):
             # this node is the EPR initiator of the qchannel associated with the memory of this qubit
             qchannel, next_hop, path_ids = self.active_channels[qubit.qchannel.name]
             if self.own.timing_mode == TimingModeEnum.ASYNC:
-                self.start_reservation(next_hop=next_hop, qchannel=qchannel, qubit=qubit)
+                self.start_reservation(next_hop, qchannel, qubit)
             elif is_decoh and self.own.timing_mode == TimingModeEnum.SYNC:
                 raise Exception(f"{self.own}: UNEXPECTED -> (t_ext + t_int) too short")
         else:
@@ -458,8 +452,9 @@ class LinkLayer(Application):
         if signal_type == SignalTypeEnum.EXTERNAL:
             # clear all qubits and retry all active_channels until INTERNAL signal
             self.memory.clear()
-            for channel_name, (qchannel, next_hop) in self.active_channels.items():
-                self.handle_active_channel(qchannel, next_hop)
+            for _, (qchannel, next_hop, path_ids) in self.active_channels.items():
+                for path_id in path_ids:
+                    self.handle_active_channel(qchannel, next_hop, path_id)
 
     ###### For entanglement link architectures ######
     def _skip_ahead_entanglement(self, qchannel: QuantumChannel) -> tuple[float, int]:
