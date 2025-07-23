@@ -3,11 +3,12 @@ import numpy as np
 import pandas as pd
 from tap import Tap
 
-from qns.network import QuantumNetwork
-from qns.network.protocol import LinkLayer, ProactiveForwarder
+from qns.network.network import QuantumNetwork
+from qns.network.protocol import ProactiveForwarder
 from qns.simulator import Simulator
 from qns.utils import log, set_seed
 
+from examples_common.stats import gather_etg_decoh
 from examples_common.topo_3_nodes import build_topology
 
 
@@ -63,16 +64,9 @@ def run_simulation(t_coherence: float, seed: int):
     s.run()
 
     #### get stats
-    total_etg = 0
-    total_decohered = 0
-    for node in net.get_nodes():
-        ll_app = node.get_app(LinkLayer)
-        total_etg += ll_app.etg_count
-        total_decohered += ll_app.decoh_count
-
+    _, _, decoh_ratio = gather_etg_decoh(net)
     e2e_rate = net.get_node("S").get_app(ProactiveForwarder).cnt.n_consumed / sim_duration
-
-    return e2e_rate, total_decohered / total_etg if total_etg > 0 else 0
+    return e2e_rate, decoh_ratio
 
 
 ########################### Main #########################

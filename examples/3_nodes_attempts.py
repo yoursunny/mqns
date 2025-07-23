@@ -5,7 +5,7 @@ from tap import Tap
 
 from qns.entity.monitor import Monitor
 from qns.entity.qchannel import RecvQubitPacket
-from qns.network import QuantumNetwork
+from qns.network.network import QuantumNetwork
 from qns.simulator import Simulator
 from qns.utils import log, set_seed
 

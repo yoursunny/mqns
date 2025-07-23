@@ -1,11 +1,11 @@
 import logging
 
-from qns.network import QuantumNetwork
-from qns.network.protocol.link_layer import LinkLayer
-from qns.network.protocol.proactive_forwarder import ProactiveForwarder
-from qns.simulator.simulator import Simulator
+from qns.network.network import QuantumNetwork
+from qns.network.protocol import ProactiveForwarder
+from qns.simulator import Simulator
 from qns.utils import log, set_seed
 
+from examples_common.stats import gather_etg_decoh
 from examples_common.topo_asymmetric_channel import build_topology
 
 log.logger.setLevel(logging.DEBUG)
@@ -33,14 +33,8 @@ net.install(s)
 s.run()
 
 #### get stats
-total_etg = 0
-total_decohered = 0
-for node in net.get_nodes():
-    ll_app = node.get_app(LinkLayer)
-    total_etg += ll_app.etg_count
-    total_decohered += ll_app.decoh_count
-
+_, _, decoh_ratio = gather_etg_decoh(net)
 e2e_rate = net.get_node("S").get_app(ProactiveForwarder).cnt.n_consumed / sim_duration
 
 print(f"E2E etg rate: {e2e_rate}")
-print(f"Expired memories: {total_decohered / total_etg if total_etg > 0 else 0}")
+print(f"Expired memories: {decoh_ratio}")

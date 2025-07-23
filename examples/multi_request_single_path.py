@@ -1,10 +1,10 @@
-from qns.network import QuantumNetwork
-from qns.network.protocol.link_layer import LinkLayer
-from qns.network.protocol.proactive_forwarder import ProactiveForwarder
-from qns.network.protocol.proactive_routing_controller import ProactiveRoutingControllerApp
+from qns.network.network import QuantumNetwork
+from qns.network.protocol import LinkLayer, ProactiveForwarder, ProactiveRoutingControllerApp
 from qns.network.topology.customtopo import CustomTopology, Topo
-from qns.simulator.simulator import Simulator
+from qns.simulator import Simulator
 from qns.utils import log, set_seed
+
+from examples_common.stats import gather_etg_decoh
 
 log.set_default_level("DEBUG")
 
@@ -242,16 +242,10 @@ net.install(s)
 s.run()
 
 #### get stats
-total_etg = 0
-total_decohered = 0
-for node in net.get_nodes():
-    ll_app = node.get_app(LinkLayer)
-    total_etg += ll_app.etg_count
-    total_decohered += ll_app.decoh_count
-
+_, _, decoh_ratio = gather_etg_decoh(net)
 e2e_rate_1 = net.get_node("S1").get_app(ProactiveForwarder).cnt.n_consumed / sim_duration
 e2e_rate_2 = net.get_node("S2").get_app(ProactiveForwarder).cnt.n_consumed / sim_duration
 
 print(f"E2E etg rate [S1-D1]: {e2e_rate_1}")
 print(f"E2E etg rate [S2-D2]: {e2e_rate_2}")
-print(f"Expired memories: {total_decohered / total_etg if total_etg > 0 else 0}")
+print(f"Expired memories: {decoh_ratio}")

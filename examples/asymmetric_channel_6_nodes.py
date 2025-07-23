@@ -4,12 +4,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tap import Tap
 
-from qns.network import QuantumNetwork
-from qns.network.protocol.link_layer import LinkLayer
-from qns.network.protocol.proactive_forwarder import ProactiveForwarder
-from qns.simulator.simulator import Simulator
+from qns.network.network import QuantumNetwork
+from qns.network.protocol import ProactiveForwarder
+from qns.simulator import Simulator
 from qns.utils import log, set_seed
 
+from examples_common.stats import gather_etg_decoh
 from examples_common.topo_asymmetric_channel import build_topology
 
 
@@ -57,18 +57,11 @@ def run_simulation(
     s.run()
 
     #### get stats
-    total_etg = 0
-    total_decohered = 0
-    for node in net.get_nodes():
-        ll_app = node.get_app(LinkLayer)
-        total_etg += ll_app.etg_count
-        total_decohered += ll_app.decoh_count
-
+    _, _, decoh_ratio = gather_etg_decoh(net)
     fw_s = net.get_node("S").get_app(ProactiveForwarder)
     e2e_rate = fw_s.cnt.n_consumed / sim_duration
     mean_fidelity = fw_s.cnt.consumed_avg_fidelity
-
-    return e2e_rate, total_decohered / total_etg if total_etg > 0 else 0, mean_fidelity
+    return e2e_rate, decoh_ratio, mean_fidelity
 
 
 ########################### Main #########################

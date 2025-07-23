@@ -9,10 +9,11 @@ from tap import Tap
 
 from qns.network import QuantumNetwork
 from qns.network.protocol import LinkLayer, ProactiveForwarder, ProactiveRoutingControllerApp
-from qns.network.route import DijkstraRouteAlgorithm
 from qns.network.topology.customtopo import CustomTopology, Topo, TopoCChannel, TopoController, TopoQChannel, TopoQNode
 from qns.simulator import Simulator
 from qns.utils import log, set_seed
+
+from examples_common.stats import gather_etg_decoh
 
 log.set_default_level("CRITICAL")
 
@@ -185,19 +186,14 @@ def run_simulation(p: ParameterSet, seed: int) -> tuple[float, float]:
     log.install(s)
 
     topology = CustomTopology(json_topology)
-    net = QuantumNetwork(topo=topology, route=DijkstraRouteAlgorithm())
+    net = QuantumNetwork(topo=topology)
 
     net.install(s)
     s.run()
 
     #### get stats
-    # total_etg = 0
-    total_decohered = 0
-    for node in net.get_nodes():
-        ll_app = node.get_app(LinkLayer)
-        total_decohered += ll_app.decoh_count
+    _, total_decohered, _ = gather_etg_decoh(net)
     e2e_count = net.get_node("S").get_app(ProactiveForwarder).cnt.n_consumed
-
     return e2e_count / p.sim_duration, total_decohered / e2e_count if e2e_count > 0 else 0
 
 
