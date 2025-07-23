@@ -1,7 +1,8 @@
-import logging
+import json
 
 import matplotlib.pyplot as plt
 import numpy as np
+from tap import Tap
 
 from qns.network import QuantumNetwork, TimingModeEnum
 from qns.network.protocol.link_layer import LinkLayer
@@ -10,10 +11,20 @@ from qns.network.protocol.proactive_routing_controller import ProactiveRoutingCo
 from qns.network.route.dijkstra import DijkstraRouteAlgorithm
 from qns.network.topology.customtopo import CustomTopology
 from qns.simulator.simulator import Simulator
-from qns.utils import log
-from qns.utils.rnd import set_seed
+from qns.utils import log, set_seed
 
-log.logger.setLevel(logging.CRITICAL)
+
+# Command line arguments
+class Args(Tap):
+    runs: int = 3  # number of trials per parameter set
+    json: str = ""  # save results as JSON file
+    plt_rate: str = ""  # save entanglement rate plot as image file
+    plt_fid: str = ""  # save fidelity plot as image file
+
+
+args = Args().parse_args()
+
+log.set_default_level("CRITICAL")
 
 SEED_BASE = 100
 
@@ -155,7 +166,6 @@ def run_simulation(
 ########################### Main #########################
 
 # Constants
-N_RUNS = 3
 SEED_BASE = 42
 TOTAL_QUBITS = 6
 
@@ -181,7 +191,7 @@ for t_cohere in t_cohere_values:
         for left, right in mem_allocs:
             rates = []
             fids = []
-            for i in range(N_RUNS):
+            for i in range(args.runs):
                 print(f"{length_label}, T_cohere={t_cohere:.3f}, Mem alloc={[left, right]}, run {i + 1}")
                 seed = SEED_BASE + i
 
@@ -204,6 +214,10 @@ for t_cohere in t_cohere_values:
             res["fid_mean"].append(np.mean(fids))
             res["fid_std"].append(np.std(fids))
 
+if args.json:
+    with open(args.json, "w") as file:
+        json.dump(results, file)
+
 ########################### Plot: Entanglement Rate #########################
 
 fig_rate, axs_rate = plt.subplots(1, 3, figsize=(12, 4), sharey=True)
@@ -222,6 +236,8 @@ for idx, t_cohere in enumerate(t_cohere_values):
 
 fig_rate.suptitle("End-to-end Entanglement Rate vs Memory Allocation", fontsize=14)
 fig_rate.tight_layout()
+if args.plt_rate:
+    fig_rate.savefig(args.plt_rate, dpi=300, transparent=True)
 plt.show()
 
 ########################### Plot: Fidelity #########################
@@ -242,4 +258,6 @@ for idx, t_cohere in enumerate(t_cohere_values):
 
 fig_fid.suptitle("End-to-end Fidelity vs Memory Allocation", fontsize=14)
 fig_fid.tight_layout()
+if args.plt_fid:
+    fig_fid.savefig(args.plt_fid, dpi=300, transparent=True)
 plt.show()

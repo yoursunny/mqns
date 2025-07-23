@@ -12,8 +12,7 @@ from qns.network.protocol import LinkLayer, ProactiveForwarder, ProactiveRouting
 from qns.network.route import DijkstraRouteAlgorithm
 from qns.network.topology.customtopo import CustomTopology, Topo, TopoCChannel, TopoController, TopoQChannel, TopoQNode
 from qns.simulator import Simulator
-from qns.utils import log
-from qns.utils.rnd import set_seed
+from qns.utils import log, set_seed
 
 log.set_default_level("CRITICAL")
 
@@ -312,7 +311,7 @@ if __name__ == "__main__":
     # Command line arguments
     class Args(Tap):
         workers: int = 1  # number of workers for parallel execution
-        runs: int = p.n_runs  # number of trials per parameter set
+        runs: int = 10  # number of trials per parameter set
         csv: str = ""  # save results as CSV file
         plt: str = ""  # save plot as image file
 

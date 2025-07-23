@@ -1,13 +1,22 @@
 import numpy as np
 import pandas as pd
+from tap import Tap
 
 from qns.network import QuantumNetwork, TimingModeEnum
 from qns.network.protocol import LinkLayer, ProactiveForwarder, ProactiveRoutingControllerApp
 from qns.network.route import DijkstraRouteAlgorithm
 from qns.network.topology.customtopo import CustomTopology, Topo
 from qns.simulator import Simulator
-from qns.utils import log
-from qns.utils.rnd import set_seed
+from qns.utils import log, set_seed
+
+
+# Command line arguments
+class Args(Tap):
+    runs: int = 1  # number of trials per parameter set
+    csv: str = ""  # save results as CSV file
+
+
+args = Args().parse_args()
 
 log.set_default_level("DEBUG")
 
@@ -150,11 +159,10 @@ t_cohere_values = [1]
 # t_cohere_values = [2e-3, 5e-3, 1e-2, 2e-2, 3e-2, 4e-2, 8e-2, 1e-1]
 # t_cohere_values = np.geomspace(2e-3, 1e-1, 8)
 
-N_RUNS = 1
 for t_cohere in t_cohere_values:
     rates = []
     fids = []
-    for i in range(N_RUNS):
+    for i in range(args.runs):
         print(f"T_cohere={t_cohere:.4f}, run {i + 1}")
         seed = SEED_BASE + i
         rate, f, *_ = run_simulation(t_cohere, seed)
@@ -169,5 +177,7 @@ for t_cohere in t_cohere_values:
 
 # Convert to DataFrame
 df = pd.DataFrame(results)
+if args.csv:
+    df.to_csv(args.csv, index=False)
 
 print(df)

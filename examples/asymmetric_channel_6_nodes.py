@@ -1,7 +1,8 @@
-import logging
+import json
 
 import matplotlib.pyplot as plt
 import numpy as np
+from tap import Tap
 
 from qns.network import QuantumNetwork, TimingModeEnum
 from qns.network.protocol.link_layer import LinkLayer
@@ -10,10 +11,19 @@ from qns.network.protocol.proactive_routing_controller import ProactiveRoutingCo
 from qns.network.route.dijkstra import DijkstraRouteAlgorithm
 from qns.network.topology.customtopo import CustomTopology
 from qns.simulator.simulator import Simulator
-from qns.utils import log
-from qns.utils.rnd import set_seed
+from qns.utils import log, set_seed
 
-log.logger.setLevel(logging.CRITICAL)
+
+# Command line arguments
+class Args(Tap):
+    runs: int = 3  # number of trials per parameter set
+    json: str = ""  # save results as JSON file
+    plt: str = ""  # save plot as image file
+
+
+args = Args().parse_args()
+
+log.set_default_level("CRITICAL")
 
 SEED_BASE = 100
 
@@ -167,7 +177,6 @@ mem_capacities = [6, 6, 6, 6, 6, 6]
 channel_lengths = [32, 18, 35, 16, 24]
 TOTAL_QUBITS = 6
 
-N_RUNS = 3
 SEED_BASE = 100
 
 # Store results: mem_label -> policy -> t_cohere -> list of rates
@@ -181,7 +190,7 @@ for mem_label, mem_allocs in ch_capacities_configs.items():
         print(f"\n>>> Testing order: {order}, Channel Mem allocation: {mem_label}")
         for t_cohere in t_cohere_values:
             run_rates = []
-            for i in range(N_RUNS):
+            for i in range(args.runs):
                 seed = SEED_BASE + i
                 swapping_config = order
 
@@ -200,6 +209,9 @@ for mem_label, mem_allocs in ch_capacities_configs.items():
 
             results[mem_label][order][t_cohere] = (np.mean(run_rates), np.std(run_rates))
 
+if args.json:
+    with open(args.json, "w") as file:
+        json.dump(results, file)
 
 fig, axs = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
 
@@ -230,4 +242,6 @@ for ax_idx, (mem_label, policy_dict) in enumerate(results.items()):
 
 axs[-1].legend(title="Policy")
 plt.tight_layout()
+if args.plt:
+    plt.savefig(args.plt, dpi=300, transparent=True)
 plt.show()

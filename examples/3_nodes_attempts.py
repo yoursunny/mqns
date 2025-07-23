@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from tap import Tap
 
 from qns.entity.monitor import Monitor
 from qns.entity.qchannel import RecvQubitPacket
@@ -9,8 +10,17 @@ from qns.network.protocol import LinkLayer, ProactiveForwarder, ProactiveRouting
 from qns.network.route import DijkstraRouteAlgorithm
 from qns.network.topology.customtopo import CustomTopology, Topo
 from qns.simulator import Simulator
-from qns.utils import log
-from qns.utils.rnd import set_seed
+from qns.utils import log, set_seed
+
+
+# Command line arguments
+class Args(Tap):
+    runs: int = 100  # number of trials per parameter set
+    csv: str = ""  # save results as CSV file
+    plt: str = ""  # save plot as image file
+
+
+args = Args().parse_args()
 
 log.set_default_level("DEBUG")
 
@@ -167,11 +177,10 @@ all_data = {
 }
 
 # Simulation loop
-N_RUNS = 100
 for M in range(1, 6):
     stats = {32: {"attempts": [], "ent": [], "succ": []}, 18: {"attempts": [], "ent": [], "succ": []}}
 
-    for i in range(N_RUNS):
+    for i in range(args.runs):
         print(f"Sim: M={M}, run #{i + 1}")
         seed = SEED_BASE + i
         attempts_rate, ent_rate, success_frac = run_simulation(M, seed)
@@ -196,6 +205,8 @@ for M in range(1, 6):
 
 # Convert to DataFrame
 df = pd.DataFrame(all_data)
+if args.csv:
+    df.to_csv(args.csv, index=False)
 
 fig, axs = plt.subplots(1, 3, figsize=(10, 4))
 
@@ -221,6 +232,8 @@ axs[2].set_ylabel("Fraction")
 axs[2].legend()
 
 fig.tight_layout()
+if args.plt:
+    fig.savefig(args.plt, dpi=300, transparent=True)
 plt.show()
 
 

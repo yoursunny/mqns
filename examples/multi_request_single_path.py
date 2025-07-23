@@ -1,5 +1,3 @@
-import logging
-
 from qns.network import QuantumNetwork, TimingModeEnum
 from qns.network.protocol.link_layer import LinkLayer
 from qns.network.protocol.proactive_forwarder import ProactiveForwarder
@@ -7,10 +5,9 @@ from qns.network.protocol.proactive_routing_controller import ProactiveRoutingCo
 from qns.network.route.dijkstra import DijkstraRouteAlgorithm
 from qns.network.topology.customtopo import CustomTopology
 from qns.simulator.simulator import Simulator
-from qns.utils import log
-from qns.utils.rnd import set_seed
+from qns.utils import log, set_seed
 
-log.logger.setLevel(logging.DEBUG)
+log.set_default_level("DEBUG")
 
 SEED_BASE = 100
 
