@@ -473,9 +473,11 @@ class LinkLayer(Application):
                 k = np.random.geometric(p)  # k-th attempt will succeed
 
                 tau = tau_l + self.tau_0
-                attempt_duration = max(5.5 * tau, reset_time)  # includes 1*tau_l between attempts (in each round)
-                # substract 2*tau_l consumed for reservation (just to alignt with sequence)
-                t_success = ((k - 1) * attempt_duration) + (4 * tau)
+                attempt_duration = max(5 * tau, reset_time)
+
+                # leave 1*tau_l to be simulated
+                # t_success = (k-1) * attempt_duration + (7 * tau) - tau_l   # w/o correction for reservation
+                t_success = (k - 1) * attempt_duration + (5 * tau) - tau_l  # w/ correction for reservation
                 return t_success, k
             case LinkType.DIM_BK:
                 p = self._success_prob_dim_bk(qchannel.length)
@@ -544,7 +546,7 @@ class LinkLayer(Application):
 
         match qchannel.link_architecture:
             case LinkType.DIM_BK_SEQ:
-                delta_c = 4 * tau_l  # qubit init at 2tau and we are at 6tau
+                delta_c = self.tau_0 + 3 * tau_l
                 delta_n = tau_l
                 return delta_c, delta_n
             case LinkType.DIM_BK:

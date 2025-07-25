@@ -14,14 +14,14 @@ from examples_common.topo_3_nodes import build_topology
 
 # Command line arguments
 class Args(Tap):
-    runs: int = 10  # number of trials per parameter set
+    runs: int = 100  # number of trials per parameter set
     csv: str = ""  # save results as CSV file
     plt: str = ""  # save plot as image file
 
 
 args = Args().parse_args()
 
-log.set_default_level("DEBUG")
+log.set_default_level("CRITICAL")
 
 SEED_BASE = 100
 
@@ -72,8 +72,7 @@ def run_simulation(t_coherence: float, seed: int):
 ########################### Main #########################
 results = {"T_cohere": [], "Mean Rate": [], "Std Rate": []}
 
-# t_cohere_values = [2e-3, 5e-3, 1e-2, 2e-2, 3e-2, 4e-2, 8e-2, 1e-1]
-t_cohere_values = np.geomspace(2e-3, 1e-1, 8)
+t_cohere_values = [0.002, 0.005, 0.01, 0.015, 0.02, 0.025, 0.05, 0.1]
 
 for t_cohere in t_cohere_values:
     rates = []
@@ -86,6 +85,13 @@ for t_cohere in t_cohere_values:
     results["T_cohere"].append(t_cohere)
     results["Mean Rate"].append(np.mean(rates))
     results["Std Rate"].append(np.std(rates))
+
+
+# Final results summary print
+print("\nT_coh    Rate")
+for t, mean, std in zip(results["T_cohere"], results["Mean Rate"], results["Std Rate"]):
+    print(f"{t:<7.3f}  {mean:>5.1f} ({std:.1f})")
+
 
 # Convert to DataFrame
 df = pd.DataFrame(results)

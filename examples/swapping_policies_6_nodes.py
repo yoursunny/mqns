@@ -1,5 +1,6 @@
 import json
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from tap import Tap
@@ -33,8 +34,8 @@ sim_duration = 3
 def run_simulation(
     nodes: list[str],
     mem_capacities: list[int],
-    channel_lengths: list[float],
-    capacities: list[tuple[int, int]],
+    ch_lengths: list[float],
+    ch_capacities: list[tuple[int, int]],
     t_coherence: float,
     swapping_order: str,
     seed: int,
@@ -46,8 +47,8 @@ def run_simulation(
     topo = build_topology(
         nodes=nodes,
         mem_capacities=mem_capacities,
-        channel_lengths=channel_lengths,
-        capacities=capacities,
+        ch_lengths=ch_lengths,
+        ch_capacities=ch_capacities,
         t_coherence=t_coherence,
         swapping_order=swapping_order,
     )
@@ -101,8 +102,8 @@ for mem_label, mem_allocs in ch_capacities_configs.items():
                 rate, *_ = run_simulation(
                     nodes=nodes,
                     mem_capacities=mem_capacities,
-                    channel_lengths=channel_lengths,
-                    capacities=ch_capacities,
+                    ch_lengths=channel_lengths,
+                    ch_capacities=ch_capacities,
                     t_coherence=t_cohere,
                     swapping_order=swapping_config,
                     seed=seed,
@@ -115,7 +116,25 @@ if args.json:
     with open(args.json, "w") as file:
         json.dump(results, file)
 
-fig, axs = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
+
+# Reapply font and style settings for academic clarity
+mpl.rcParams.update(
+    {
+        "font.size": 18,
+        "axes.titlesize": 20,
+        "axes.labelsize": 18,
+        "legend.fontsize": 16,
+        "xtick.labelsize": 16,
+        "ytick.labelsize": 16,
+        "figure.titlesize": 22,
+        "lines.linewidth": 2,
+        "lines.markersize": 7,
+        "errorbar.capsize": 4,
+    }
+)
+
+# Create plot with updated style
+fig, axs = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
 
 colors = {"baln": "green", "baln2": "red", "l2r": "purple", "r2l": "brown", "asap": "pink"}
 markers = {"baln": "v", "baln2": "s", "l2r": "^", "r2l": "x", "asap": "d"}
@@ -123,7 +142,7 @@ markers = {"baln": "v", "baln2": "s", "l2r": "^", "r2l": "x", "asap": "d"}
 for ax_idx, (mem_label, policy_dict) in enumerate(results.items()):
     ax = axs[ax_idx]
     for full_policy, t_dict in policy_dict.items():
-        policy = full_policy.replace("swap_4_", "")  # Extract "baln", "r2l", etc.
+        policy = full_policy.replace("swap_4_", "")
         means = [t_dict[t][0] for t in t_cohere_values]
         stds = [t_dict[t][1] for t in t_cohere_values]
         ax.errorbar(
@@ -132,7 +151,7 @@ for ax_idx, (mem_label, policy_dict) in enumerate(results.items()):
             yerr=stds,
             fmt=markers[policy],
             linestyle="-",
-            capsize=3,
+            capsize=4,
             label=policy,
             color=colors[policy],
         )
@@ -140,9 +159,9 @@ for ax_idx, (mem_label, policy_dict) in enumerate(results.items()):
     ax.set_xlabel("T_cohere (ms)")
     if ax_idx == 0:
         ax.set_ylabel("Throughput (eps)")
-    ax.grid(True, linestyle="--")
+    ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.8)
 
-axs[-1].legend(title="Policy")
+axs[-1].legend(title="Policy", loc="lower right")
 plt.tight_layout()
 if args.plt:
     plt.savefig(args.plt, dpi=300, transparent=True)

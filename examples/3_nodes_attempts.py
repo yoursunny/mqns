@@ -14,14 +14,14 @@ from examples_common.topo_3_nodes import build_topology
 
 # Command line arguments
 class Args(Tap):
-    runs: int = 100  # number of trials per parameter set
+    runs: int = 50  # number of trials per parameter set
     csv: str = ""  # save results as CSV file
     plt: str = ""  # save plot as image file
 
 
 args = Args().parse_args()
 
-log.set_default_level("DEBUG")
+log.set_default_level("CRITICAL")
 
 SEED_BASE = 100
 
@@ -82,7 +82,10 @@ all_data = {
     "Success std": [],
 }
 
-# Simulation loop
+
+########### Simulation loop
+results_summary = []  # to store formatted result strings for final print
+
 for M in range(1, 6):
     stats = {32: {"attempts": [], "ent": [], "succ": []}, 18: {"attempts": [], "ent": [], "succ": []}}
 
@@ -90,7 +93,6 @@ for M in range(1, 6):
         print(f"Sim: M={M}, run #{i + 1}")
         seed = SEED_BASE + i
         attempts_rate, ent_rate, success_frac = run_simulation(M, seed)
-        print(attempts_rate)
         for ch_name, L in channel_map.items():
             if ch_name in attempts_rate:
                 stats[L]["attempts"].append(attempts_rate[ch_name])
@@ -100,19 +102,35 @@ for M in range(1, 6):
                 print(f"Warning: channel {ch_name} not found in run_simulation output.")
 
     for L in [32, 18]:
+        att_mean, att_std = np.mean(stats[L]["attempts"]), np.std(stats[L]["attempts"])
+        ent_mean, ent_std = np.mean(stats[L]["ent"]), np.std(stats[L]["ent"])
+        succ_mean, succ_std = np.mean(stats[L]["succ"]), np.std(stats[L]["succ"])
+
         all_data["L"].append(L)
         all_data["M"].append(M)
-        all_data["Attempts rate"].append(np.mean(stats[L]["attempts"]))
-        all_data["Entanglement rate"].append(np.mean(stats[L]["ent"]))
-        all_data["Success rate"].append(np.mean(stats[L]["succ"]))
-        all_data["Attempts std"].append(np.std(stats[L]["attempts"]))
-        all_data["Ent std"].append(np.std(stats[L]["ent"]))
-        all_data["Success std"].append(np.std(stats[L]["succ"]))
+        all_data["Attempts rate"].append(att_mean)
+        all_data["Entanglement rate"].append(ent_mean)
+        all_data["Success rate"].append(succ_mean)
+        all_data["Attempts std"].append(att_std)
+        all_data["Ent std"].append(ent_std)
+        all_data["Success std"].append(succ_std)
+
+        results_summary.append(
+            f"L={L:<2}  M={M:<2}   C: {att_mean:.1f} ({att_std:.1f})   "
+            f"P: {succ_mean:.4f} ({succ_std:.4f})   E: {ent_mean:.1f} ({ent_std:.1f})"
+        )
+
 
 # Convert to DataFrame
 df = pd.DataFrame(all_data)
 if args.csv:
     df.to_csv(args.csv, index=False)
+
+# Final results summary print
+print("\n=== Simulation Summary ===")
+for line in results_summary:
+    print(line)
+
 
 fig, axs = plt.subplots(1, 3, figsize=(10, 4))
 
