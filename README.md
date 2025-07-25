@@ -1,6 +1,6 @@
 # Multiverse Quantum Network Simulator
 
-![Lint](https://github.com/amar-ox/dynamic-qnetsim/actions/workflows/lint.yml/badge.svg)
+![Build](https://github.com/amar-ox/dynamic-qnetsim/actions/workflows/build.yml/badge.svg) ![Lint](https://github.com/amar-ox/dynamic-qnetsim/actions/workflows/lint.yml/badge.svg)
 
 ## Overview
 
@@ -9,10 +9,9 @@
 This project is part of an ongoing research effort to evaluate the quantum networking approaches presented in our survey:
 🔗 [Entanglement Routing in Quantum Networks: A Comprehensive Survey](https://ieeexplore.ieee.org/document/10882978).
 
-
 ## Current Features
 
-**Routing Model**
+### Routing Model
 
 * Assumes **proactive centralized routing** defined in the survey taxonomy.
 * Global path computation at simulation start:
@@ -20,7 +19,7 @@ This project is part of an ongoing research effort to evaluate the quantum netwo
   * **Yen’s algorithm** for multipath routing.
 * Paths are pre-installed at quantum routers; simulation focuses on the **forwarding phase**.
 
-**Forwarding Phase Components**
+### Forwarding Phase Components
 
 * **External and internal phases**:
   * Synchronous and asynchronous modes.
@@ -35,6 +34,11 @@ This project is part of an ongoing research effort to evaluate the quantum netwo
 * **Qubit lifecycle management**:
   * Tracks reservation, entanglement, release, and intermediate states of a qubit.
 
+* **Qubit-path multiplexing** for:
+  * Single/multiple source-destination requests.
+  * Single/multiple paths.
+  * Includes **buffer-space** and **statistical multiplexing** schemes ([ref](https://www.spiedigitallibrary.org/conference-proceedings-of-spie/8163/1/Multiplexing-schemes-for-quantum-repeater-networks/10.1117/12.893272.short)) and other dynamic entanglement allocation strategies.
+
 * **Memory management**:
   * Policies for:
     * Allocating qubits to paths.
@@ -46,19 +50,15 @@ This project is part of an ongoing research effort to evaluate the quantum netwo
     * Number of purification rounds.
     * Bennett 96 protocol.
 
-**Entanglement Link Model**
+### Entanglement Link Model
+
 * Elementary link modeled using:
   * Werner states EPR generation.
   * Probability-based sampling.
   * Estimated duration based on the 2-round Barrett-Kok protocol.
 
-
 ## Roadmap
 
-* [WIP](https://github.com/amar-ox/dynamic-qnetsim/tree/dev/mux): **Qubit-path multiplexing** for:
-  * Single/multiple source-destination requests.
-  * Single/multiple paths.
-  * Includes **buffer-space** and **statistical multiplexing** schemes ([ref](https://www.spiedigitallibrary.org/conference-proceedings-of-spie/8163/1/Multiplexing-schemes-for-quantum-repeater-networks/10.1117/12.893272.short)) and other dynamic entanglement allocation strategies.
 * WIP: Model alternative **elementary link architectures and protocols**.
 * WIP: Full support of purification scheme with **number of rounds or threshold fidelity**.
 * Make **memory management and qubit selection policies** configurable.
@@ -107,18 +107,19 @@ source mqns/bin/activate
 ```
 
 Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-**Option 1: Install from wheel (local build)**
+### Option 1: Install from wheel (local build)
 
 ```bash
 python -m build
 pip install dist/mqns-0.1.0-py3-none-any.whl
 ```
 
-**Option 2: Install in editable mode**
+### Option 2: Install in editable mode
 
 ```bash
 pip install -e .
