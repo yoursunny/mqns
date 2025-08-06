@@ -108,11 +108,11 @@ class LinkLayer(Application):
         self.memory: QuantumMemory
         """Quantum memory of the node."""
 
-        self.active_channels: dict[str, tuple[QuantumChannel, QNode, list[int | None]]] = {}
+        self.active_channels: dict[tuple[str, int | None], tuple[QuantumChannel, QNode]] = {}
         """
-        Table of active quantum channels.
-        Key is qchannel name.
-        Value is the qchannel, remote QNode, list of path_ids.
+        Table of active quantum channels and paths.
+        Key is qchannel name and optional path_id.
+        Value is the qchannel and remote QNode.
         """
         self.pending_init_reservation: dict[str, tuple[QuantumChannel, QNode, int]] = {}
         """
@@ -146,9 +146,8 @@ class LinkLayer(Application):
         if signal_type == SignalTypeEnum.EXTERNAL:
             # clear all qubits and retry all active_channels until INTERNAL signal
             self.memory.clear()
-            for _, (qchannel, next_hop, path_ids) in self.active_channels.items():
-                for path_id in path_ids:
-                    self.run_active_channel(qchannel, next_hop, path_id)
+            for (_, path_id), (qchannel, next_hop) in self.active_channels.items():
+                self.run_active_channel(qchannel, next_hop, path_id)
 
     def RecvClassicPacketHandler(self, event: RecvClassicPacket) -> bool:
         msg = event.packet.get()
@@ -175,28 +174,18 @@ class LinkLayer(Application):
         return True
 
     def add_active_channel(self, qchannel: QuantumChannel, neighbor: QNode, path_id: int | None):
-        log.debug(f"{self.own}: add qchannel {qchannel} with {neighbor} on path {path_id or 'None'}")
-        if qchannel.name not in self.active_channels:
-            self.active_channels[qchannel.name] = (qchannel, neighbor, [path_id])
-            if self.own.timing_mode == TimingModeEnum.ASYNC:
-                self.run_active_channel(qchannel, neighbor, path_id)
+        key = (qchannel.name, path_id)
+        if key in self.active_channels:  # ignore duplicate add
+            return
 
-        else:  # happens when installing multiple paths
-            qchannel, neighbor, path_ids = self.active_channels[qchannel.name]
-            if path_id not in path_ids:
-                upd_path_ids = path_ids + [path_id]
-                self.active_channels[qchannel.name] = (qchannel, neighbor, upd_path_ids)
-                log.debug(f"{self.own}: add path {path_id} to qchannel {qchannel.name}")
-                if self.own.timing_mode == TimingModeEnum.ASYNC:
-                    self.run_active_channel(qchannel, neighbor, path_id)
-            elif path_id is not None:
-                raise Exception(f"Qchannel {qchannel.name} for path {path_id} already handled")
-            elif path_id is None:
-                log.debug(f"{self.own}: no need to add qchannel {qchannel.name} with no path ID as it is already added")
+        log.debug(f"{self.own}: add qchannel {qchannel} with {neighbor} on path {path_id}, link arch {qchannel.link_arch.name}")
+        self.active_channels[key] = (qchannel, neighbor)
+        if self.own.timing_mode == TimingModeEnum.ASYNC:
+            self.run_active_channel(qchannel, neighbor, path_id)
 
     def remove_active_channel(self, qchannel: QuantumChannel, neighbor: QNode, path_id: int | None):
-        log.debug(f"{self.own}: remove qchannel {qchannel} with {neighbor} on path {path_id or 'None'}")
-        self.active_channels.pop(qchannel.name, None)
+        log.debug(f"{self.own}: remove qchannel {qchannel} with {neighbor} on path {path_id}")
+        self.active_channels.pop((qchannel.name, path_id), None)
 
     def run_active_channel(self, qchannel: QuantumChannel, next_hop: QNode, path_id: int | None):
         """
@@ -335,14 +324,6 @@ class LinkLayer(Application):
 
         """
         simulator = self.simulator
-        if qchannel.name not in self.active_channels:
-            raise Exception(f"{self.own}: Qchannel not active")
-
-        t_mem = 1 / self.memory.decoherence_rate
-        if 2 * qchannel.delay_model.calculate() >= t_mem:
-            raise Exception("Qchannel too long for entanglement attempt.")
-
-        log.debug(f"{self.own}: link type = {qchannel.link_architecture}")
 
         # Calculate the time until the successful attempt.
         # Then, the last tau of the the successful attempt is simulated by sending the EPR
@@ -463,18 +444,18 @@ class LinkLayer(Application):
             self.decoh_count += 1
         qubit = event.qubit
         assert qubit.qchannel is not None
-        if qubit.qchannel.name in self.active_channels:
-            # this node is the EPR initiator of the qchannel associated with the memory of this qubit
-            qchannel, next_hop, _ = self.active_channels[qubit.qchannel.name]
-            if self.own.timing_mode == TimingModeEnum.ASYNC:
-                self.start_reservation(next_hop, qchannel, qubit)
-            elif is_decoh and self.own.timing_mode == TimingModeEnum.SYNC:
-                raise Exception(f"{self.own}: UNEXPECTED -> (t_ext + t_int) too short")
-        else:
+        ac = self.active_channels.get((qubit.qchannel.name, qubit.path_id))
+        if ac is None:  # this node is not the EPR initiator
             qubit.active = None
 
             # Check deferred reservation requests and attempt to fulfill the reservation.
             # Only the first (oldest) request in the FIFO is processed per call.
             if self.fifo_reservation_req and self.try_accept_reservation(self.fifo_reservation_req[0]):
                 self.fifo_reservation_req.popleft()
+        else:  # this node is the EPR initiator
+            qchannel, next_hop = ac
+            if self.own.timing_mode == TimingModeEnum.ASYNC:
+                self.start_reservation(next_hop, qchannel, qubit)
+            elif is_decoh and self.own.timing_mode == TimingModeEnum.SYNC:
+                raise Exception(f"{self.own}: UNEXPECTED -> (t_ext + t_int) too short")
         return True
