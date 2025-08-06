@@ -1,7 +1,7 @@
 import pytest
 
 from qns.entity.node import Application, Node, QNode
-from qns.entity.qchannel import LinkType
+from qns.entity.qchannel import LinkArchDimBk, LinkType
 from qns.models.epr import BaseEntanglement
 from qns.network.network import ClassicTopology, QuantumNetwork
 from qns.network.protocol.event import (
@@ -15,6 +15,11 @@ from qns.network.protocol.link_layer import LinkLayer
 from qns.network.topology import LinearTopology
 from qns.simulator import Simulator
 from qns.utils import log
+
+try:
+    from typing import override
+except ImportError:
+    from typing_extensions import override
 
 
 class NetworkLayer(Application):
@@ -48,13 +53,20 @@ class NetworkLayer(Application):
         self.decohere.append(event.t.sec)
 
 
-def test_link_layer_basic(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(LinkLayer, "_success_prob_dim_bk", lambda *_: 1.0)
+class LinkArchDimBkAlways(LinkArchDimBk):
+    def __init__(self, name="DIM-BK-always"):
+        super().__init__(name)
 
+    @override
+    def success_prob(self, **_) -> float:
+        return 1.0
+
+
+def test_link_layer_basic():
     topo = LinearTopology(
         nodes_number=2,
         nodes_apps=[NetworkLayer(), LinkLayer()],
-        qchannel_args={"delay": 0.1, "link_architecture": LinkType.DIM_BK},
+        qchannel_args={"delay": 0.1, "link_architecture": LinkType.DIM_BK, "link_arch": LinkArchDimBkAlways()},
         cchannel_args={"delay": 0.1},
         memory_args={"decoherence_rate": 1 / 4.1},
     )
