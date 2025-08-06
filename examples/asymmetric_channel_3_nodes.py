@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tap import Tap
 
-from qns.entity.qchannel import LinkType
+from qns.entity.qchannel import LinkArch, LinkArchDimBk, LinkArchSim, LinkArchSr
 from qns.network.network import QuantumNetwork
 from qns.network.protocol import ProactiveForwarder
 from qns.simulator import Simulator
@@ -37,7 +37,7 @@ def run_simulation(
     mem_capacities: list[int],
     ch_lengths: list[float],
     ch_capacities: list[tuple[int, int]],
-    link_architectures: list[LinkType],
+    link_architectures: list[LinkArch],
     t_coherence: float,
     seed: int,
 ):
@@ -80,11 +80,10 @@ t_cohere_values = [1e-3, 10e-3]
 mem_allocs = [(1, 5), (2, 4), (3, 3), (4, 2), (5, 1)]
 mem_labels = [str(m) for m in mem_allocs]
 
-channel_configs = {
-    #  "DIM-DIM": [LinkType.DIM_BK, LinkType.DIM_BK],  # [25, 25]
-    "SR-SR": [LinkType.SR, LinkType.SR],  # [25, 25]
-    "SIM-DIM": [LinkType.SIM, LinkType.DIM_BK],  # [32, 18]
-    "DIM-SIM": [LinkType.DIM_BK, LinkType.SIM],  # [18, 32]
+channel_configs: dict[str, list[LinkArch]] = {
+    "SR-SR": [LinkArchSr(), LinkArchSr()],
+    "SIM-DIM": [LinkArchSim(), LinkArchDimBk()],
+    "DIM-SIM": [LinkArchDimBk(), LinkArchSim()],
 }
 
 # Store results: results[t_cohere][length_label] = dict of lists

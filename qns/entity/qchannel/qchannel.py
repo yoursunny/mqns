@@ -25,17 +25,13 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from enum import Enum, auto
 from typing import Any
 
 from qns.entity.base_channel import BaseChannel, BaseChannelInitKwargs
 from qns.entity.node import QNode
 from qns.entity.qchannel.link_arch import (
     LinkArch,
-    LinkArchDimBk,
     LinkArchDimBkSeq,
-    LinkArchSim,
-    LinkArchSr,
 )
 from qns.models.core import QuantumModel
 from qns.models.epr import BaseEntanglement
@@ -47,27 +43,7 @@ except ImportError:
     from typing_extensions import Unpack
 
 
-class LinkType(Enum):
-    DIM_BK_SEQ = auto()  # detection-in-midpoint with simple Barrett-kok protocol as implemented in Sequence
-    DIM_BK = auto()  # detection-in-midpoint with simple Barrett-kok protocol
-    SR = auto()  # sender-receiver
-    SIM = auto()  # source-in-midpoint
-    DIM_BK_TD = auto()  # detection-in-midpoint with simple Barrett-kok protocol and quantum transduction
-    SR_TD = auto()  # sender-receiver with quantum transduction
-    SIM_TD = auto()  # source-in-midpoint with quantum transduction
-
-
-LINK_ARCH_BY_LINK_TYPE: dict[LinkType, LinkArch] = {
-    LinkType.DIM_BK_SEQ: LinkArchDimBkSeq(),
-    LinkType.DIM_BK: LinkArchDimBk(),
-    LinkType.SR: LinkArchSr(),
-    LinkType.SIM: LinkArchSim(),
-}
-
-
 class QuantumChannelInitKwargs(BaseChannelInitKwargs, total=False):
-    link_architecture: LinkType
-    """Type of link architecture for elementary EPR generation"""
     link_arch: LinkArch
     """Link architecture model."""
     decoherence_rate: float
@@ -81,8 +57,7 @@ class QuantumChannel(BaseChannel[QNode]):
 
     def __init__(self, name: str, **kwargs: Unpack[QuantumChannelInitKwargs]):
         super().__init__(name, **kwargs)
-        self.link_architecture = kwargs.get("link_architecture", LinkType.DIM_BK_SEQ)
-        self.link_arch = kwargs.get("link_arch", None) or LINK_ARCH_BY_LINK_TYPE[self.link_architecture]
+        self.link_arch = kwargs.get("link_arch", None) or LinkArchDimBkSeq()
         self.decoherence_rate = kwargs.get("decoherence_rate", 0.0)
         self.transfer_error_model_args = kwargs.get("transfer_error_model_args", {})
 

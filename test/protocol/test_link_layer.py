@@ -1,7 +1,7 @@
 import pytest
 
 from qns.entity.node import Application, Node, QNode
-from qns.entity.qchannel import LinkArchDimBk, LinkType
+from qns.entity.qchannel import LinkArchDimBk
 from qns.models.epr import BaseEntanglement
 from qns.network.network import ClassicTopology, QuantumNetwork
 from qns.network.protocol.event import (
@@ -66,7 +66,7 @@ def test_link_layer_basic():
     topo = LinearTopology(
         nodes_number=2,
         nodes_apps=[NetworkLayer(), LinkLayer()],
-        qchannel_args={"delay": 0.1, "link_architecture": LinkType.DIM_BK, "link_arch": LinkArchDimBkAlways()},
+        qchannel_args={"delay": 0.1, "link_arch": LinkArchDimBkAlways()},
         cchannel_args={"delay": 0.1},
         memory_args={"decoherence_rate": 1 / 4.1},
     )

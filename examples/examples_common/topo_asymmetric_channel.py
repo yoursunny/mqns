@@ -1,4 +1,6 @@
-from qns.entity.qchannel import LinkType
+from typing import cast
+
+from qns.entity.qchannel import LinkArch, LinkArchDimBkSeq
 from qns.network.protocol import LinkLayer, ProactiveForwarder, ProactiveRoutingControllerApp
 from qns.network.topology.customtopo import CustomTopology, Topo, TopoCChannel, TopoController, TopoQChannel, TopoQNode
 from qns.network.topology.topo import Topology
@@ -19,7 +21,7 @@ def build_topology(
     mem_capacities: list[int],
     ch_lengths: list[float],
     ch_capacities: list[tuple[int, int]],
-    link_architectures: list[LinkType] | None = None,
+    link_architectures: list[LinkArch] | None = None,
     t_coherence: float,
     swapping_order: str,
 ) -> Topology:
@@ -41,7 +43,7 @@ def build_topology(
     if len(ch_capacities) != n_links:
         raise ValueError(f"ch_capacities must have {n_links} items")
     if link_architectures is None:
-        link_architectures = [LinkType.DIM_BK_SEQ] * n_links
+        link_architectures = [cast(LinkArch, LinkArchDimBkSeq())] * n_links
     elif len(link_architectures) != n_links:
         raise ValueError(f"link_architectures must have {n_links} items")
 
@@ -78,7 +80,7 @@ def build_topology(
                 "node2": node2,
                 "capacity1": cap1,
                 "capacity2": cap2,
-                "parameters": {"length": length, "link_architecture": link_arch},
+                "parameters": {"length": length, "link_arch": link_arch},
             }
         )
         cchannels.append({"node1": node1, "node2": node2, "parameters": {"length": length}})
