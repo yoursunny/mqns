@@ -1,4 +1,7 @@
+import itertools
 import json
+from multiprocessing import Pool, freeze_support
+from typing import Any
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -11,25 +14,24 @@ from qns.network.protocol import ProactiveForwarder
 from qns.simulator import Simulator
 from qns.utils import log, set_seed
 
-from examples_common.stats import gather_etg_decoh
 from examples_common.topo_asymmetric_channel import build_topology
-
-
-# Command line arguments
-class Args(Tap):
-    runs: int = 3  # number of trials per parameter set
-    json: str = ""  # save results as JSON file
-    plt: str = ""  # save plot as image file
-
-
-args = Args().parse_args()
 
 log.set_default_level("CRITICAL")
 
-SEED_BASE = 100
-
-# parameters
+# Constants
 sim_duration = 3
+SEED_BASE = 42
+ch_lengths: list[float] = [20, 20]
+
+# Experiment parameters
+t_cohere_values = [1e-3, 10e-3]
+mem_allocs = [(1, 5), (2, 4), (3, 3), (4, 2), (5, 1)]
+mem_labels = [str(m) for m in mem_allocs]
+channel_configs: dict[str, list[LinkArch]] = {
+    "SR-SR": [LinkArchSr(), LinkArchSr()],
+    "SIM-DIM": [LinkArchSim(), LinkArchDimBk()],
+    "DIM-SIM": [LinkArchDimBk(), LinkArchSim()],
+}
 
 
 def run_simulation(
@@ -60,120 +62,121 @@ def run_simulation(
     s.run()
 
     #### get stats
-    _, _, decoh_ratio = gather_etg_decoh(net)
     fw_s = net.get_node("S").get_app(ProactiveForwarder)
     e2e_rate = fw_s.cnt.n_consumed / sim_duration
     mean_fidelity = fw_s.cnt.consumed_avg_fidelity
-    return e2e_rate, decoh_ratio, mean_fidelity
+    return e2e_rate, mean_fidelity
 
 
-########################### Main #########################
+def run_row(
+    n_runs: int, t_cohere: float, mem_alloc: tuple[int, int], arch: tuple[str, list[LinkArch]]
+) -> tuple[float, str, list[float], list[float]]:
+    left, right = mem_alloc
+    total_qubits = left + right
+    arch_label, link_archs = arch
 
-# Constants
-SEED_BASE = 42
-TOTAL_QUBITS = 6
-
-ch_lengths: list[float] = [20, 20]
-
-# Experiment parameters
-t_cohere_values = [1e-3, 10e-3]
-mem_allocs = [(1, 5), (2, 4), (3, 3), (4, 2), (5, 1)]
-mem_labels = [str(m) for m in mem_allocs]
-
-channel_configs: dict[str, list[LinkArch]] = {
-    "SR-SR": [LinkArchSr(), LinkArchSr()],
-    "SIM-DIM": [LinkArchSim(), LinkArchDimBk()],
-    "DIM-SIM": [LinkArchDimBk(), LinkArchSim()],
-}
-
-# Store results: results[t_cohere][length_label] = dict of lists
-results = {
-    t: {length_label: {"rate_mean": [], "rate_std": [], "fid_mean": [], "fid_std": []} for length_label in channel_configs}
-    for t in t_cohere_values
-}
-
-for t_cohere in t_cohere_values:
-    for length_label, link_architectures in channel_configs.items():
-        for left, right in mem_allocs:
-            rates = []
-            fids = []
-            for i in range(args.runs):
-                print(f"{length_label}, T_cohere={t_cohere:.3f}, Mem alloc={[left, right]}, run {i + 1}")
-                seed = SEED_BASE + i
-
-                ch_capacities = [(TOTAL_QUBITS, left), (right, TOTAL_QUBITS)]
-
-                rate, *_, fidelity = run_simulation(
-                    nodes=["S", "R", "D"],
-                    mem_capacities=[TOTAL_QUBITS, TOTAL_QUBITS, TOTAL_QUBITS],
-                    ch_lengths=ch_lengths,
-                    ch_capacities=ch_capacities,
-                    link_architectures=link_architectures,
-                    t_coherence=t_cohere,
-                    seed=seed,
-                )
-                rates.append(rate)
-                fids.append(fidelity)
-
-            res = results[t_cohere][length_label]
-            res["rate_mean"].append(np.mean(rates))
-            res["rate_std"].append(np.std(rates))
-            res["fid_mean"].append(np.mean(fids))
-            res["fid_std"].append(np.std(fids))
-
-if args.json:
-    with open(args.json, "w") as file:
-        json.dump(results, file)
-
-########################### Plot: Entanglement Rate #########################
+    rates: list[float] = []
+    fids: list[float] = []
+    for i in range(n_runs):
+        print(f"{arch_label}, T_cohere={t_cohere:.3f}, Mem alloc={[left, right]}, run {i + 1}")
+        rate, fidelity = run_simulation(
+            nodes=["S", "R", "D"],
+            mem_capacities=[total_qubits, total_qubits, total_qubits],
+            ch_lengths=ch_lengths,
+            ch_capacities=[(total_qubits, left), (right, total_qubits)],
+            link_architectures=link_archs,
+            t_coherence=t_cohere,
+            seed=SEED_BASE + i,
+        )
+        rates.append(rate)
+        fids.append(fidelity)
+    return t_cohere, arch_label, rates, fids
 
 
-# Update font and figure styling for academic readability at small dimensions
-mpl.rcParams.update(
-    {
-        "font.size": 18,
-        "axes.titlesize": 20,
-        "axes.labelsize": 18,
-        "legend.fontsize": 16,
-        "xtick.labelsize": 16,
-        "ytick.labelsize": 16,
-        "figure.titlesize": 22,
-        "lines.linewidth": 2,
-        "lines.markersize": 6,
-        "errorbar.capsize": 4,
+def save_results(results: Any, *, save_json: str | None, save_plt: str | None):
+    if save_json:
+        with open(save_json, "w") as file:
+            json.dump(results, file)
+
+    ########################### Plot: Entanglement Rate #########################
+
+    # Update font and figure styling for academic readability at small dimensions
+    mpl.rcParams.update(
+        {
+            "font.size": 18,
+            "axes.titlesize": 20,
+            "axes.labelsize": 18,
+            "legend.fontsize": 16,
+            "xtick.labelsize": 16,
+            "ytick.labelsize": 16,
+            "figure.titlesize": 22,
+            "lines.linewidth": 2,
+            "lines.markersize": 6,
+            "errorbar.capsize": 4,
+        }
+    )
+
+    # Redraw plot with updated font sizes
+    fig_combined, axs = plt.subplots(2, 2, figsize=(8, 6), sharex=True)
+
+    for idx, t_cohere in enumerate(t_cohere_values):
+        row_rate = 0
+        row_fid = 1
+        col = idx
+
+        # Entanglement Rate
+        ax_rate = axs[row_rate][col]
+        for arch_label in channel_configs:
+            res = results[t_cohere][arch_label]
+            ax_rate.errorbar(mem_labels, res["rate_mean"], yerr=res["rate_std"], fmt="o--", capsize=4, label=arch_label)
+        ax_rate.set_title(f"T_cohere: {int(t_cohere * 1e3)} ms")
+        ax_rate.set_ylabel("Ent. per second")
+        ax_rate.grid(True, which="both", ls="--", lw=0.6, alpha=0.8)
+        if col == 1:
+            ax_rate.legend(loc="lower right")
+
+        # Fidelity
+        ax_fid = axs[row_fid][col]
+        for arch_label in channel_configs:
+            res = results[t_cohere][arch_label]
+            ax_fid.errorbar(mem_labels, res["fid_mean"], yerr=res["fid_std"], fmt="s--", capsize=4, label=arch_label)
+        ax_fid.set_xlabel("Memory Allocation")
+        ax_fid.set_ylabel("Fidelity")
+        ax_fid.grid(True, which="both", ls="--", lw=0.6, alpha=0.8)
+
+    # fig_combined.suptitle("Entanglement Rate and Fidelity vs Memory Allocation", fontsize=22)
+    fig_combined.tight_layout(rect=(0, 0, 1, 0.95))
+    if save_plt:
+        plt.savefig(save_plt, dpi=300, transparent=True)
+    plt.show()
+
+
+if __name__ == "__main__":
+    freeze_support()
+
+    # Command line arguments
+    class Args(Tap):
+        workers: int = 1  # number of workers for parallel execution
+        runs: int = 3  # number of trials per parameter set
+        json: str = ""  # save results as JSON file
+        plt: str = ""  # save plot as image file
+
+    args = Args().parse_args()
+
+    # Simulator loop with process-based parallelism
+    with Pool(processes=args.workers) as pool:
+        rows = pool.starmap(run_row, itertools.product([args.runs], t_cohere_values, mem_allocs, channel_configs.items()))
+
+    # Store results: results[t_cohere][arch_label] = dict of lists
+    results = {
+        t: {arch_label: {"rate_mean": [], "rate_std": [], "fid_mean": [], "fid_std": []} for arch_label in channel_configs}
+        for t in t_cohere_values
     }
-)
+    for t_cohere, arch_label, rates, fids in rows:
+        res = results[t_cohere][arch_label]
+        res["rate_mean"].append(np.mean(rates))
+        res["rate_std"].append(np.std(rates))
+        res["fid_mean"].append(np.mean(fids))
+        res["fid_std"].append(np.std(fids))
 
-# Redraw plot with updated font sizes
-fig_combined, axs = plt.subplots(2, 2, figsize=(8, 6), sharex=True)
-
-for idx, t_cohere in enumerate(t_cohere_values):
-    row_rate = 0
-    row_fid = 1
-    col = idx
-
-    # Entanglement Rate
-    ax_rate = axs[row_rate][col]
-    for length_label in channel_configs:
-        res = results[t_cohere][length_label]
-        ax_rate.errorbar(mem_labels, res["rate_mean"], yerr=res["rate_std"], fmt="o--", capsize=4, label=length_label)
-    ax_rate.set_title(f"T_cohere: {int(t_cohere * 1e3)} ms")
-    ax_rate.set_ylabel("Ent. per second")
-    ax_rate.grid(True, which="both", ls="--", lw=0.6, alpha=0.8)
-    if col == 1:
-        ax_rate.legend(loc="lower right")
-
-    # Fidelity
-    ax_fid = axs[row_fid][col]
-    for length_label in channel_configs:
-        res = results[t_cohere][length_label]
-        ax_fid.errorbar(mem_labels, res["fid_mean"], yerr=res["fid_std"], fmt="s--", capsize=4, label=length_label)
-    ax_fid.set_xlabel("Memory Allocation")
-    ax_fid.set_ylabel("Fidelity")
-    ax_fid.grid(True, which="both", ls="--", lw=0.6, alpha=0.8)
-
-# fig_combined.suptitle("Entanglement Rate and Fidelity vs Memory Allocation", fontsize=22)
-fig_combined.tight_layout(rect=(0, 0, 1, 0.95))
-if args.plt:
-    plt.savefig(args.plt, dpi=300, transparent=True)
-plt.show()
+    save_results(results, save_json=args.json, save_plt=args.plt)
