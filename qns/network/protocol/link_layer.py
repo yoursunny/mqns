@@ -25,10 +25,11 @@ import numpy as np
 from qns.entity.cchannel import ClassicChannel, ClassicPacket, RecvClassicPacket
 from qns.entity.memory import MemoryQubit, QuantumMemory
 from qns.entity.node import Application, Node, QNode
-from qns.entity.qchannel import QuantumChannel, RecvQubitPacket
+from qns.entity.qchannel import QuantumChannel
 from qns.models.epr import WernerStateEntanglement
 from qns.network import SignalTypeEnum, TimingModeEnum
 from qns.network.protocol.event import (
+    LinkArchSuccessEvent,
     ManageActiveChannels,
     QubitDecoheredEvent,
     QubitEntangledEvent,
@@ -114,11 +115,11 @@ class LinkLayer(Application):
         Key is qchannel name and optional path_id.
         Value is the qchannel and remote QNode.
         """
-        self.pending_init_reservation: dict[str, tuple[QuantumChannel, QNode, int]] = {}
+        self.pending_init_reservation: dict[str, tuple[QuantumChannel, QNode, MemoryQubit]] = {}
         """
         Table of pending reservations for which RESERVE_QUBIT is sent but RESERVE_QUBIT_OK has not arrived.
         Key is reservation key.
-        Value is the qchannel, next hop QNode, local qubit address.
+        Value is the qchannel, next hop QNode, local qubit.
         """
         self.fifo_reservation_req = deque[ReservationRequest]()
         """
@@ -133,7 +134,7 @@ class LinkLayer(Application):
         # event handlers
         self.add_handler(self.RecvClassicPacketHandler, RecvClassicPacket)
         self.add_handler(self.handle_manage_active_channels, ManageActiveChannels)
-        self.add_handler(self.receive_qubit, RecvQubitPacket)
+        self.add_handler(self.handle_success_entangle, LinkArchSuccessEvent)
         self.add_handler(self.handle_decoh_rel, [QubitDecoheredEvent, QubitReleasedEvent])
 
     def install(self, node: Node, simulator: Simulator):
@@ -212,7 +213,6 @@ class LinkLayer(Application):
         qubits = self.memory.get_channel_qubits(ch_name=qchannel.name)
         log.debug(f"{self.own}: {qchannel.name} has assigned qubits: {qubits}")
         for i, (qb, data) in enumerate(qubits):
-            log.debug(f"{self.own}: {qb.path_id, path_id}")
             if qb.path_id != path_id:
                 continue
             if qb.active is None:
@@ -253,7 +253,7 @@ class LinkLayer(Application):
         assert key not in self.pending_init_reservation
         log.debug(f"{self.own}: start reservation | key = {key} | path = {qubit.path_id}")
         qubit.active = key
-        self.pending_init_reservation[key] = (qchannel, next_hop, qubit.addr)
+        self.pending_init_reservation[key] = (qchannel, next_hop, qubit)
 
         msg: ReserveMsg = {"cmd": "RESERVE_QUBIT", "path_id": qubit.path_id, "key": key}
         cchannel = self.own.get_cchannel(next_hop)
@@ -298,15 +298,15 @@ class LinkLayer(Application):
         1. Trigger the entanglement generation process using the reserved memory qubit.
         """
         key = msg["key"]
-        (qchannel, next_hop, address) = self.pending_init_reservation.pop(key)
-        self.generate_entanglement(qchannel=qchannel, next_hop=next_hop, address=address, key=key)
+        (qchannel, next_hop, qubit) = self.pending_init_reservation.pop(key)
+        assert qubit.active == key
+        self.generate_entanglement(qchannel=qchannel, next_hop=next_hop, qubit=qubit)
 
-    def generate_entanglement(self, qchannel: QuantumChannel, next_hop: QNode, address: int, key: str):
+    def generate_entanglement(self, qchannel: QuantumChannel, next_hop: QNode, qubit: MemoryQubit):
         """Schedule a successful entanglement attempt using skip-ahead sampling.
         A `do_successful_attempt` event is scheduled to handle the result of this attempt.
 
         It performs the following checks and steps:
-            - Verifies that the quantum channel is currently active.
             - Ensures the memory's decoherence time is sufficient for the channel length.
             - Computes the time of the next successful attempt and number of skipped trials.
             - Schedules a successful entanglement event at the computed time.
@@ -316,11 +316,6 @@ class LinkLayer(Application):
             next_hop (QNode): The neighboring node with which the entanglement is attempted.
             address (int): The address of the memory qubit used for this attempt.
             key (str): A unique identifier for this entanglement reservation/attempt.
-
-        Raises:
-            Exception:
-                - If the quantum channel is not currently marked as active.
-                - If the channel is too long for successful entanglement before decoherence.
 
         """
         simulator = self.simulator
@@ -333,110 +328,56 @@ class LinkLayer(Application):
         )
         k = np.random.geometric(p)  # k-th attempt will succeed
 
-        t_success, delay_c, delay_n = qchannel.link_arch.delays(
+        tau_l = qchannel.delay_model.calculate()  # time to send photon/message one way
+        d_epr_creation, d_notify_primary, d_notify_secondary = qchannel.link_arch.delays(
             k,
             reset_time=self.reset_time,
-            tau_l=qchannel.delay_model.calculate(),  # time to send photon/message one way
+            tau_l=tau_l,
             tau_0=self.tau_0,
         )
-        simulator.add_event(
-            func_to_event(
-                simulator.tc + t_success,
-                self.do_successful_attempt,
-                qchannel,
-                next_hop,
-                address,
-                k,
-                key,
-                delay_c,
-                delay_n,
-                by=self,
-            )
-        )
+        t_epr_creation = simulator.tc + d_epr_creation
+        # TODO investigate why some procedures crash without adding 1 time slot
+        t_notify_primary = simulator.tc + d_notify_primary + simulator.time(time_slot=1)
+        t_notify_secondary = simulator.tc + d_notify_secondary
 
-    def do_successful_attempt(
-        self, qchannel: QuantumChannel, next_hop: QNode, address: int, attempts: int, key: str, delay_c: float, delay_n: float
-    ):
-        """This method is invoked after a scheduled successful entanglement attempt. It:
-            - Generates a new EPR pair between the current node and the next hop.
-            - Stores the EPR locally at the specified memory address, accounting for the qubit initialization time.
-            - Sends the remote half of the EPR over the quantum channel to the next hop.
-            - Notifies the forwarder accounting for the protocol delay.
-
-        Args:
-            qchannel (QuantumChannel): The quantum channel used for transmission.
-            next_hop (Node): The neighboring node with which entanglement is established.
-            address (int): The memory address at which to store the local half of the EPR.
-            attempts (int): The number of entanglement attempts before this success.
-            key (str): An identifier of the qubit reservation for the neighbor node's qubit.
-
-        Notes:
-            - The quantum channel is assumed to have no photon loss in this step since it executes only the successful attempt.
-
-        """
         epr = WernerStateEntanglement(fidelity=self.init_fidelity, name=uuid.uuid4().hex)
         epr.src = self.own
         epr.dst = next_hop
-        epr.attempts = attempts
-        epr.key = key
-        epr.creation_time = self.simulator.tc - delay_c
+        epr.attempts = k
+        epr.key = qubit.active
+        epr.path_id = qubit.path_id
+        epr.creation_time = t_epr_creation
 
-        local_qubit = self.memory.write(qm=epr, address=address)
-        if not local_qubit:
-            raise Exception(f"{self.own}: (sender) Failed to store EPR {epr.name}")
-        log.debug(f"{self.own}: send half-EPR {epr.name} to {next_hop} | key {epr.key} | path {local_qubit.path_id}")
+        log.debug(
+            f"{self.own}: prepare EPR {epr.name} key={epr.key} dst={epr.dst} attempts={k} "
+            f"times={t_epr_creation},{t_notify_primary},{t_notify_secondary}"
+        )
 
-        epr.path_id = local_qubit.path_id
-        qchannel.send(epr, next_hop)  # no drop
-        self.etg_count += 1
-        self.notify_entangled_qubit(
-            neighbor=next_hop, qubit=local_qubit, delay=delay_n + 1e-6
-        )  # delay_n to align with protocol + a small delay to ensure events order
+        simulator.add_event(LinkArchSuccessEvent(self.own, epr, t=t_notify_primary, by=self))
+        simulator.add_event(LinkArchSuccessEvent(next_hop, epr, t=t_notify_secondary, by=self))
 
-    def receive_qubit(self, event: RecvQubitPacket):
-        """This method is called when a quantum channel delivers an entangled qubit (half of an EPR pair)
-        to the local node. It performs the following:
-
-            - Extracts the `WernerStateEntanglement` (the received qubit) from the packet.
-            - Attempts to store the received qubit in memory accounting for qubit initialization time.
-            - Notifies the forwarder that a qubit has been successfully entangled.
-
-        Args:
-            packet (RecvQubitPacket): The packet containing the received qubit.
-
-        Notes:
-            - In `SYNC` timing mode, the node must be in the `EXTERNAL` signal phase to accept entangled qubits.
-
-        """
+    def handle_success_entangle(self, event: LinkArchSuccessEvent):
         if self.own.timing_mode == TimingModeEnum.SYNC and self.sync_current_phase != SignalTypeEnum.EXTERNAL:
             log.debug(f"{self.own}: EXT phase is over -> stop attempts")
             return
 
-        from_node = event.qchannel.find_peer(self.own)
-
-        epr = event.qubit
-        assert isinstance(epr, WernerStateEntanglement)
-        assert epr.decoherence_time is not None
-
-        log.debug(f"{self.own}: recv half-EPR {epr.name} from {from_node} | reservation key {epr.key}")
-
-        if epr.decoherence_time <= self.simulator.tc:
-            raise Exception(f"{self.own}: Decoherence time already passed | {epr}")
-
-        local_qubit = self.memory.write(qm=epr, path_id=epr.path_id, key=epr.key)
-
-        if local_qubit is None:
-            raise Exception(f"{self.own}: (receiver) Failed to store EPR {epr.name}")
-
-        self.notify_entangled_qubit(neighbor=from_node, qubit=local_qubit)
-
-    def notify_entangled_qubit(self, neighbor: QNode, qubit: MemoryQubit, delay: float = 0):
-        """Schedule an event to notify the forwarder about a new entangled qubit"""
         simulator = self.simulator
+        epr = event.epr
+        neighbor, is_primary = (epr.dst, True) if epr.src == self.own else (epr.src, False)
+        assert neighbor is not None
+        if is_primary:
+            self.etg_count += 1
+
+        log.debug(f"{self.own}: got half-EPR {epr.name} key={epr.key} {'secondary' if is_primary else 'primary'}={neighbor}")
+        assert epr.decoherence_time is None or epr.decoherence_time > self.simulator.tc
+
+        qubit = self.memory.write(epr, path_id=epr.path_id, key=epr.key)
+        if qubit is None:
+            raise Exception(f"{self.own}: Failed to store EPR {epr.name}")
 
         qubit.purif_rounds = 0
         qubit.fsm.to_entangled()
-        simulator.add_event(QubitEntangledEvent(self.own, neighbor, qubit, t=simulator.tc + delay, by=self))
+        simulator.add_event(QubitEntangledEvent(self.own, neighbor, qubit, t=simulator.tc, by=self))
 
     def handle_decoh_rel(self, event: QubitDecoheredEvent | QubitReleasedEvent) -> bool:
         is_decoh = isinstance(event, QubitDecoheredEvent)

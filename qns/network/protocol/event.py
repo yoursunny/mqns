@@ -20,8 +20,8 @@ from typing import Any
 
 from qns.entity.memory import MemoryQubit
 from qns.entity.node import QNode
-from qns.simulator.event import Event
-from qns.simulator.ts import Time
+from qns.models.epr import WernerStateEntanglement
+from qns.simulator import Event, Time
 
 
 class TypeEnum(Enum):
@@ -50,6 +50,52 @@ class ManageActiveChannels(Event):
         self.neighbor = neighbor
         self.path_id = path_id
         self.type = type
+
+    def invoke(self) -> None:
+        self.node.handle(self)
+
+
+class QubitEntangledEvent(Event):
+    """
+    Event sent by LinkLayer to notify Forwarder about new entangled qubit.
+    """
+
+    def __init__(
+        self,
+        node: QNode,
+        neighbor: QNode,
+        qubit: MemoryQubit,
+        *,
+        t: Time,
+        name: str | None = None,
+        by: Any = None,
+    ):
+        super().__init__(t=t, name=name, by=by)
+        self.node = node
+        self.neighbor = neighbor
+        self.qubit = qubit
+
+    def invoke(self) -> None:
+        self.node.handle(self)
+
+
+class LinkArchSuccessEvent(Event):
+    """
+    Event in LinkLayer to notify itself or its neighbor about successful entanglement in link architecture.
+    """
+
+    def __init__(
+        self,
+        node: QNode,
+        epr: WernerStateEntanglement,
+        *,
+        t: Time,
+        name: str | None = None,
+        by: Any = None,
+    ):
+        super().__init__(t=t, name=name, by=by)
+        self.node = node
+        self.epr = epr
 
     def invoke(self) -> None:
         self.node.handle(self)
@@ -85,30 +131,6 @@ class QubitReleasedEvent(Event):
     ):
         super().__init__(t=t, name=name, by=by)
         self.node = node
-        self.qubit = qubit
-
-    def invoke(self) -> None:
-        self.node.handle(self)
-
-
-class QubitEntangledEvent(Event):
-    """
-    Event sent by LinkLayer to notify Forwarder about new entangled qubit.
-    """
-
-    def __init__(
-        self,
-        node: QNode,
-        neighbor: QNode,
-        qubit: MemoryQubit,
-        *,
-        t: Time,
-        name: str | None = None,
-        by: Any = None,
-    ):
-        super().__init__(t=t, name=name, by=by)
-        self.node = node
-        self.neighbor = neighbor
         self.qubit = qubit
 
     def invoke(self) -> None:
