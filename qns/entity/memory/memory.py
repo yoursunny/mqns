@@ -600,7 +600,6 @@ class QuantumMemory(Entity):
         if self.read(key=qm) is None:
             return
 
-        log.debug(f"{self.node}: EPR decohered -> {qm.name} {qm.src}-{qm.dst}")
         qubit.fsm.to_release()
         simulator.add_event(QubitDecoheredEvent(self.node, qubit, t=simulator.tc, by=self))
 

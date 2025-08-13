@@ -251,9 +251,9 @@ class LinkLayer(Application):
 
         key = uuid.uuid4().hex
         assert key not in self.pending_init_reservation
-        log.debug(f"{self.own}: start reservation | key = {key} | path = {qubit.path_id}")
         qubit.active = key
         self.pending_init_reservation[key] = (qchannel, next_hop, qubit)
+        log.debug(f"{self.own}: start reservation key={key} dst={next_hop} addr={qubit.addr} path={qubit.path_id}")
 
         msg: ReserveMsg = {"cmd": "RESERVE_QUBIT", "path_id": qubit.path_id, "key": key}
         cchannel = self.own.get_cchannel(next_hop)
@@ -286,8 +286,10 @@ class LinkLayer(Application):
         avail_qubits = self.memory.search_available_qubits(ch_name=req.qchannel.name, path_id=req.path_id)
         if not avail_qubits:
             return False
+        qubit = avail_qubits[0]
 
-        avail_qubits[0].active = req.key
+        log.debug(f"{self.own}: accept reservation key={req.key} src={req.from_node} addr={qubit.addr} path={qubit.path_id}")
+        qubit.active = req.key
         msg: ReserveMsg = {"cmd": "RESERVE_QUBIT_OK", "path_id": req.path_id, "key": req.key}
         req.cchannel.send(ClassicPacket(msg, src=self.own, dest=req.from_node), next_hop=req.from_node)
         return True
@@ -304,7 +306,7 @@ class LinkLayer(Application):
 
     def generate_entanglement(self, qchannel: QuantumChannel, next_hop: QNode, qubit: MemoryQubit):
         """Schedule a successful entanglement attempt using skip-ahead sampling.
-        A `do_successful_attempt` event is scheduled to handle the result of this attempt.
+        `LinkArchSuccessEvent`s are scheduled to handle the result of this attempt.
 
         It performs the following checks and steps:
             - Ensures the memory's decoherence time is sufficient for the channel length.
@@ -368,7 +370,7 @@ class LinkLayer(Application):
         if is_primary:
             self.etg_count += 1
 
-        log.debug(f"{self.own}: got half-EPR {epr.name} key={epr.key} {'secondary' if is_primary else 'primary'}={neighbor}")
+        log.debug(f"{self.own}: got half-EPR {epr.name} key={epr.key} {'dst' if is_primary else 'src'}={neighbor}")
         assert epr.decoherence_time is None or epr.decoherence_time > self.simulator.tc
 
         qubit = self.memory.write(epr, path_id=epr.path_id, key=epr.key)
@@ -380,10 +382,13 @@ class LinkLayer(Application):
         simulator.add_event(QubitEntangledEvent(self.own, neighbor, qubit, t=simulator.tc, by=self))
 
     def handle_decoh_rel(self, event: QubitDecoheredEvent | QubitReleasedEvent) -> bool:
+        qubit = event.qubit
         is_decoh = isinstance(event, QubitDecoheredEvent)
         if is_decoh:
             self.decoh_count += 1
-        qubit = event.qubit
+            log.debug(f"{self.own}: qubit decohered addr={qubit.addr} old-key={qubit.active}")
+        else:
+            log.debug(f"{self.own}: qubit released addr={qubit.addr} old-key={qubit.active}")
         assert qubit.qchannel is not None
         ac = self.active_channels.get((qubit.qchannel.name, qubit.path_id))
         if ac is None:  # this node is not the EPR initiator
