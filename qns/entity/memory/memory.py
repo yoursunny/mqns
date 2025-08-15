@@ -361,7 +361,7 @@ class QuantumMemory(Entity):
     def clear(self) -> None:
         """Clear all qubits in the memory"""
         for idx, (qubit, _) in enumerate(self._storage):
-            qubit.fsm.to_release()
+            qubit.state = QubitState.RELEASE
             self._storage[idx] = (qubit, None)
         self._usage = 0
         for _, event in self.pending_decohere_events.items():
@@ -482,7 +482,7 @@ class QuantumMemory(Entity):
         for qubit, data in self._storage:
             if data is None:
                 continue
-            if qubit.fsm.state != QubitState.ELIGIBLE:
+            if qubit.state != QubitState.ELIGIBLE:
                 continue
             if path_id is not None and qubit.path_id not in path_id:
                 continue
@@ -534,7 +534,7 @@ class QuantumMemory(Entity):
                 continue
             if data is None:
                 continue
-            if qubit.fsm.state != QubitState.PURIF:
+            if qubit.state != QubitState.PURIF:
                 continue
             if path_id is not None and qubit.path_id != path_id:
                 continue
@@ -600,7 +600,7 @@ class QuantumMemory(Entity):
         if self.read(key=qm) is None:
             return
 
-        qubit.fsm.to_release()
+        qubit.state = QubitState.RELEASE
         simulator.add_event(QubitDecoheredEvent(self.node, qubit, t=simulator.tc, by=self))
 
     def is_full(self) -> bool:

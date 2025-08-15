@@ -1,5 +1,6 @@
 import pytest
 
+from qns.entity.memory import QubitState
 from qns.entity.node import Application, Node, QNode
 from qns.entity.qchannel import LinkArchDimBk
 from qns.models.epr import BaseEntanglement
@@ -45,7 +46,7 @@ class NetworkLayer(Application):
         if not isinstance(self.release_after, float):
             return
         self.own.get_memory().read(address=event.qubit.addr)
-        event.qubit.fsm.to_release()
+        event.qubit.state = QubitState.RELEASE
         self.simulator.add_event(QubitReleasedEvent(self.own, event.qubit, t=event.t + self.release_after, by=self))
         self.release_after = None
 

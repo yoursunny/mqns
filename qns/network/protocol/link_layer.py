@@ -23,7 +23,7 @@ from typing import Literal, TypedDict, cast
 import numpy as np
 
 from qns.entity.cchannel import ClassicChannel, ClassicPacket, RecvClassicPacket
-from qns.entity.memory import MemoryQubit, QuantumMemory
+from qns.entity.memory import MemoryQubit, QuantumMemory, QubitState
 from qns.entity.node import Application, Node, QNode
 from qns.entity.qchannel import QuantumChannel
 from qns.models.epr import WernerStateEntanglement
@@ -378,7 +378,7 @@ class LinkLayer(Application):
             raise Exception(f"{self.own}: Failed to store EPR {epr.name}")
 
         qubit.purif_rounds = 0
-        qubit.fsm.to_entangled()
+        qubit.state = QubitState.ENTANGLED
         simulator.add_event(QubitEntangledEvent(self.own, neighbor, qubit, t=simulator.tc, by=self))
 
     def handle_decoh_rel(self, event: QubitDecoheredEvent | QubitReleasedEvent) -> bool:
