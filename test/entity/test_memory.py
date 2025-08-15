@@ -94,7 +94,7 @@ def test_decoherence_event_removes_qubit():
     assert qubit is not None
     qubit.state = QubitState.ACTIVE
     qubit.state = QubitState.RESERVED
-    qubit.state = QubitState.ENTANGLED
+    qubit.state = QubitState.ENTANGLED0
 
     # Expect it to decohere at t=1.0
     sim.run()

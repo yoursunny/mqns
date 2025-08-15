@@ -355,7 +355,7 @@ class ProactiveForwarder(Application):
         If the qubit is assigned a path (buffer-space multiplexing), the method checks its eligibility and,
         if conditions are met, transitions it to the PURIF state and calls `purif` method.
 
-        If the qubit is unassigned (statistical multiplexing), it is currently ignored.
+        If the qubit is unassigned (statistical multiplexing), it is TODO.
 
         Args:
             event: Event containing the entangled qubit and its associated metadata (e.g., neighbor).
@@ -370,7 +370,7 @@ class ProactiveForwarder(Application):
         self.cnt.n_entg += 1
 
         qubit = event.qubit
-        assert qubit.state == QubitState.ENTANGLED
+        assert qubit.state == QubitState.ENTANGLED1
         if qubit.path_id is not None:  # for buffer-space mux
             fib_entry = self.fib.get_entry(qubit.path_id, must=True)
             qubit.purif_rounds = 0

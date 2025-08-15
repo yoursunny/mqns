@@ -40,9 +40,15 @@ class QubitState(Enum):
 
     This state is set on the qubit at both primary and secondary node of the reservation.
     """
-    ENTANGLED = auto()
+    ENTANGLED0 = auto()
     """
     Qubit is half of an elementary entanglement delivered from link layer.
+    `QubitEntangledEvent` has not been processed by forwarder.
+    """
+    ENTANGLED1 = auto()
+    """
+    Qubit is half of an elementary entanglement delivered from link layer.
+    `QubitEntangledEvent` has been processed by forwarder.
     """
     PURIF = auto()
     """
@@ -73,8 +79,9 @@ class QubitState(Enum):
 ALLOWED_STATE_TRANSITIONS: dict[QubitState, tuple[QubitState, ...]] = {
     QubitState.RAW: (QubitState.ACTIVE,),
     QubitState.ACTIVE: (QubitState.RESERVED,),
-    QubitState.RESERVED: (QubitState.ENTANGLED,),
-    QubitState.ENTANGLED: (QubitState.RELEASE, QubitState.PURIF),
+    QubitState.RESERVED: (QubitState.ENTANGLED0,),
+    QubitState.ENTANGLED0: (QubitState.RELEASE, QubitState.ENTANGLED1),
+    QubitState.ENTANGLED1: (QubitState.RELEASE, QubitState.PURIF),
     QubitState.PURIF: (QubitState.RELEASE, QubitState.PENDING, QubitState.ELIGIBLE),
     QubitState.PENDING: (QubitState.RELEASE, QubitState.PURIF),
     QubitState.ELIGIBLE: (QubitState.RELEASE,),

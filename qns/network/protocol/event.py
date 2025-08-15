@@ -96,10 +96,10 @@ class QubitEntangledEvent(Event):
         self.node = node
         self.neighbor = neighbor
         self.qubit = qubit
-        assert self.qubit.state == QubitState.ENTANGLED
+        assert self.qubit.state == QubitState.ENTANGLED0
 
     def invoke(self) -> None:
-        assert self.qubit.state == QubitState.ENTANGLED
+        self.qubit.state = QubitState.ENTANGLED1
         self.node.handle(self)
 
 
