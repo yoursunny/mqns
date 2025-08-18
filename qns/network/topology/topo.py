@@ -102,7 +102,7 @@ class Topology:
 
         """
         for idx, n in enumerate(nl):
-            m = QuantumMemory(name=f"m{idx}", node=n, **self.memory_args)
+            m = QuantumMemory(f"m{idx}", **self.memory_args)
             n.set_memory(m)
 
     def add_cchannels(

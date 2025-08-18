@@ -19,24 +19,44 @@
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
-from qns.utils import log
-
 if TYPE_CHECKING:
     from qns.entity.qchannel import QuantumChannel
 
 
 class QubitState(Enum):
-    ENTANGLED = auto()
+    RAW = auto()
     """
-    Qubit is half of an elementary entanglement delivered from link layer
+    Qubit is unused.
+    """
+    ACTIVE = auto()
+    """
+    The link layer has started a reservation on the qubit as the primary node.
+    `qubit.active` contains the reservation key.
+    """
+    RESERVED = auto()
+    """
+    Qubit is part of a reservation in link layer and a remote qubit has been found.
+    `qubit.active` contains the reservation key.
+
+    This state is set on the qubit at both primary and secondary node of the reservation.
+    """
+    ENTANGLED0 = auto()
+    """
+    Qubit is half of an elementary entanglement delivered from link layer.
+    `QubitEntangledEvent` has not been processed by forwarder.
+    """
+    ENTANGLED1 = auto()
+    """
+    Qubit is half of an elementary entanglement delivered from link layer.
+    `QubitEntangledEvent` has been processed by forwarder.
     """
     PURIF = auto()
     """
     Qubit is used by forwarder for zero or more rounds of purification.
     `qubit.qubit_rounds` indicates how many purification rounds have been completed.
 
-    This state is set on the qubit at both primary and non-primary node of a purification segment,
-    but only the primary node is permitted to to initiate purification.
+    This state is set on the qubit at both primary and secondary node of a purification segment,
+    but only the primary node is permitted to initiate purification.
     """
     PENDING = auto()
     """
@@ -56,44 +76,17 @@ class QubitState(Enum):
     """
 
 
-class QubitFSM:
-    def __init__(self):
-        self.state = QubitState.RELEASE
-
-    def to_entangled(self):
-        if self.state == QubitState.RELEASE:
-            self.state = QubitState.ENTANGLED
-        else:
-            log.debug(f"Unexpected transition: <{self.state}> -> <ENTANGLED>")
-
-    def to_purif(self):
-        if self.state in (QubitState.ENTANGLED, QubitState.PENDING):
-            # from ENTANGLED: swapping conditions met -> go to first purif (if any)
-            # from PENDING: pending purif succ -> go to next purif (if any)
-            self.state = QubitState.PURIF
-        else:
-            log.debug(f"Unexpected transition: <{self.state}> -> <PURIF>")
-
-    def to_pending(self):
-        if self.state == QubitState.PURIF:
-            self.state = QubitState.PENDING
-        else:
-            log.debug(f"Unexpected transition: <{self.state}> -> <PENDING>")
-
-    def to_release(self):
-        if self.state in (QubitState.ENTANGLED, QubitState.PURIF, QubitState.PENDING, QubitState.ELIGIBLE):
-            self.state = QubitState.RELEASE
-        else:
-            log.debug(f"Unexpected transition: <{self.state}> -> <RELEASE>")
-
-    def to_eligible(self):
-        if self.state == QubitState.PURIF:
-            self.state = QubitState.ELIGIBLE
-        else:
-            log.debug(f"Unexpected transition: <{self.state}> -> <ELIGIBLE>")
-
-    def __repr__(self) -> str:
-        return f"{self.state}"
+ALLOWED_STATE_TRANSITIONS: dict[QubitState, tuple[QubitState, ...]] = {
+    QubitState.RAW: (QubitState.ACTIVE,),
+    QubitState.ACTIVE: (QubitState.RESERVED,),
+    QubitState.RESERVED: (QubitState.ENTANGLED0,),
+    QubitState.ENTANGLED0: (QubitState.RELEASE, QubitState.ENTANGLED1),
+    QubitState.ENTANGLED1: (QubitState.RELEASE, QubitState.PURIF),
+    QubitState.PURIF: (QubitState.RELEASE, QubitState.PENDING, QubitState.ELIGIBLE),
+    QubitState.PENDING: (QubitState.RELEASE, QubitState.PURIF),
+    QubitState.ELIGIBLE: (QubitState.RELEASE,),
+    QubitState.RELEASE: (QubitState.RAW,),
+}
 
 
 class PathDirection(Enum):
@@ -110,18 +103,27 @@ class MemoryQubit:
 
         """
         self.addr = addr
-        self.fsm = QubitFSM()
-        """state of the qubit according to the FSM"""
+        """Address index in QuantumMemory."""
+
         self.qchannel: "QuantumChannel|None" = None
         """qchannel to which qubit is assigned to (currently only at topology creation time)"""
         self.path_id: int | None = None
         """Optional path ID to which qubit is allocated"""
+        self.path_direction: PathDirection | None = None
+        """Optional end of the path to which the allocated qubit points to (weak solution to avoid loops)"""
+
+        self._state = QubitState.RAW
+        """state of the qubit according to the FSM"""
         self.active: str | None = None
         """Reservation key if qubit is reserved for entanglement, None otherwise"""
         self.purif_rounds = 0
         """Number of purification rounds currently completed by the EPR stored on this qubit"""
-        self.path_direction: PathDirection | None = None
-        """Optional end of the path to which the allocated qubit points to (weak solution to avoid loops)"""
+
+    def assign(self, ch: "QuantumChannel") -> None:
+        self.qchannel = ch
+
+    def unassign(self) -> None:
+        self.qchannel = None
 
     def allocate(self, path_id: int, path_direction: PathDirection | None = None) -> None:
         self.path_id = path_id
@@ -131,16 +133,26 @@ class MemoryQubit:
         self.path_id = None
         self.path_direction = None
 
-    def assign(self, ch: "QuantumChannel") -> None:
-        self.qchannel = ch
+    @property
+    def state(self) -> QubitState:
+        return self._state
 
-    def unassign(self) -> None:
-        self.qchannel = None
+    @state.setter
+    def state(self, value: QubitState) -> None:
+        if value == self._state:
+            return
+        if value not in ALLOWED_STATE_TRANSITIONS[self._state]:
+            raise ValueError(f"MemoryQubit: unexpected state transition from <{self._state}> to <{value}>; {self}")
+        self._state = value
+
+    def reset_state(self) -> None:
+        """Reset state to RAW and clear associated fields."""
+        self._state = QubitState.RAW
+        self.active = None
+        self.purif_rounds = 0
 
     def __repr__(self) -> str:
-        if self.addr is not None:
-            return (
-                f"<memory qubit {self.addr}, ch={self.qchannel}, path_id={self.path_id}, "
-                f"active={self.active}, purif_rounds={self.purif_rounds}, state={self.fsm}>"
-            )
-        return super().__repr__()
+        return (
+            f"<memory qubit {self.addr}, ch={self.qchannel}, path_id={self.path_id}, "
+            f"active={self.active}, purif_rounds={self.purif_rounds}, state={self._state}>"
+        )

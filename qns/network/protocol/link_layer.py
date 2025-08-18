@@ -23,7 +23,7 @@ from typing import Literal, TypedDict, cast
 import numpy as np
 
 from qns.entity.cchannel import ClassicChannel, ClassicPacket, RecvClassicPacket
-from qns.entity.memory import MemoryQubit, QuantumMemory
+from qns.entity.memory import MemoryQubit, QuantumMemory, QubitState
 from qns.entity.node import Application, Node, QNode
 from qns.entity.qchannel import QuantumChannel
 from qns.models.epr import WernerStateEntanglement
@@ -213,16 +213,13 @@ class LinkLayer(Application):
         qubits = self.memory.get_channel_qubits(ch_name=qchannel.name)
         log.debug(f"{self.own}: {qchannel.name} has assigned qubits: {qubits}")
         for i, (qb, data) in enumerate(qubits):
-            if qb.path_id != path_id:
+            if qb.path_id != path_id or qb.state != QubitState.RAW:
                 continue
-            if qb.active is None:
-                if data is not None:
-                    raise Exception(f"{self.own}: qubit has data {data}")
-                simulator.add_event(
-                    func_to_event(
-                        simulator.tc + i * self.attempt_interval, self.start_reservation, next_hop, qchannel, qb, by=self
-                    )
-                )
+            assert qb.active is None
+            assert data is None, f"{self.own}: qubit {qb} has data {data}"
+            simulator.add_event(
+                func_to_event(simulator.tc + i * self.attempt_interval, self.start_reservation, next_hop, qchannel, qb, by=self)
+            )
 
     def start_reservation(self, next_hop: QNode, qchannel: QuantumChannel, qubit: MemoryQubit):
         """
@@ -251,9 +248,9 @@ class LinkLayer(Application):
 
         key = uuid.uuid4().hex
         assert key not in self.pending_init_reservation
-        log.debug(f"{self.own}: start reservation | key = {key} | path = {qubit.path_id}")
-        qubit.active = key
+        qubit.state, qubit.active = QubitState.ACTIVE, key
         self.pending_init_reservation[key] = (qchannel, next_hop, qubit)
+        log.debug(f"{self.own}: start reservation key={key} dst={next_hop} addr={qubit.addr} path={qubit.path_id}")
 
         msg: ReserveMsg = {"cmd": "RESERVE_QUBIT", "path_id": qubit.path_id, "key": key}
         cchannel = self.own.get_cchannel(next_hop)
@@ -286,8 +283,11 @@ class LinkLayer(Application):
         avail_qubits = self.memory.search_available_qubits(ch_name=req.qchannel.name, path_id=req.path_id)
         if not avail_qubits:
             return False
+        qubit = avail_qubits[0]
 
-        avail_qubits[0].active = req.key
+        log.debug(f"{self.own}: accept reservation key={req.key} src={req.from_node} addr={qubit.addr} path={qubit.path_id}")
+        qubit.state = QubitState.ACTIVE  # cannot go directly from RAW to RESERVED
+        qubit.state, qubit.active = QubitState.RESERVED, req.key
         msg: ReserveMsg = {"cmd": "RESERVE_QUBIT_OK", "path_id": req.path_id, "key": req.key}
         req.cchannel.send(ClassicPacket(msg, src=self.own, dest=req.from_node), next_hop=req.from_node)
         return True
@@ -300,11 +300,12 @@ class LinkLayer(Application):
         key = msg["key"]
         (qchannel, next_hop, qubit) = self.pending_init_reservation.pop(key)
         assert qubit.active == key
+        qubit.state = QubitState.RESERVED
         self.generate_entanglement(qchannel=qchannel, next_hop=next_hop, qubit=qubit)
 
     def generate_entanglement(self, qchannel: QuantumChannel, next_hop: QNode, qubit: MemoryQubit):
         """Schedule a successful entanglement attempt using skip-ahead sampling.
-        A `do_successful_attempt` event is scheduled to handle the result of this attempt.
+        `LinkArchSuccessEvent`s are scheduled to handle the result of this attempt.
 
         It performs the following checks and steps:
             - Ensures the memory's decoherence time is sufficient for the channel length.
@@ -336,8 +337,7 @@ class LinkLayer(Application):
             tau_0=self.tau_0,
         )
         t_epr_creation = simulator.tc + d_epr_creation
-        # TODO investigate why some procedures crash without adding 1 time slot
-        t_notify_primary = simulator.tc + d_notify_primary + simulator.time(time_slot=1)
+        t_notify_primary = simulator.tc + d_notify_primary
         t_notify_secondary = simulator.tc + d_notify_secondary
 
         epr = WernerStateEntanglement(fidelity=self.init_fidelity, name=uuid.uuid4().hex)
@@ -368,27 +368,31 @@ class LinkLayer(Application):
         if is_primary:
             self.etg_count += 1
 
-        log.debug(f"{self.own}: got half-EPR {epr.name} key={epr.key} {'secondary' if is_primary else 'primary'}={neighbor}")
+        log.debug(f"{self.own}: got half-EPR {epr.name} key={epr.key} {'dst' if is_primary else 'src'}={neighbor}")
         assert epr.decoherence_time is None or epr.decoherence_time > self.simulator.tc
 
         qubit = self.memory.write(epr, path_id=epr.path_id, key=epr.key)
         if qubit is None:
             raise Exception(f"{self.own}: Failed to store EPR {epr.name}")
 
-        qubit.purif_rounds = 0
-        qubit.fsm.to_entangled()
+        qubit.purif_rounds = 0  # TODO move this to ENTANGLED->PURIF transition
+        qubit.state = QubitState.ENTANGLED0
         simulator.add_event(QubitEntangledEvent(self.own, neighbor, qubit, t=simulator.tc, by=self))
 
     def handle_decoh_rel(self, event: QubitDecoheredEvent | QubitReleasedEvent) -> bool:
+        qubit = event.qubit
         is_decoh = isinstance(event, QubitDecoheredEvent)
         if is_decoh:
             self.decoh_count += 1
-        qubit = event.qubit
+            log.debug(f"{self.own}: qubit decohered addr={qubit.addr} old-key={qubit.active}")
+        else:
+            log.debug(f"{self.own}: qubit released addr={qubit.addr} old-key={qubit.active}")
+
+        qubit.state, qubit.active = QubitState.RAW, None
+
         assert qubit.qchannel is not None
         ac = self.active_channels.get((qubit.qchannel.name, qubit.path_id))
         if ac is None:  # this node is not the EPR initiator
-            qubit.active = None
-
             # Check deferred reservation requests and attempt to fulfill the reservation.
             # Only the first (oldest) request in the FIFO is processed per call.
             if self.fifo_reservation_req and self.try_accept_reservation(self.fifo_reservation_req[0]):

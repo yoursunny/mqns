@@ -256,7 +256,6 @@ class QuantumNetwork:
         for idx, n in enumerate(self.nodes):
             m = QuantumMemory(
                 name=f"m{idx}",
-                node=n,
                 capacity=capacity,
                 decoherence_rate=decoherence_rate,
                 store_error_model_args=store_error_model_args,

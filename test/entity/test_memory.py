@@ -6,6 +6,7 @@ from qns.entity.memory import (
     MemoryWriteRequestEvent,
     MemoryWriteResponseEvent,
     QuantumMemory,
+    QubitState,
 )
 from qns.entity.node import Application, QNode
 from qns.entity.qchannel import QuantumChannel
@@ -79,26 +80,28 @@ def test_channel_qubit_assignment_and_search():
 def test_decoherence_event_removes_qubit():
     mem = QuantumMemory("mem", decoherence_rate=1)
 
-    ch = QuantumChannel("qch", length=10)
-    mem.assign(ch)
-
     node = QNode("n3")
     node.set_memory(mem)
 
     sim = Simulator(0, 5)
     node.install(sim)
 
-    q = WernerStateEntanglement(name="epr3", fidelity=1.0)
-    q.creation_time = sim.tc
-    q.src = node
-    q.dst = QNode("peer")
-    mem.write(q)
+    epr = WernerStateEntanglement(name="epr3", fidelity=1.0)
+    epr.creation_time = sim.tc
+    qubit = mem.write(epr)
+    assert epr.decoherence_time is not None
+
+    assert qubit is not None
+    qubit.state = QubitState.ACTIVE
+    qubit.state = QubitState.RESERVED
+    qubit.state = QubitState.ENTANGLED0
 
     # Expect it to decohere at t=1.0
     sim.run()
 
     res = mem.get("epr3")
     assert res is None
+    assert qubit.state == QubitState.RELEASE
 
 
 def test_memory_clear_and_deallocate():

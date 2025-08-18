@@ -18,7 +18,7 @@
 from enum import Enum, auto
 from typing import Any
 
-from qns.entity.memory import MemoryQubit
+from qns.entity.memory import MemoryQubit, QubitState
 from qns.entity.node import QNode
 from qns.models.epr import WernerStateEntanglement
 from qns.simulator import Event, Time
@@ -55,30 +55,6 @@ class ManageActiveChannels(Event):
         self.node.handle(self)
 
 
-class QubitEntangledEvent(Event):
-    """
-    Event sent by LinkLayer to notify Forwarder about new entangled qubit.
-    """
-
-    def __init__(
-        self,
-        node: QNode,
-        neighbor: QNode,
-        qubit: MemoryQubit,
-        *,
-        t: Time,
-        name: str | None = None,
-        by: Any = None,
-    ):
-        super().__init__(t=t, name=name, by=by)
-        self.node = node
-        self.neighbor = neighbor
-        self.qubit = qubit
-
-    def invoke(self) -> None:
-        self.node.handle(self)
-
-
 class LinkArchSuccessEvent(Event):
     """
     Event in LinkLayer to notify itself or its neighbor about successful entanglement in link architecture.
@@ -101,6 +77,32 @@ class LinkArchSuccessEvent(Event):
         self.node.handle(self)
 
 
+class QubitEntangledEvent(Event):
+    """
+    Event sent by LinkLayer to notify Forwarder about new entangled qubit.
+    """
+
+    def __init__(
+        self,
+        node: QNode,
+        neighbor: QNode,
+        qubit: MemoryQubit,
+        *,
+        t: Time,
+        name: str | None = None,
+        by: Any = None,
+    ):
+        super().__init__(t=t, name=name, by=by)
+        self.node = node
+        self.neighbor = neighbor
+        self.qubit = qubit
+        assert self.qubit.state == QubitState.ENTANGLED0
+
+    def invoke(self) -> None:
+        self.qubit.state = QubitState.ENTANGLED1
+        self.node.handle(self)
+
+
 class QubitDecoheredEvent(Event):
     """
     Event sent by Memory to inform LinkLayer about a decohered qubit.
@@ -110,8 +112,10 @@ class QubitDecoheredEvent(Event):
         super().__init__(t=t, name=name, by=by)
         self.node = node
         self.qubit = qubit
+        assert self.qubit.state == QubitState.RELEASE
 
     def invoke(self) -> None:
+        assert self.qubit.state == QubitState.RELEASE
         self.node.handle(self)
 
 
@@ -132,6 +136,8 @@ class QubitReleasedEvent(Event):
         super().__init__(t=t, name=name, by=by)
         self.node = node
         self.qubit = qubit
+        assert self.qubit.state == QubitState.RELEASE
 
     def invoke(self) -> None:
+        assert self.qubit.state == QubitState.RELEASE
         self.node.handle(self)
