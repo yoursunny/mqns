@@ -3,7 +3,7 @@ import pandas as pd
 from tap import Tap
 
 from qns.network.network import QuantumNetwork
-from qns.network.protocol import LinkLayer, ProactiveForwarder
+from qns.network.proactive import LinkLayer, ProactiveForwarder
 from qns.simulator import Simulator
 from qns.utils import log, set_seed
 

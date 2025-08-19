@@ -1,7 +1,7 @@
 import logging
 
 from qns.network.network import QuantumNetwork
-from qns.network.protocol import ProactiveForwarder
+from qns.network.proactive import ProactiveForwarder
 from qns.simulator import Simulator
 from qns.utils import log, set_seed
 

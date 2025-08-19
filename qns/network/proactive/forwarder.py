@@ -18,7 +18,7 @@
 import random
 from collections import defaultdict
 from collections.abc import Callable
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, cast
 
 from qns.entity.cchannel import ClassicPacket, RecvClassicPacket
 from qns.entity.memory import MemoryQubit, PathDirection, QuantumMemory, QubitState
@@ -26,60 +26,11 @@ from qns.entity.node import Application, Node, QNode
 from qns.models.core import QuantumModel
 from qns.models.epr import WernerStateEntanglement
 from qns.network import QuantumNetwork, SignalTypeEnum, TimingModeEnum
+from qns.network.proactive.fib import FIBEntry, ForwardingInformationBase, find_index_and_swapping_rank, is_isolated_links
+from qns.network.proactive.message import InstallPathMsg, MultiplexingVector, PurifResponseMsg, PurifSolicitMsg, SwapUpdateMsg
 from qns.network.protocol.event import ManageActiveChannels, QubitEntangledEvent, QubitReleasedEvent, TypeEnum
-from qns.network.protocol.fib import FIBEntry, ForwardingInformationBase, find_index_and_swapping_rank, is_isolated_links
 from qns.simulator import Simulator
 from qns.utils import log
-
-try:
-    from typing import NotRequired
-except ImportError:
-    from typing_extensions import NotRequired
-
-
-MultiplexingVector = list[tuple[int, int]]
-
-
-class InstallPathInstructions(TypedDict):
-    req_id: int
-    route: list[str]
-    swap: list[int]
-    mux: Literal["B", "S"]
-    m_v: NotRequired[MultiplexingVector]
-    purif: dict[str, int]
-
-
-class InstallPathMsg(TypedDict):
-    cmd: Literal["install_path"]
-    path_id: int
-    instructions: InstallPathInstructions
-
-
-class PurifMsgBase(TypedDict):
-    path_id: int
-    purif_node: str
-    partner: str
-    epr: str
-    measure_epr: str
-    round: int
-
-
-class PurifSolicitMsg(PurifMsgBase):
-    cmd: Literal["PURIF_SOLICIT"]
-
-
-class PurifResponseMsg(PurifMsgBase):
-    cmd: Literal["PURIF_RESPONSE"]
-    result: bool
-
-
-class SwapUpdateMsg(TypedDict):
-    cmd: Literal["SWAP_UPDATE"]
-    path_id: int
-    swapping_node: str
-    partner: str
-    epr: str
-    new_epr: str | None  # None means swapping failed
 
 
 class ProactiveForwarderCounters:
@@ -219,6 +170,25 @@ class ProactiveForwarder(Application):
         self.memory = self.own.get_memory()
         self.net = self.own.network
 
+    def handle_sync_signal(self, signal_type: SignalTypeEnum):
+        """Processes timing signals for SYNC mode. When receiving an INTERNAL phase start signal, all
+        previously queued QubitEntangledEvent instances are processed. Updates the current
+        synchronization phase to match the received signal type.
+
+        Parameters
+        ----------
+            signal_type (SignalTypeEnum): The received synchronization signal.
+
+        """
+        if signal_type == SignalTypeEnum.EXTERNAL:
+            self.remote_swapped_eprs.clear()
+        elif signal_type == SignalTypeEnum.INTERNAL:
+            # internal phase -> time to handle all entangled qubits
+            log.debug(f"{self.own}: there are {len(self.waiting_qubits)} etg qubits to process")
+            for event in self.waiting_qubits:
+                self.qubit_is_entangled(event)
+            self.waiting_qubits = []
+
     CLASSIC_SIGNALING_HANDLERS: dict[str, Callable[["ProactiveForwarder", Any, FIBEntry], None]] = {}
 
     def RecvClassicPacketHandler(self, event: RecvClassicPacket) -> bool:
@@ -255,6 +225,19 @@ class ProactiveForwarder(Application):
 
         self.CLASSIC_SIGNALING_HANDLERS[msg["cmd"]](self, msg, fib_entry)
         return True
+
+    def send_msg(self, dest: Node, msg: Any, route: list[str]):
+        own_idx = route.index(self.own.name)
+        dest_idx = route.index(dest.name)
+
+        nh = route[own_idx + 1] if dest_idx > own_idx else route[own_idx - 1]
+        next_hop = self.own.network.get_node(nh)
+
+        log.debug(f"{self.own.name}: send msg to {dest.name} via {next_hop.name} | msg: {msg}")
+
+        cchannel = self.own.get_cchannel(next_hop)
+        classic_packet = ClassicPacket(msg=msg, src=self.own, dest=dest)
+        cchannel.send(classic_packet, next_hop=next_hop)
 
     def handle_install_path(self, msg: InstallPathMsg) -> bool:
         """
@@ -1170,38 +1153,6 @@ class ProactiveForwarder(Application):
         self.cnt.n_consumed += 1
         self.cnt.consumed_sum_fidelity += qm.fidelity
         simulator.add_event(QubitReleasedEvent(self.own, qubit, t=simulator.tc, by=self))
-
-    def send_msg(self, dest: Node, msg: Any, route: list[str]):
-        own_idx = route.index(self.own.name)
-        dest_idx = route.index(dest.name)
-
-        nh = route[own_idx + 1] if dest_idx > own_idx else route[own_idx - 1]
-        next_hop = self.own.network.get_node(nh)
-
-        log.debug(f"{self.own.name}: send msg to {dest.name} via {next_hop.name} | msg: {msg}")
-
-        cchannel = self.own.get_cchannel(next_hop)
-        classic_packet = ClassicPacket(msg=msg, src=self.own, dest=dest)
-        cchannel.send(classic_packet, next_hop=next_hop)
-
-    def handle_sync_signal(self, signal_type: SignalTypeEnum):
-        """Processes timing signals for SYNC mode. When receiving an INTERNAL phase start signal, all
-        previously queued QubitEntangledEvent instances are processed. Updates the current
-        synchronization phase to match the received signal type.
-
-        Parameters
-        ----------
-            signal_type (SignalTypeEnum): The received synchronization signal.
-
-        """
-        if signal_type == SignalTypeEnum.EXTERNAL:
-            self.remote_swapped_eprs.clear()
-        elif signal_type == SignalTypeEnum.INTERNAL:
-            # internal phase -> time to handle all entangled qubits
-            log.debug(f"{self.own}: there are {len(self.waiting_qubits)} etg qubits to process")
-            for event in self.waiting_qubits:
-                self.qubit_is_entangled(event)
-            self.waiting_qubits = []
 
 
 def _can_enter_purif(own_name: str, partner_name: str) -> bool:

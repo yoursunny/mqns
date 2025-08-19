@@ -9,8 +9,8 @@ from tap import Tap
 
 from qns.entity.node import Application
 from qns.network.network import QuantumNetwork
-from qns.network.protocol import LinkLayer, ProactiveForwarder, ProactiveRoutingControllerApp
-from qns.network.protocol.fib import FIBEntry
+from qns.network.proactive import LinkLayer, ProactiveForwarder, ProactiveRoutingController
+from qns.network.proactive.fib import FIBEntry
 from qns.network.topology.customtopo import CustomTopology, Topo
 from qns.simulator import Simulator
 from qns.utils import log, set_seed
@@ -173,7 +173,7 @@ def generate_topology(
         ],
         "controller": {
             "name": "ctrl",
-            "apps": [ProactiveRoutingControllerApp(swapping_policy=swapping_policy, routing_type=routing_type)],
+            "apps": [ProactiveRoutingController(swapping_policy=swapping_policy, routing_type=routing_type)],
         },
     }
 

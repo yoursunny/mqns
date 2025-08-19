@@ -1,5 +1,5 @@
 from qns.network.network import QuantumNetwork
-from qns.network.protocol import LinkLayer, ProactiveForwarder, ProactiveRoutingControllerApp
+from qns.network.proactive import LinkLayer, ProactiveForwarder, ProactiveRoutingController
 from qns.network.route import YenRouteAlgorithm
 from qns.network.topology.customtopo import CustomTopology, Topo, TopoQNode
 from qns.simulator import Simulator
@@ -147,7 +147,7 @@ def generate_topology() -> Topo:
         ],
         "controller": {
             "name": "ctrl",
-            "apps": [ProactiveRoutingControllerApp(swapping_policy=swapping_policy, routing_type=routing_type)],
+            "apps": [ProactiveRoutingController(swapping_policy=swapping_policy, routing_type=routing_type)],
         },
     }
 

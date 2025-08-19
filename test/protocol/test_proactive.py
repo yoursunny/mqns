@@ -2,9 +2,9 @@ import pytest
 
 from qns.entity import Controller
 from qns.network.network import ClassicTopology, QuantumNetwork
+from qns.network.proactive.controller import ProactiveRoutingController
+from qns.network.proactive.forwarder import MultiplexingVector, ProactiveForwarder
 from qns.network.protocol.link_layer import LinkLayer
-from qns.network.protocol.proactive_forwarder import MultiplexingVector, ProactiveForwarder
-from qns.network.protocol.proactive_routing_controller import ProactiveRoutingControllerApp
 from qns.network.topology import LinearTopology
 from qns.simulator import Simulator
 from qns.utils import log
@@ -22,7 +22,7 @@ def build_linear_network(
         cchannel_args={"length": 100},
         memory_args={"decoherence_rate": 1 / 5.0, "capacity": 2 * qchannel_capacity},
     )
-    topo.controller = Controller("ctrl", apps=[ProactiveRoutingControllerApp(swapping=[])])
+    topo.controller = Controller("ctrl", apps=[ProactiveRoutingController(swapping=[])])
 
     net = QuantumNetwork(topo=topo, classic_topo=ClassicTopology.Follow)
     for qchannel in net.get_qchannels():
@@ -40,7 +40,7 @@ def build_linear_network(
 def test_proactive_path_validation():
     """Test controller path validation logic."""
     net, _, m_v = build_linear_network(5)
-    ctrl = net.get_controller().get_app(ProactiveRoutingControllerApp)
+    ctrl = net.get_controller().get_app(ProactiveRoutingController)
 
     with pytest.raises(ValueError, match="swapping order"):
         ctrl.install_path_on_route([], path_id=0, req_id=0, mux="S", swap=[])
@@ -72,7 +72,7 @@ def test_proactive_path_validation():
 def test_proactive_isolated():
     """Test isolated links mode where swapping is disabled."""
     net, simulator, m_v = build_linear_network(3)
-    ctrl = net.get_controller().get_app(ProactiveRoutingControllerApp)
+    ctrl = net.get_controller().get_app(ProactiveRoutingController)
     f1 = net.get_node("n1").get_app(ProactiveForwarder)
     f2 = net.get_node("n2").get_app(ProactiveForwarder)
     f3 = net.get_node("n3").get_app(ProactiveForwarder)
@@ -93,7 +93,7 @@ def test_proactive_isolated():
 def test_proactive_basic():
     """Test basic swapping."""
     net, simulator, m_v = build_linear_network(3)
-    ctrl = net.get_controller().get_app(ProactiveRoutingControllerApp)
+    ctrl = net.get_controller().get_app(ProactiveRoutingController)
     f1 = net.get_node("n1").get_app(ProactiveForwarder)
     f2 = net.get_node("n2").get_app(ProactiveForwarder)
     f3 = net.get_node("n3").get_app(ProactiveForwarder)
@@ -123,7 +123,7 @@ def test_proactive_basic():
 def test_proactive_parallel():
     """Test parallel swapping."""
     net, simulator, m_v = build_linear_network(4)
-    ctrl = net.get_controller().get_app(ProactiveRoutingControllerApp)
+    ctrl = net.get_controller().get_app(ProactiveRoutingController)
     f1 = net.get_node("n1").get_app(ProactiveForwarder)
     f2 = net.get_node("n2").get_app(ProactiveForwarder)
     f3 = net.get_node("n3").get_app(ProactiveForwarder)
@@ -156,7 +156,7 @@ def test_proactive_parallel():
 def test_proactive_purif_link1r():
     """Test 1-round purification on each link."""
     net, simulator, m_v = build_linear_network(3, qchannel_capacity=2)
-    ctrl = net.get_controller().get_app(ProactiveRoutingControllerApp)
+    ctrl = net.get_controller().get_app(ProactiveRoutingController)
     f1 = net.get_node("n1").get_app(ProactiveForwarder)
     f2 = net.get_node("n2").get_app(ProactiveForwarder)
     f3 = net.get_node("n3").get_app(ProactiveForwarder)
@@ -187,7 +187,7 @@ def test_proactive_purif_link1r():
 def test_proactive_purif_link2r():
     """Test 2-round purification on each link."""
     net, simulator, m_v = build_linear_network(3, qchannel_capacity=4)
-    ctrl = net.get_controller().get_app(ProactiveRoutingControllerApp)
+    ctrl = net.get_controller().get_app(ProactiveRoutingController)
     f1 = net.get_node("n1").get_app(ProactiveForwarder)
     f2 = net.get_node("n2").get_app(ProactiveForwarder)
     f3 = net.get_node("n3").get_app(ProactiveForwarder)
@@ -220,7 +220,7 @@ def test_proactive_purif_link2r():
 def test_proactive_purif_ee2r():
     """Test 2-round purification between two end nodes."""
     net, simulator, m_v = build_linear_network(3, qchannel_capacity=4)
-    ctrl = net.get_controller().get_app(ProactiveRoutingControllerApp)
+    ctrl = net.get_controller().get_app(ProactiveRoutingController)
     f1 = net.get_node("n1").get_app(ProactiveForwarder)
     f2 = net.get_node("n2").get_app(ProactiveForwarder)
     f3 = net.get_node("n3").get_app(ProactiveForwarder)

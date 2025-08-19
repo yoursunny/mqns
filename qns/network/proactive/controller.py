@@ -16,16 +16,18 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from enum import Enum, auto
-from typing import TYPE_CHECKING
 
 from qns.entity.cchannel import ClassicPacket
 from qns.entity.node import Application, Controller, Node
 from qns.network import QuantumNetwork
+from qns.network.proactive.message import (
+    InstallPathInstructions,
+    InstallPathMsg,
+    MultiplexingMode,
+    MultiplexingVector,
+)
 from qns.simulator import Simulator
 from qns.utils import log
-
-if TYPE_CHECKING:
-    from qns.network.protocol.proactive_forwarder import InstallPathInstructions, InstallPathMsg, MultiplexingVector
 
 
 class QubitAllocationType(Enum):
@@ -79,7 +81,7 @@ swapping_settings = {
 """Predefined swapping orders."""
 
 
-class ProactiveRoutingControllerApp(Application):
+class ProactiveRoutingController(Application):
     """
     Centralized control plane app for Proactive Routing.
     Works with Proactive Forwarder on quantum nodes.
@@ -308,7 +310,7 @@ class ProactiveRoutingControllerApp(Application):
         self.do_one_path(0, 0, "S1", "D1")
         self.do_one_path(1, 1, "S2", "D2")  # keep path_id globally unique
 
-    def compute_m_v_min_cap(self, route: list[str]) -> list[tuple[int, int]]:
+    def compute_m_v_min_cap(self, route: list[str]) -> MultiplexingVector:
         """
         Compute buffer-space multiplexing vector as pairs of (qubits_at_node_i, qubits_at_node_i+1)
         based on minimum memory capacity.
@@ -319,7 +321,7 @@ class ProactiveRoutingControllerApp(Application):
         q = min(c) // 2
         return [(q, q) for _ in range(len(route) - 1)]
 
-    def compute_m_v_qchannel(self, route: list[str]) -> list[tuple[int, int]]:
+    def compute_m_v_qchannel(self, route: list[str]) -> MultiplexingVector:
         """
         Compute buffer-space multiplexing vector as pairs of (qubits_at_node_i, qubits_at_node_i+1)
         based on qubit-qchannel assignment defined at topology creation.
@@ -332,7 +334,7 @@ class ProactiveRoutingControllerApp(Application):
         *,
         path_id: int,
         req_id: int,
-        mux: str,
+        mux: MultiplexingMode,
         swap: list[int],
         m_v: "MultiplexingVector|None" = None,
         purif: dict[str, int] = {},

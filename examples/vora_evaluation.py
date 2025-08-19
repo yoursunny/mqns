@@ -8,7 +8,7 @@ import pandas as pd
 from tap import Tap
 
 from qns.network import QuantumNetwork
-from qns.network.protocol import LinkLayer, ProactiveForwarder, ProactiveRoutingControllerApp
+from qns.network.proactive import LinkLayer, ProactiveForwarder, ProactiveRoutingController
 from qns.network.topology.customtopo import CustomTopology, Topo, TopoCChannel, TopoController, TopoQChannel, TopoQNode
 from qns.simulator import Simulator
 from qns.utils import log, set_seed
@@ -172,7 +172,7 @@ def generate_topology(p: ParameterSet) -> Topo:
     # Define controller
     controller: TopoController = {
         "name": "ctrl",
-        "apps": [ProactiveRoutingControllerApp(routing_type="SRSP", swapping=p.swapping_config)],
+        "apps": [ProactiveRoutingController(routing_type="SRSP", swapping=p.swapping_config)],
     }
 
     return {"qnodes": nodes, "qchannels": qchannels, "cchannels": cchannels, "controller": controller}
