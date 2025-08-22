@@ -2,9 +2,8 @@ import pytest
 
 from qns.entity import Controller
 from qns.network.network import ClassicTopology, QuantumNetwork
-from qns.network.proactive.controller import ProactiveRoutingController
-from qns.network.proactive.forwarder import MultiplexingVector, ProactiveForwarder
-from qns.network.protocol.link_layer import LinkLayer
+from qns.network.proactive import LinkLayer, ProactiveForwarder, ProactiveRoutingController
+from qns.network.proactive.message import MultiplexingVector
 from qns.network.topology import LinearTopology
 from qns.simulator import Simulator
 from qns.utils import log

@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from qns.entity.memory import MemoryQubit, QuantumMemory
+from qns.entity.memory import MemoryQubit, PathDirection, QuantumMemory
 from qns.entity.node import QNode
+from qns.entity.qchannel import QuantumChannel
 from qns.models.epr import WernerStateEntanglement
 from qns.network.proactive.fib import FIBEntry, ForwardingInformationBase
 from qns.network.proactive.message import InstallPathInstructions
@@ -41,6 +42,27 @@ class MuxScheme(ABC):
     @abstractmethod
     def validate_path_instructions(self, instructions: InstallPathInstructions) -> None:
         """Validate install_path instructions are compatible."""
+        pass
+
+    @abstractmethod
+    def install_path_neighbor(
+        self,
+        instructions: InstallPathInstructions,
+        fib_entry: FIBEntry,
+        direction: PathDirection,
+        neighbor: QNode,
+        qchannel: QuantumChannel,
+    ) -> None:
+        """
+        Save information about neighbor node.
+
+        Args:
+            instructions: Path instructions.
+            fib_entry: FIB entry derived from path instructions.
+            directions: LEFT for left neighbor or RIGHT for right neighbor.
+            neighbor: Neighbor node.
+            qchannel: Quantum channel to the neighbor.
+        """
         pass
 
     @abstractmethod

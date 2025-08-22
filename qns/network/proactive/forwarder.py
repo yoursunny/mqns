@@ -15,7 +15,6 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections import defaultdict
 from collections.abc import Callable
 from copy import deepcopy
 from typing import Any, cast
@@ -26,7 +25,7 @@ from qns.entity.node import Application, Node, QNode
 from qns.models.epr import WernerStateEntanglement
 from qns.network import QuantumNetwork, SignalTypeEnum, TimingModeEnum
 from qns.network.proactive.fib import FIBEntry, ForwardingInformationBase, find_index_and_swapping_rank
-from qns.network.proactive.message import InstallPathMsg, MultiplexingVector, PurifResponseMsg, PurifSolicitMsg, SwapUpdateMsg
+from qns.network.proactive.message import InstallPathMsg, PurifResponseMsg, PurifSolicitMsg, SwapUpdateMsg
 from qns.network.proactive.mux import MuxScheme
 from qns.network.proactive.mux_buffer_space import MuxSchemeBufferSpace
 from qns.network.protocol.event import ManageActiveChannels, QubitEntangledEvent, QubitReleasedEvent, TypeEnum
@@ -117,9 +116,6 @@ class ProactiveForwarder(Application):
 
         self.waiting_qubits: list[QubitEntangledEvent] = []
         """stores the qubits waiting for the INTERNAL phase (SYNC mode)"""
-
-        self.qchannel_paths_map = defaultdict[str, list[int]](lambda: [])
-        """stores path-qchannel relationship (for statistical mux)"""
 
         self.mux = deepcopy(mux)
         """
@@ -214,24 +210,19 @@ class ProactiveForwarder(Application):
 
         assert packet.dest is not None
         if packet.dest.name != self.own.name:  # node is not destination: forward message
-            self.send_msg(dest=packet.dest, msg=msg, route=fib_entry.route)
+            self.send_msg(packet.dest, msg, fib_entry)
             return True
 
         self.CLASSIC_SIGNALING_HANDLERS[msg["cmd"]](self, msg, fib_entry)
         return True
 
-    def send_msg(self, dest: Node, msg: Any, route: list[str]):
-        own_idx = route.index(self.own.name)
-        dest_idx = route.index(dest.name)
-
-        nh = route[own_idx + 1] if dest_idx > own_idx else route[own_idx - 1]
+    def send_msg(self, dest: Node, msg: Any, fib_entry: FIBEntry):
+        dest_idx = fib_entry.route.index(dest.name)
+        nh = fib_entry.route[fib_entry.own_idx + 1] if dest_idx > fib_entry.own_idx else fib_entry.route[fib_entry.own_idx - 1]
         next_hop = self.own.network.get_node(nh)
 
         log.debug(f"{self.own.name}: send msg to {dest.name} via {next_hop.name} | msg: {msg}")
-
-        cchannel = self.own.get_cchannel(next_hop)
-        classic_packet = ClassicPacket(msg=msg, src=self.own, dest=dest)
-        cchannel.send(classic_packet, next_hop=next_hop)
+        self.own.get_cchannel(next_hop).send(ClassicPacket(msg=msg, src=self.own, dest=dest), next_hop)
 
     def handle_install_path(self, msg: InstallPathMsg) -> bool:
         """
@@ -246,12 +237,20 @@ class ProactiveForwarder(Application):
         simulator = self.simulator
         path_id = msg["path_id"]
         instructions = msg["instructions"]
+        log.debug(f"{self.own.name}: routing instructions of path {path_id}: {instructions}")
         self.mux.validate_path_instructions(instructions)
 
-        log.debug(f"{self.own.name}: routing instructions of path {path_id}: {instructions}")
-
+        # populate FIB
         route = instructions["route"]
-        m_v = instructions.get("m_v")
+        fib_entry = FIBEntry(
+            path_id=path_id,
+            req_id=instructions["req_id"],
+            route=route,
+            own_idx=route.index(self.own.name),
+            swap=instructions["swap"],
+            purif=instructions["purif"],
+        )
+        self.fib.insert_or_replace(fib_entry)
 
         # identify left/right neighbors and allocate memory qubits to the path
         # example visualization:
@@ -259,26 +258,16 @@ class ProactiveForwarder(Application):
         # m_v = [ (4,2) , (2,4) ]
         # S--(4,2)--R--(2,4)--D
         # here, R should allocate 2 qubits toward S.
-        _, l_qubits = self._find_neighbor_and_allocate_qubits(
-            path_id, route, route_offset=-1, m_v=m_v, m_v_offset=-1, ch_side=1, path_direction=PathDirection.LEFT
-        )
-        r_neighbor, r_qubits = self._find_neighbor_and_allocate_qubits(
-            path_id, route, route_offset=1, m_v=m_v, m_v_offset=0, ch_side=0, path_direction=PathDirection.RIGHT
-        )
-
-        if m_v is not None:
-            log.debug(f"{self.own}: Allocated qubits: left = {l_qubits} | right = {r_qubits}")
-
-        # populate FIB
-        self.fib.insert_or_replace(
-            FIBEntry(
-                path_id=path_id,
-                req_id=instructions["req_id"],
-                route=route,
-                swap=instructions["swap"],
-                purif=instructions["purif"],
+        l_neighbor = self._find_neighbor(fib_entry, -1)
+        if l_neighbor:
+            self.mux.install_path_neighbor(
+                instructions, fib_entry, PathDirection.LEFT, l_neighbor, self.own.get_qchannel(l_neighbor)
             )
-        )
+        r_neighbor = self._find_neighbor(fib_entry, +1)
+        if r_neighbor:
+            self.mux.install_path_neighbor(
+                instructions, fib_entry, PathDirection.RIGHT, r_neighbor, self.own.get_qchannel(r_neighbor)
+            )
 
         # instruct LinkLayer to start generating EPRs on the qchannel toward the right neighbor
         if r_neighbor:
@@ -288,34 +277,11 @@ class ProactiveForwarder(Application):
         # TODO: remove path, type=TypeEnum.REMOVE
         return True
 
-    def _find_neighbor_and_allocate_qubits(
-        self,
-        path_id: int,
-        route: list[str],
-        *,
-        route_offset: int,  # to locate which side of the route we want (left/right)
-        m_v: MultiplexingVector | None,
-        m_v_offset: int,  # to locate which qchannel we want in m_v
-        ch_side: int,  # \in {0,1} to specify which side of the qchannel we want in m_v (i.e., inverse of the offset direction)
-        path_direction: PathDirection,  # to void loops in non-isolated multipaths (see Memory)
-    ) -> tuple[QNode | None, list[int] | None]:
-        own_idx = route.index(self.own.name)
-        neigh_idx = own_idx + route_offset
-        if neigh_idx in (-1, len(route)):  # no left/right neighbor if own node is the left/right end node
-            return None, []
-
-        neighbor = self.net.get_node(route[neigh_idx])
-        qchannel = self.own.get_qchannel(neighbor)
-        self.qchannel_paths_map[qchannel.name].append(path_id)
-        if m_v is None:
-            return neighbor, None
-
-        n_qubits = m_v[own_idx + m_v_offset][ch_side]
-        if n_qubits == 0:  # 0 means use all qubits assigned to this qchannel
-            n_qubits = len(self.memory.get_channel_qubits(qchannel.name))
-
-        qubits = self.memory.allocate(path_id, path_direction, ch_name=qchannel.name, n=n_qubits)
-        return neighbor, qubits
+    def _find_neighbor(self, fib_entry: FIBEntry, route_offset: int) -> QNode | None:
+        neigh_idx = fib_entry.own_idx + route_offset
+        if neigh_idx in (-1, len(fib_entry.route)):  # no left/right neighbor if own node is the left/right end node
+            return None
+        return self.net.get_node(fib_entry.route[neigh_idx])
 
     def qubit_is_entangled(self, event: QubitEntangledEvent):
         """
@@ -450,7 +416,7 @@ class ProactiveForwarder(Application):
             "measure_epr": epr1.name,
             "round": mq0.purif_rounds,
         }
-        self.send_msg(dest=partner, msg=msg, route=fib_entry.route)
+        self.send_msg(partner, msg, fib_entry)
 
     def handle_purif_solicit(self, msg: PurifSolicitMsg, fib_entry: FIBEntry):
         """Processes a PURIF_SOLICIT message from a partner node as part of the purification protocol.
@@ -513,7 +479,7 @@ class ProactiveForwarder(Application):
             "cmd": "PURIF_RESPONSE",
             "result": result,
         }
-        self.send_msg(dest=primary, msg=resp, route=fib_entry.route)
+        self.send_msg(primary, resp, fib_entry)
 
     CLASSIC_SIGNALING_HANDLERS["PURIF_SOLICIT"] = handle_purif_solicit
 
@@ -687,7 +653,7 @@ class ProactiveForwarder(Application):
                 "epr": old_epr.name,
                 "new_epr": None if new_epr is None else new_epr.name,
             }
-            self.send_msg(dest=partner, msg=su_msg, route=fib_e.route)
+            self.send_msg(partner, su_msg, fib_e)
 
         # Release old qubits.
         for i, qubit in enumerate((prev_qubit, next_qubit)):
@@ -821,7 +787,7 @@ class ProactiveForwarder(Application):
                 "epr": my_new_epr.name,
                 "new_epr": None,
             }
-            self.send_msg(dest=destination, msg=su_msg, route=fib_entry.route)
+            self.send_msg(destination, su_msg, fib_entry)
             return
 
         # The swapping_node successfully swapped in parallel with this node.
@@ -877,7 +843,7 @@ class ProactiveForwarder(Application):
             "epr": my_new_epr.name,
             "new_epr": None if merged_epr is None else merged_epr.name,
         }
-        self.send_msg(dest=destination, msg=su_msg, route=fib_entry.route)
+        self.send_msg(destination, su_msg, fib_entry)
 
         # Update records to support potential parallel swapping with "partner".
         _, p_rank = find_index_and_swapping_rank(fib_entry, partner.name)

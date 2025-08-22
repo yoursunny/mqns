@@ -1,7 +1,8 @@
 from abc import abstractmethod
 
-from qns.entity.memory import MemoryQubit, QubitState
+from qns.entity.memory import MemoryQubit, PathDirection, QubitState
 from qns.entity.node import QNode
+from qns.entity.qchannel import QuantumChannel
 from qns.models.epr import WernerStateEntanglement
 from qns.network.proactive.fib import FIBEntry, is_swap_disabled
 from qns.network.proactive.message import InstallPathInstructions
@@ -24,9 +25,7 @@ class MuxSchemeFibBase(MuxScheme):
             self.fw.consume_and_release(qubit)
             return
 
-        route = fib_entry.route
-        own_idx = route.index(self.own.name)
-        if own_idx in (0, len(route) - 1):  # this is an end node
+        if fib_entry.own_idx in (0, len(fib_entry.route) - 1):  # this is an end node
             self.fw.consume_and_release(qubit)
             return
 
@@ -50,6 +49,26 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
         assert instructions["mux"] == "B"
         assert "m_v" in instructions
         assert len(instructions["m_v"]) + 1 == len(instructions["route"])
+
+    @override
+    def install_path_neighbor(
+        self,
+        instructions: InstallPathInstructions,
+        fib_entry: FIBEntry,
+        direction: PathDirection,
+        neighbor: QNode,
+        qchannel: QuantumChannel,
+    ) -> None:
+        assert "m_v" in instructions
+        m_v = instructions["m_v"]
+        m_v_offset, ch_side = (-1, 1) if direction == PathDirection.LEFT else (0, 0)
+
+        n_qubits = m_v[fib_entry.own_idx + m_v_offset][ch_side]
+        if n_qubits == 0:  # 0 means use all qubits assigned to this qchannel
+            n_qubits = len(self.memory.get_channel_qubits(qchannel.name))
+
+        qubits = self.memory.allocate(fib_entry.path_id, direction, ch_name=qchannel.name, n=n_qubits)
+        log.debug(f"{self.own}: Allocated {direction} qubits: {qubits}")
 
     @override
     def qubit_is_entangled(self, qubit: MemoryQubit, neighbor: QNode) -> None:

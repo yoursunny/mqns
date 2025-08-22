@@ -27,6 +27,8 @@ class FIBEntry:
     """Request identifier, identifies source-destination pair."""
     route: list[str]
     """List of nodes traversed by the path."""
+    own_idx: int
+    """Index of own node within the route."""
     swap: list[int]
     """Swap sequence."""
     purif: dict[str, int]
@@ -39,7 +41,7 @@ def find_index_and_swapping_rank(fib_entry: FIBEntry, node_name: str) -> tuple[i
 
     Args:
         fib_entry: a FIB entry.
-        node_name: a node name that exists in path_vector.
+        node_name: a node name that exists in route.
 
     Returns:
         [0]: The node index in the route.
@@ -47,7 +49,7 @@ def find_index_and_swapping_rank(fib_entry: FIBEntry, node_name: str) -> tuple[i
              A node with smaller rank shall perform swapping before a node with larger rank.
 
     Raises:
-        IndexError - node does not exist in path_vector.
+        IndexError - node does not exist in route.
     """
     idx = fib_entry.route.index(node_name)
     return idx, fib_entry.swap[idx]

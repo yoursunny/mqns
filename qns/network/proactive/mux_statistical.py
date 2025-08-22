@@ -1,8 +1,10 @@
 import random
+from collections import defaultdict
 from collections.abc import Iterable, Set
 
-from qns.entity.memory import MemoryQubit, QubitState
+from qns.entity.memory import MemoryQubit, PathDirection, QubitState
 from qns.entity.node import QNode
+from qns.entity.qchannel import QuantumChannel
 from qns.models.epr import BaseEntanglement, WernerStateEntanglement
 from qns.network.proactive.fib import FIBEntry
 from qns.network.proactive.message import InstallPathInstructions
@@ -49,17 +51,36 @@ def intersect_tmp_path_ids(epr0: BaseEntanglement, epr1: BaseEntanglement) -> fr
 
 
 class MuxSchemeDynamicBase(MuxScheme):
+    def __init__(self, name: str):
+        super().__init__(name)
+        self.qchannel_paths_map = defaultdict[str, list[int]](lambda: [])
+        """stores path-qchannel relationship"""
+
     @override
     def validate_path_instructions(self, instructions: InstallPathInstructions):
         assert instructions["mux"] == "S"
         assert "m_v" not in instructions
+
+    @override
+    def install_path_neighbor(
+        self,
+        instructions: InstallPathInstructions,
+        fib_entry: FIBEntry,
+        direction: PathDirection,
+        neighbor: QNode,
+        qchannel: QuantumChannel,
+    ) -> None:
+        _ = instructions
+        _ = direction
+        _ = neighbor
+        self.qchannel_paths_map[qchannel.name].append(fib_entry.path_id)
 
     def _qubit_is_entangled_0(self, qubit: MemoryQubit) -> list[int]:
         assert qubit.path_id is None
         if qubit.qchannel is None:
             raise Exception(f"{self.own}: No qubit-qchannel assignment. Not supported.")
         try:
-            possible_path_ids = self.fw.qchannel_paths_map[qubit.qchannel.name]
+            possible_path_ids = self.qchannel_paths_map[qubit.qchannel.name]
         except KeyError:
             raise Exception(f"{self.own}: qchannel {qubit.qchannel.name} not mapped to any path.")
         return possible_path_ids
@@ -116,7 +137,7 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         # use path_ids to look for acceptable qchannels for swapping, excluding the qubit's qchannel
         matched_channels = {
             channel
-            for channel, path_ids in self.fw.qchannel_paths_map.items()
+            for channel, path_ids in self.qchannel_paths_map.items()
             if channel != qubit.qchannel.name and has_intersect_tmp_path_ids(epr0.tmp_path_ids, path_ids)
         }
 
