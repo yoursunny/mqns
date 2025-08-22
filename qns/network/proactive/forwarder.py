@@ -24,7 +24,7 @@ from qns.entity.memory import MemoryQubit, PathDirection, QuantumMemory, QubitSt
 from qns.entity.node import Application, Node, QNode
 from qns.models.epr import WernerStateEntanglement
 from qns.network import QuantumNetwork, SignalTypeEnum, TimingModeEnum
-from qns.network.proactive.fib import FIBEntry, ForwardingInformationBase, find_index_and_swapping_rank
+from qns.network.proactive.fib import FIB, FIBEntry, find_index_and_swapping_rank, is_swap_disabled
 from qns.network.proactive.message import InstallPathMsg, PurifResponseMsg, PurifSolicitMsg, SwapUpdateMsg
 from qns.network.proactive.mux import MuxScheme
 from qns.network.proactive.mux_buffer_space import MuxSchemeBufferSpace
@@ -111,7 +111,7 @@ class ProactiveForwarder(Application):
         self.memory: QuantumMemory
         """quantum memory of the node"""
 
-        self.fib = ForwardingInformationBase()
+        self.fib = FIB()
         """FIB structure"""
 
         self.waiting_qubits: list[QubitEntangledEvent] = []
@@ -334,7 +334,6 @@ class ProactiveForwarder(Application):
         assert qubit.state == QubitState.PURIF
         assert qubit.qchannel is not None
 
-        assert partner is not None
         partner_idx, partner_rank = find_index_and_swapping_rank(fib_entry, partner.name)
         own_idx, own_rank = find_index_and_swapping_rank(fib_entry, self.own.name)
         if own_rank > partner_rank:
@@ -535,14 +534,23 @@ class ProactiveForwarder(Application):
 
         Args:
             qubit: The qubit that became eligible.
-            fib_entry: FIB entry containing path and swap sequence.
+            fib_entry: FIB entry (not available with MuxSchemeStatistical).
         """
         assert qubit.state == QubitState.ELIGIBLE
         if self.own.timing_mode == TimingModeEnum.SYNC and self.sync_current_phase != SignalTypeEnum.INTERNAL:
             log.debug(f"{self.own}: INT phase is over -> stop swaps")
             return
 
-        self.mux.qubit_is_eligible(qubit, fib_entry)
+        _, epr = self.memory.get(qubit.addr, must=True)
+        assert isinstance(epr, WernerStateEntanglement)
+        if self.can_consume(fib_entry, epr):
+            self.consume_and_release(qubit)
+            return
+
+        swap_candidate_tuple = self.mux.find_swap_candidate(qubit, epr, fib_entry)
+        if swap_candidate_tuple:
+            mq1, fib_entry = swap_candidate_tuple
+            self.do_swapping(qubit, mq1, fib_entry, fib_entry)
 
     def do_swapping(
         self,
@@ -557,6 +565,9 @@ class ProactiveForwarder(Application):
         Partners are notified with SWAP_UPDATE messages.
         """
         simulator = self.simulator
+        assert mq0.addr != mq1.addr
+        assert mq0.state == QubitState.ELIGIBLE
+        assert mq1.state == QubitState.ELIGIBLE
 
         # Read both qubits and remove them from memory.
         #
@@ -849,6 +860,15 @@ class ProactiveForwarder(Application):
         _, p_rank = find_index_and_swapping_rank(fib_entry, partner.name)
         if own_rank == p_rank and merged_epr is not None:
             self.parallel_swappings[new_epr.name] = (new_epr, other_epr, merged_epr)
+
+    def can_consume(self, fib_entry: FIBEntry | None, epr: WernerStateEntanglement) -> bool:
+        if fib_entry is None:
+            assert epr.src is not None
+            assert epr.dst is not None
+            src, dst = epr.src.name, epr.dst.name
+            return next(self.fib.find_request(lambda g: g.src == src and g.dst == dst), None) is not None
+
+        return is_swap_disabled(fib_entry) or fib_entry.own_idx in (0, len(fib_entry.route) - 1)
 
     def consume_and_release(self, qubit: MemoryQubit):
         """

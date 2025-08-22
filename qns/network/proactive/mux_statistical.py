@@ -120,25 +120,18 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
             self.fw.qubit_is_eligible(qubit, None)
 
     @override
-    def qubit_is_eligible(self, qubit: MemoryQubit, fib_entry: FIBEntry | None) -> None:
+    def find_swap_candidate(
+        self, qubit: MemoryQubit, epr: WernerStateEntanglement, fib_entry: FIBEntry | None
+    ) -> tuple[MemoryQubit, FIBEntry] | None:
         _ = fib_entry
         assert qubit.qchannel is not None
 
-        if not self.own.name.startswith("R"):  # this is an end node
-            self.fw.consume_and_release(qubit)
-            return
-
-        # this is an intermediate node
-        # look for another eligible qubit
-
         # find qchannels whose qubits may be used with this qubit
-        _, epr0 = self.memory.get(qubit.addr, must=True)
-        assert isinstance(epr0, WernerStateEntanglement)
         # use path_ids to look for acceptable qchannels for swapping, excluding the qubit's qchannel
         matched_channels = {
             channel
             for channel, path_ids in self.qchannel_paths_map.items()
-            if channel != qubit.qchannel.name and has_intersect_tmp_path_ids(epr0.tmp_path_ids, path_ids)
+            if channel != qubit.qchannel.name and has_intersect_tmp_path_ids(epr.tmp_path_ids, path_ids)
         }
 
         # find another qubit to swap with
@@ -146,7 +139,7 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
             self.memory.find(
                 lambda q, v: q.state == QubitState.ELIGIBLE  # in ELIGIBLE state
                 and (q.qchannel is not None and q.qchannel.name in matched_channels)  # assigned to a matched channel
-                and has_intersect_tmp_path_ids(epr0.tmp_path_ids, v.tmp_path_ids),  # has overlapping tmp_path_ids
+                and has_intersect_tmp_path_ids(epr.tmp_path_ids, v.tmp_path_ids),  # has overlapping tmp_path_ids
                 has_epr=True,
             ),
             (None, None),
@@ -156,9 +149,9 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
             return
         assert isinstance(epr1, WernerStateEntanglement)
 
-        path_ids = intersect_tmp_path_ids(epr0, epr1)
+        path_ids = intersect_tmp_path_ids(epr, epr1)
         fib_entry = self.fib.get(random.choice(list(path_ids)))  # no need to coordinate across the path
-        self.fw.do_swapping(qubit, mq1, fib_entry, fib_entry)
+        return mq1, fib_entry
 
     @override
     def swapping_succeeded(

@@ -15,7 +15,7 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Set
+from collections.abc import Callable, Iterator, Set
 from dataclasses import dataclass
 
 
@@ -71,7 +71,36 @@ def is_swap_disabled(fib_entry: FIBEntry) -> bool:
     return swap[0] == 0 == swap[-1]
 
 
-class ForwardingInformationBase:
+class FIBRequestGroup:
+    """FIB information grouped by req_id."""
+
+    def __init__(self, entry: FIBEntry):
+        """Construct from first FIB entry."""
+        self.req_id = entry.req_id
+        self.src = entry.route[0]
+        self.dst = entry.route[-1]
+        self.path_ids = {entry.path_id}
+
+    def add(self, entry: FIBEntry) -> None:
+        """Check consistency and save FIB entry."""
+        assert self.req_id == entry.req_id
+        assert self.src == entry.route[0]
+        assert self.dst == entry.route[-1]
+        self.path_ids.add(entry.path_id)
+
+    def remove(self, entry: FIBEntry) -> bool:
+        """
+        Remove FIB entry.
+
+        Returns:
+            Whether the group has become empty.
+        """
+        assert self.req_id == entry.req_id
+        self.path_ids.remove(entry.path_id)
+        return len(self.path_ids) == 0
+
+
+class FIB:
     def __init__(self):
         self.table: dict[int, FIBEntry] = {}
         """
@@ -79,11 +108,11 @@ class ForwardingInformationBase:
         Key is path_id.
         Value is FIB entry.
         """
-        self.req_path_map: dict[int, set[int]] = {}
+        self.by_req_id: dict[int, FIBRequestGroup] = {}
         """
-        Lookup table indexed by request_id.
-        Key is request_id.
-        Value is path_id set.
+        Lookup table indexed by req_id.
+        Key is req_id.
+        Value contains aggregated information.
         """
 
     def get(self, path_id: int) -> FIBEntry:
@@ -105,8 +134,12 @@ class ForwardingInformationBase:
         self.erase(entry.path_id)
         self.table[entry.path_id] = entry
 
-        paths = self.req_path_map.setdefault(entry.req_id, set())
-        paths.add(entry.path_id)
+        rg = self.by_req_id.get(entry.req_id)
+        if rg:
+            rg.add(entry)
+        else:
+            rg = FIBRequestGroup(entry)
+            self.by_req_id[rg.req_id] = rg
 
     def erase(self, path_id: int):
         """
@@ -119,13 +152,20 @@ class ForwardingInformationBase:
         except KeyError:
             return
 
-        paths = self.req_path_map[entry.req_id]
-        paths.remove(path_id)
-        if not paths:
-            del self.req_path_map[entry.req_id]
+        rg = self.by_req_id[entry.req_id]
+        if rg.remove(entry):
+            del self.by_req_id[entry.req_id]
 
     def list_path_ids_by_request_id(self, request_id: int) -> Set[int]:
-        return self.req_path_map.get(request_id, set())
+        rg = self.by_req_id.get(request_id)
+        if rg:
+            return rg.path_ids
+        return set()
+
+    def find_request(self, predicate: Callable[[FIBRequestGroup], bool]) -> Iterator[FIBRequestGroup]:
+        for rg in self.by_req_id.values():
+            if predicate(rg):
+                yield rg
 
     def __repr__(self):
         """Return a string representation of the forwarding table."""

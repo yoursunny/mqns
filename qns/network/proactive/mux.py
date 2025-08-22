@@ -5,7 +5,7 @@ from qns.entity.memory import MemoryQubit, PathDirection, QuantumMemory
 from qns.entity.node import QNode
 from qns.entity.qchannel import QuantumChannel
 from qns.models.epr import WernerStateEntanglement
-from qns.network.proactive.fib import FIBEntry, ForwardingInformationBase
+from qns.network.proactive.fib import FIB, FIBEntry
 from qns.network.proactive.message import InstallPathInstructions
 
 if TYPE_CHECKING:
@@ -36,7 +36,7 @@ class MuxScheme(ABC):
         return self.fw.memory
 
     @property
-    def fib(self) -> ForwardingInformationBase:
+    def fib(self) -> FIB:
         return self.fw.fib
 
     @abstractmethod
@@ -70,7 +70,22 @@ class MuxScheme(ABC):
         pass
 
     @abstractmethod
-    def qubit_is_eligible(self, qubit: MemoryQubit, fib_entry: FIBEntry | None) -> None:
+    def find_swap_candidate(
+        self, qubit: MemoryQubit, epr: WernerStateEntanglement, fib_entry: FIBEntry | None
+    ) -> tuple[MemoryQubit, FIBEntry] | None:
+        """
+        Find another qubit to swap with an ELIGIBLE qubit.
+
+        Args:
+            qubit: A qubit in ELIGIBLE state.
+            epr: The EPR associated with this qubit. This is not an end-to-end entanglement.
+            fib_entry: FIB entry passed to `fw.qubit_is_eligible()`.
+
+        Returns:
+            None: No candidate, do not swap.
+            [0]: Another qubit in ELIGIBLE state.
+            [1]: FIB entry for `fw.do_swapping()`.
+        """
         pass
 
     @abstractmethod
