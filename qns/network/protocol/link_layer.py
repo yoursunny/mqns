@@ -382,7 +382,6 @@ class LinkLayer(Application):
         if qubit is None:
             raise Exception(f"{self.own}: Failed to store EPR {epr.name}")
 
-        qubit.purif_rounds = 0  # TODO move this to ENTANGLED->PURIF transition
         qubit.state = QubitState.ENTANGLED0
         simulator.add_event(QubitEntangledEvent(self.own, neighbor, qubit, t=simulator.tc, by=self))
 

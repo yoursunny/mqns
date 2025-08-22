@@ -69,16 +69,33 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         super().__init__(name)
 
     @override
+    def validate_path_instructions(self, instructions: InstallPathInstructions):
+        super().validate_path_instructions(instructions)
+
+        # swap sequence must be [1, 0, 0, .., 0, 0, 1]
+        s0, *s1, s2 = instructions["swap"]
+        assert s0 == 1 == s2
+        assert all([s == 0 for s in s1])
+
+        # purif scheme must be empty / zeros
+        assert all([r == 0 for r in instructions["purif"].values()])
+
+    @override
     def qubit_is_entangled(self, qubit: MemoryQubit, neighbor: QNode) -> None:
         possible_path_ids = self._qubit_is_entangled_0(qubit)
         _, epr = self.memory.get(qubit.addr, must=True)
         assert isinstance(epr, WernerStateEntanglement)
         log.debug(f"{self.own}: qubit {qubit}, set possible path IDs = {possible_path_ids}")
         epr.tmp_path_ids = frozenset(possible_path_ids)  # to coordinate decisions along the path
+
         if _can_enter_purif(self.own.name, neighbor.name):
             self.own.get_qchannel(neighbor)  # ensure qchannel exists
             qubit.state = QubitState.PURIF
-            self.fw.qubit_is_purif(qubit)
+
+            # purif scheme is empty, as checked in validate_path_instructions
+            log.debug(f"{self.own}: no FIB associated to qubit -> set eligible")
+            qubit.state = QubitState.ELIGIBLE
+            self.fw.qubit_is_eligible(qubit, None)
 
     @override
     def qubit_is_eligible(self, qubit: MemoryQubit, fib_entry: FIBEntry | None) -> None:

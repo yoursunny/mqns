@@ -361,7 +361,7 @@ class ProactiveForwarder(Application):
         if su_args:
             self.handle_swap_update(*su_args)
 
-    def qubit_is_purif(self, qubit: MemoryQubit, fib_entry: FIBEntry | None = None, partner: QNode | None = None):
+    def qubit_is_purif(self, qubit: MemoryQubit, fib_entry: FIBEntry, partner: QNode):
         """
         Handle a qubit entering PURIF state.
         Determines the segment in which the qubit is entangled and number of required purification rounds from the FIB.
@@ -377,12 +377,6 @@ class ProactiveForwarder(Application):
         """
         assert qubit.state == QubitState.PURIF
         assert qubit.qchannel is not None
-
-        if fib_entry is None:  # temporarily ignoring purif scheme in statistical mux
-            log.debug(f"{self.own}: no FIB associated to qubit -> set eligible")
-            qubit.state = QubitState.ELIGIBLE
-            self.qubit_is_eligible(qubit, fib_entry)
-            return
 
         assert partner is not None
         partner_idx, partner_rank = find_index_and_swapping_rank(fib_entry, partner.name)
@@ -508,9 +502,9 @@ class ProactiveForwarder(Application):
         )
 
         if result:
+            self.memory.update(old_qm=epr0.name, new_qm=epr0)
             self.cnt.increment_n_purif(mq0.purif_rounds)
             mq0.purif_rounds += 1
-            self.memory.update(old_qm=epr0.name, new_qm=epr0)
             mq0.state = QubitState.PURIF
             self.qubit_is_purif(mq0, fib_entry, primary)
         else:
@@ -564,15 +558,15 @@ class ProactiveForwarder(Application):
             return
 
         # purif succeeded
+        self.memory.update(old_qm=epr.name, new_qm=epr)
         self.cnt.increment_n_purif(qubit.purif_rounds)
         qubit.purif_rounds += 1
-        self.memory.update(old_qm=epr.name, new_qm=epr)
         qubit.state = QubitState.PURIF
         self.qubit_is_purif(qubit, fib_entry, self.own.network.get_node(msg["partner"]))
 
     CLASSIC_SIGNALING_HANDLERS["PURIF_RESPONSE"] = handle_purif_response
 
-    def qubit_is_eligible(self, qubit: MemoryQubit, fib_entry: FIBEntry | None = None):
+    def qubit_is_eligible(self, qubit: MemoryQubit, fib_entry: FIBEntry | None):
         """
         Handle a qubit entering ELIGIBLE state.
 
@@ -583,13 +577,9 @@ class ProactiveForwarder(Application):
         2. Generate a new EPR if successful.
         3. Notify adjacent nodes with SWAP_UPDATE messages.
 
-        Parameters
-        ----------
-            qubit (MemoryQubit): The qubit that became eligible.
-            fib_entry (dict, optional): FIB entry containing path and swap sequence.
-            The only case where fib_entry is None is when statistical mux is used.
-            In such case, the path ID (and thus FIB entry) is figured out from qubit/EPR
-            eligibility at the time of calling the function.
+        Args:
+            qubit: The qubit that became eligible.
+            fib_entry: FIB entry containing path and swap sequence.
         """
         assert qubit.state == QubitState.ELIGIBLE
         if self.own.timing_mode == TimingModeEnum.SYNC and self.sync_current_phase != SignalTypeEnum.INTERNAL:
