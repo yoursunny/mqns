@@ -6,7 +6,6 @@ except ImportError:
     from typing_extensions import NotRequired
 
 
-MultiplexingMode = Literal["B", "S"]
 MultiplexingVector = list[tuple[int, int]]
 
 
@@ -14,9 +13,28 @@ class PathInstructions(TypedDict):
     req_id: int
     route: list[str]
     swap: list[int]
-    mux: MultiplexingMode
     m_v: NotRequired[MultiplexingVector]
     purif: dict[str, int]
+
+
+def validate_path_instructions(instructions: PathInstructions) -> None:
+    def check_purif_segment(segment_name: str) -> bool:
+        try:
+            idx0, idx1 = [route.index(node_name) for node_name in segment_name.split("-")]
+            return idx0 < idx1
+        except ValueError:
+            return False
+
+    route = instructions["route"]
+    if len(route) != len(instructions["swap"]) or len(route) == 0:
+        raise ValueError("swapping order does not match route length")
+
+    if "m_v" in instructions and len(instructions["m_v"]) != len(route) - 1:
+        raise ValueError("multiplexing vector does not match route length")
+
+    for segment_name in instructions["purif"].keys():
+        if not check_purif_segment(segment_name):
+            raise ValueError(f"purif segment {segment_name} does not exist in route")
 
 
 class InstallPathMsg(TypedDict):

@@ -5,7 +5,7 @@ from qns.entity.node import QNode
 from qns.entity.qchannel import QuantumChannel
 from qns.models.epr import WernerStateEntanglement
 from qns.network.proactive.fib import FibEntry
-from qns.network.proactive.message import PathInstructions
+from qns.network.proactive.message import PathInstructions, validate_path_instructions
 from qns.network.proactive.mux import MuxScheme
 from qns.utils import log
 
@@ -38,9 +38,8 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
 
     @override
     def validate_path_instructions(self, instructions: PathInstructions) -> None:
-        assert instructions["mux"] == "B"
+        validate_path_instructions(instructions)
         assert "m_v" in instructions
-        assert len(instructions["m_v"]) + 1 == len(instructions["route"])
 
     @override
     def install_path_neighbor(

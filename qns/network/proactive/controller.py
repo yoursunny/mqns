@@ -20,12 +20,7 @@ from enum import Enum, auto
 from qns.entity.cchannel import ClassicPacket
 from qns.entity.node import Application, Controller, Node
 from qns.network import QuantumNetwork
-from qns.network.proactive.message import (
-    InstallPathMsg,
-    MultiplexingMode,
-    MultiplexingVector,
-    PathInstructions,
-)
+from qns.network.proactive.message import InstallPathMsg, MultiplexingVector, PathInstructions, validate_path_instructions
 from qns.simulator import Simulator
 from qns.utils import log
 
@@ -192,13 +187,10 @@ class ProactiveRoutingController(Application):
 
         if qubit_allocation is None:
             m_v = None
-            mux = "S"
         elif qubit_allocation == QubitAllocationType.MIN_CAPACITY:
             m_v = self.compute_m_v_min_cap(route)
-            mux = "B"
         elif qubit_allocation == QubitAllocationType.FOLLOW_QCHANNEL:
             m_v = self.compute_m_v_qchannel(route)
-            mux = "B"
 
         # Use explicit swapping order is given
         if self.swapping_order:
@@ -209,7 +201,7 @@ class ProactiveRoutingController(Application):
                 raise Exception(f"Swapping order {swapping_order} is needed but not found in swapping settings.")
             swap = swapping_settings[swapping_order]
 
-        self.install_path_on_route(route, path_id=path_id, req_id=req_id, m_v=m_v, mux=mux, swap=swap, purif=self.purif)
+        self.install_path(path_id, req_id, route, m_v=m_v, swap=swap, purif=self.purif)
 
     def do_multiple_static_paths(self):
         """Install multiple static paths between nodes "S" (source) and "D" (destination) of the network topology.
@@ -299,7 +291,7 @@ class ProactiveRoutingController(Application):
                 m_v.append((qubits_a, qubits_b))
 
             # Send install instruction to each node on this path
-            self.install_path_on_route(route, path_id=path_id, req_id=0, m_v=m_v, mux="B", swap=swap, purif={})
+            self.install_path(path_id, 0, route, m_v=m_v, swap=swap, purif={})
 
     def do_multirequest_dynamic_paths(self):
         """Install one path between S1 and D1 and one path between S2 and D2 of the network topology.
@@ -328,50 +320,48 @@ class ProactiveRoutingController(Application):
         """
         return [(0, 0) for _ in range(len(route) - 1)]
 
-    def install_path_on_route(
+    def install_path(
         self,
-        route: list[str],
-        *,
         path_id: int,
         req_id: int,
-        mux: MultiplexingMode,
+        route: list[str],
+        *,
         swap: list[int],
         m_v: "MultiplexingVector|None" = None,
         purif: dict[str, int] = {},
     ):
         """
-        Install an explicitly specified path with the given route.
+        Install an explicitly specified path onto its nodes.
 
         Args:
+            path_id: numeric identifier to uniquely identify this path within the network.
+            req_id: numeric identifier to uniquely identify the src-dst pair within the network.
             route: a list of node names, in the order they appear in the path.
                    There must a qchannel and a cchannel between adjacent nodes.
-            path_id: numeric identifier to uniquely identify this path within the network.
             swap: swap sequence.
                   This list shall have the same length as route.
-                  Each integer is the swapping rank of a node, as explained in `FIBEntry.find_index_and_swap_rank`.
-            purif: purification instructions.
+                  Each item is a nonnegative integer that represents swapping rank of the corresponding node.
+                  A node with smaller rank shall perform swapping before a node with larger rank.
+            m_v: multiplexing vector.
+                 This must be present for buffer-space multiplexing scheme and absent for other multiplexing schemes.
+            purif: purification scheme.
                    Each key is a segment name consists of two node names concatenated with a hyphen ("-"),
                    where the nodes appear in the same order as in the route but do not have to be adjacent.
                    Each value is an integer of the required rounds of purification at this segment.
                    The default for every segment is zero i.e. no purification is performed.
         """
-        if len(route) != len(swap) or len(route) == 0:
-            raise ValueError("swapping order does not match route length")
-        for segment_name in purif.keys():
-            if not check_purif_segment(route, segment_name):
-                raise ValueError(f"purif segment {segment_name} does not exist in route")
+        instructions: "PathInstructions" = {
+            "req_id": req_id,
+            "route": route,
+            "swap": swap,
+            "purif": purif,
+        }
+        if m_v is not None:
+            instructions["m_v"] = m_v
+        validate_path_instructions(instructions)
 
         for node_name in route:
             qnode = self.net.get_node(node_name)
-            instructions: "PathInstructions" = {
-                "req_id": req_id,
-                "route": route,
-                "swap": swap,
-                "mux": mux,
-                "purif": purif,
-            }
-            if m_v is not None:
-                instructions["m_v"] = m_v
             msg: "InstallPathMsg" = {"cmd": "install_path", "path_id": path_id, "instructions": instructions}
 
             cchannel = self.own.get_cchannel(qnode)

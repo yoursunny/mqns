@@ -24,7 +24,7 @@ from qns.entity.memory import MemoryQubit, PathDirection, QuantumMemory, QubitSt
 from qns.entity.node import Application, Node, QNode
 from qns.models.epr import WernerStateEntanglement
 from qns.network import QuantumNetwork, SignalTypeEnum, TimingModeEnum
-from qns.network.proactive.fib import Fib, FibEntry, is_swap_disabled
+from qns.network.proactive.fib import Fib, FibEntry
 from qns.network.proactive.message import InstallPathMsg, PurifResponseMsg, PurifSolicitMsg, SwapUpdateMsg
 from qns.network.proactive.mux import MuxScheme
 from qns.network.proactive.mux_buffer_space import MuxSchemeBufferSpace
@@ -271,7 +271,7 @@ class ProactiveForwarder(Application):
 
         # instruct LinkLayer to start generating EPRs on the qchannel toward the right neighbor
         if r_neighbor:
-            p = path_id if instructions["mux"] == "B" else None
+            p = path_id if "m_v" in instructions else None
             simulator.add_event(ManageActiveChannels(self.own, r_neighbor, TypeEnum.ADD, p, t=simulator.tc, by=self))
 
         # TODO: remove path, type=TypeEnum.REMOVE
@@ -861,7 +861,7 @@ class ProactiveForwarder(Application):
             src, dst = epr.src.name, epr.dst.name
             return next(self.fib.find_request(lambda g: g.src == src and g.dst == dst), None) is not None
 
-        return is_swap_disabled(fib_entry) or fib_entry.own_idx in (0, len(fib_entry.route) - 1)
+        return fib_entry.is_swap_disabled or fib_entry.own_idx in (0, len(fib_entry.route) - 1)
 
     def consume_and_release(self, qubit: MemoryQubit):
         """

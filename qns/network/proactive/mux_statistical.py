@@ -7,7 +7,7 @@ from qns.entity.node import QNode
 from qns.entity.qchannel import QuantumChannel
 from qns.models.epr import BaseEntanglement, WernerStateEntanglement
 from qns.network.proactive.fib import FibEntry
-from qns.network.proactive.message import PathInstructions
+from qns.network.proactive.message import PathInstructions, validate_path_instructions
 from qns.network.proactive.mux import MuxScheme
 from qns.utils import log
 
@@ -44,7 +44,7 @@ class MuxSchemeDynamicBase(MuxScheme):
 
     @override
     def validate_path_instructions(self, instructions: PathInstructions):
-        assert instructions["mux"] == "S"
+        validate_path_instructions(instructions)
         assert "m_v" not in instructions
 
     @override

@@ -38,6 +38,21 @@ class FibEntry:
     def own_swap_rank(self) -> int:
         return self.swap[self.own_idx]
 
+    @property
+    def is_swap_disabled(self) -> bool:
+        """
+        Determine whether swapping has been disabled.
+
+        To disable swapping, set swap_sequence to a list of zeros.
+
+        When swapping is disabled, the forwarder will consume entanglement upon completing purification,
+        without attempting entanglement swapping.
+
+        Args:
+            fib_entry: a FIB entry.
+        """
+        return self.swap[0] == 0 == self.swap[-1]
+
     def find_index_and_swap_rank(self, node_name: str) -> tuple[int, int]:
         """
         Determine the swapping rank of a node.
@@ -48,30 +63,13 @@ class FibEntry:
 
         Returns:
             [0]: The node index in the route.
-            [1]: A nonnegative integer that represents swapping rank of the node.
-                 A node with smaller rank shall perform swapping before a node with larger rank.
+            [1]: Swapping rank of the node, explained in `ProactiveRoutingController.install_path`.
 
         Raises:
             IndexError - node does not exist in route.
         """
         idx = self.route.index(node_name)
         return idx, self.swap[idx]
-
-
-def is_swap_disabled(fib_entry: FibEntry) -> bool:
-    """
-    Determine whether swapping has been disabled.
-
-    To disable swapping, set swap_sequence to a list of zeros.
-
-    When swapping is disabled, the forwarder will consume entanglement upon completing purification,
-    without attempting entanglement swapping.
-
-    Args:
-        fib_entry: a FIB entry.
-    """
-    swap = fib_entry.swap
-    return swap[0] == 0 == swap[-1]
 
 
 class FibRequestGroup:
