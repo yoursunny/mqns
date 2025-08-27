@@ -4,7 +4,7 @@ from collections.abc import Callable
 from qns.entity.memory import MemoryQubit, QubitState
 from qns.entity.node import QNode
 from qns.models.epr import WernerStateEntanglement
-from qns.network.proactive.fib import FIBEntry
+from qns.network.proactive.fib import FibEntry
 from qns.network.proactive.mux_buffer_space import MuxSchemeFibBase
 from qns.network.proactive.mux_statistical import MuxSchemeDynamicBase, has_intersect_tmp_path_ids
 from qns.utils import log
@@ -15,14 +15,14 @@ except ImportError:
     from typing_extensions import override
 
 
-def random_path_selector(fibs: list[FIBEntry]) -> FIBEntry:
+def random_path_selector(fibs: list[FibEntry]) -> FibEntry:
     """
     Path selection strategy: random allocation.
     """
     return random.choice(fibs)
 
 
-def select_weighted_by_swaps(fibs: list[FIBEntry]) -> FIBEntry:
+def select_weighted_by_swaps(fibs: list[FibEntry]) -> FibEntry:
     """
     Path selection strategy: swap-weighted allocation.
     """
@@ -36,7 +36,7 @@ class MuxSchemeDynamicEpr(MuxSchemeDynamicBase, MuxSchemeFibBase):
         self,
         name="dynamic EPR affection",
         *,
-        path_select_fn: Callable[[list[FIBEntry]], FIBEntry] = random_path_selector,
+        path_select_fn: Callable[[list[FibEntry]], FibEntry] = random_path_selector,
     ):
         super().__init__(name)
         self.path_select_fn = path_select_fn
@@ -67,7 +67,7 @@ class MuxSchemeDynamicEpr(MuxSchemeDynamicBase, MuxSchemeFibBase):
         self.fw.qubit_is_purif(qubit, fib_entry, neighbor)
 
     @override
-    def select_eligible_qubit(self, mq0: MemoryQubit, fib_entry: FIBEntry) -> MemoryQubit | None:
+    def select_eligible_qubit(self, mq0: MemoryQubit, fib_entry: FibEntry) -> MemoryQubit | None:
         assert mq0.path_id is None
         possible_path_ids = [fib_entry.path_id]
         mq1, _ = next(

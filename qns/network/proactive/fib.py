@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class FIBEntry:
+class FibEntry:
     path_id: int
     """Path identifier, identifies end-to-end path."""
     req_id: int
@@ -58,7 +58,7 @@ class FIBEntry:
         return idx, self.swap[idx]
 
 
-def is_swap_disabled(fib_entry: FIBEntry) -> bool:
+def is_swap_disabled(fib_entry: FibEntry) -> bool:
     """
     Determine whether swapping has been disabled.
 
@@ -74,24 +74,24 @@ def is_swap_disabled(fib_entry: FIBEntry) -> bool:
     return swap[0] == 0 == swap[-1]
 
 
-class FIBRequestGroup:
+class FibRequestGroup:
     """FIB information grouped by req_id."""
 
-    def __init__(self, entry: FIBEntry):
+    def __init__(self, entry: FibEntry):
         """Construct from first FIB entry."""
         self.req_id = entry.req_id
         self.src = entry.route[0]
         self.dst = entry.route[-1]
         self.path_ids = {entry.path_id}
 
-    def add(self, entry: FIBEntry) -> None:
+    def add(self, entry: FibEntry) -> None:
         """Check consistency and save FIB entry."""
         assert self.req_id == entry.req_id
         assert self.src == entry.route[0]
         assert self.dst == entry.route[-1]
         self.path_ids.add(entry.path_id)
 
-    def remove(self, entry: FIBEntry) -> bool:
+    def remove(self, entry: FibEntry) -> bool:
         """
         Remove FIB entry.
 
@@ -103,22 +103,22 @@ class FIBRequestGroup:
         return len(self.path_ids) == 0
 
 
-class FIB:
+class Fib:
     def __init__(self):
-        self.table: dict[int, FIBEntry] = {}
+        self.table: dict[int, FibEntry] = {}
         """
         FIB table.
         Key is path_id.
         Value is FIB entry.
         """
-        self.by_req_id: dict[int, FIBRequestGroup] = {}
+        self.by_req_id: dict[int, FibRequestGroup] = {}
         """
         Lookup table indexed by req_id.
         Key is req_id.
         Value contains aggregated information.
         """
 
-    def get(self, path_id: int) -> FIBEntry:
+    def get(self, path_id: int) -> FibEntry:
         """
         Retrieve an entry by path_id.
 
@@ -130,7 +130,7 @@ class FIB:
         except KeyError:
             raise IndexError(f"FIB entry not found for path_id={path_id}")
 
-    def insert_or_replace(self, entry: FIBEntry):
+    def insert_or_replace(self, entry: FibEntry):
         """
         Insert an entry or replace entry with same path_id.
         """
@@ -141,7 +141,7 @@ class FIB:
         if rg:
             rg.add(entry)
         else:
-            rg = FIBRequestGroup(entry)
+            rg = FibRequestGroup(entry)
             self.by_req_id[rg.req_id] = rg
 
     def erase(self, path_id: int):
@@ -165,7 +165,7 @@ class FIB:
             return rg.path_ids
         return set()
 
-    def find_request(self, predicate: Callable[[FIBRequestGroup], bool]) -> Iterator[FIBRequestGroup]:
+    def find_request(self, predicate: Callable[[FibRequestGroup], bool]) -> Iterator[FibRequestGroup]:
         for rg in self.by_req_id.values():
             if predicate(rg):
                 yield rg

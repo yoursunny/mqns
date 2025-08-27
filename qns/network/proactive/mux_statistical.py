@@ -6,8 +6,8 @@ from qns.entity.memory import MemoryQubit, PathDirection, QubitState
 from qns.entity.node import QNode
 from qns.entity.qchannel import QuantumChannel
 from qns.models.epr import BaseEntanglement, WernerStateEntanglement
-from qns.network.proactive.fib import FIBEntry
-from qns.network.proactive.message import InstallPathInstructions
+from qns.network.proactive.fib import FibEntry
+from qns.network.proactive.message import PathInstructions
 from qns.network.proactive.mux import MuxScheme
 from qns.utils import log
 
@@ -43,15 +43,15 @@ class MuxSchemeDynamicBase(MuxScheme):
         """stores path-qchannel relationship"""
 
     @override
-    def validate_path_instructions(self, instructions: InstallPathInstructions):
+    def validate_path_instructions(self, instructions: PathInstructions):
         assert instructions["mux"] == "S"
         assert "m_v" not in instructions
 
     @override
     def install_path_neighbor(
         self,
-        instructions: InstallPathInstructions,
-        fib_entry: FIBEntry,
+        instructions: PathInstructions,
+        fib_entry: FibEntry,
         direction: PathDirection,
         neighbor: QNode,
         qchannel: QuantumChannel,
@@ -74,7 +74,7 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         super().__init__(name)
 
     @override
-    def validate_path_instructions(self, instructions: InstallPathInstructions):
+    def validate_path_instructions(self, instructions: PathInstructions):
         super().validate_path_instructions(instructions)
 
         # swap sequence must be [1, 0, 0, .., 0, 0, 1]
@@ -121,8 +121,8 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
 
     @override
     def find_swap_candidate(
-        self, qubit: MemoryQubit, epr: WernerStateEntanglement, fib_entry: FIBEntry | None
-    ) -> tuple[MemoryQubit, FIBEntry] | None:
+        self, qubit: MemoryQubit, epr: WernerStateEntanglement, fib_entry: FibEntry | None
+    ) -> tuple[MemoryQubit, FibEntry] | None:
         _ = fib_entry
         assert qubit.qchannel is not None
 

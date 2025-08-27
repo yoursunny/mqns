@@ -10,7 +10,7 @@ MultiplexingMode = Literal["B", "S"]
 MultiplexingVector = list[tuple[int, int]]
 
 
-class InstallPathInstructions(TypedDict):
+class PathInstructions(TypedDict):
     req_id: int
     route: list[str]
     swap: list[int]
@@ -22,7 +22,7 @@ class InstallPathInstructions(TypedDict):
 class InstallPathMsg(TypedDict):
     cmd: Literal["install_path"]
     path_id: int
-    instructions: InstallPathInstructions
+    instructions: PathInstructions
 
 
 class PurifMsgBase(TypedDict):

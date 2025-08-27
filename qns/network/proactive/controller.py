@@ -21,10 +21,10 @@ from qns.entity.cchannel import ClassicPacket
 from qns.entity.node import Application, Controller, Node
 from qns.network import QuantumNetwork
 from qns.network.proactive.message import (
-    InstallPathInstructions,
     InstallPathMsg,
     MultiplexingMode,
     MultiplexingVector,
+    PathInstructions,
 )
 from qns.simulator import Simulator
 from qns.utils import log
@@ -363,7 +363,7 @@ class ProactiveRoutingController(Application):
 
         for node_name in route:
             qnode = self.net.get_node(node_name)
-            instructions: "InstallPathInstructions" = {
+            instructions: "PathInstructions" = {
                 "req_id": req_id,
                 "route": route,
                 "swap": swap,

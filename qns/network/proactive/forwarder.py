@@ -24,7 +24,7 @@ from qns.entity.memory import MemoryQubit, PathDirection, QuantumMemory, QubitSt
 from qns.entity.node import Application, Node, QNode
 from qns.models.epr import WernerStateEntanglement
 from qns.network import QuantumNetwork, SignalTypeEnum, TimingModeEnum
-from qns.network.proactive.fib import FIB, FIBEntry, is_swap_disabled
+from qns.network.proactive.fib import Fib, FibEntry, is_swap_disabled
 from qns.network.proactive.message import InstallPathMsg, PurifResponseMsg, PurifSolicitMsg, SwapUpdateMsg
 from qns.network.proactive.mux import MuxScheme
 from qns.network.proactive.mux_buffer_space import MuxSchemeBufferSpace
@@ -111,7 +111,7 @@ class ProactiveForwarder(Application):
         self.memory: QuantumMemory
         """quantum memory of the node"""
 
-        self.fib = FIB()
+        self.fib = Fib()
         """FIB structure"""
 
         self.waiting_qubits: list[QubitEntangledEvent] = []
@@ -126,7 +126,7 @@ class ProactiveForwarder(Application):
         self.add_handler(self.RecvClassicPacketHandler, RecvClassicPacket)
         self.add_handler(self.qubit_is_entangled, QubitEntangledEvent)
 
-        self.waiting_su: dict[int, tuple[SwapUpdateMsg, FIBEntry]] = {}
+        self.waiting_su: dict[int, tuple[SwapUpdateMsg, FibEntry]] = {}
         """
         SwapUpdates received prior to QubitEntangledEvent.
         Key: MemoryQubit addr.
@@ -179,7 +179,7 @@ class ProactiveForwarder(Application):
                 self.qubit_is_entangled(event)
             self.waiting_qubits = []
 
-    CLASSIC_SIGNALING_HANDLERS: dict[str, Callable[["ProactiveForwarder", Any, FIBEntry], None]] = {}
+    CLASSIC_SIGNALING_HANDLERS: dict[str, Callable[["ProactiveForwarder", Any, FibEntry], None]] = {}
 
     def RecvClassicPacketHandler(self, event: RecvClassicPacket) -> bool:
         """
@@ -216,7 +216,7 @@ class ProactiveForwarder(Application):
         self.CLASSIC_SIGNALING_HANDLERS[msg["cmd"]](self, msg, fib_entry)
         return True
 
-    def send_msg(self, dest: Node, msg: Any, fib_entry: FIBEntry):
+    def send_msg(self, dest: Node, msg: Any, fib_entry: FibEntry):
         dest_idx = fib_entry.route.index(dest.name)
         nh = fib_entry.route[fib_entry.own_idx + 1] if dest_idx > fib_entry.own_idx else fib_entry.route[fib_entry.own_idx - 1]
         next_hop = self.own.network.get_node(nh)
@@ -242,7 +242,7 @@ class ProactiveForwarder(Application):
 
         # populate FIB
         route = instructions["route"]
-        fib_entry = FIBEntry(
+        fib_entry = FibEntry(
             path_id=path_id,
             req_id=instructions["req_id"],
             route=route,
@@ -277,7 +277,7 @@ class ProactiveForwarder(Application):
         # TODO: remove path, type=TypeEnum.REMOVE
         return True
 
-    def _find_neighbor(self, fib_entry: FIBEntry, route_offset: int) -> QNode | None:
+    def _find_neighbor(self, fib_entry: FibEntry, route_offset: int) -> QNode | None:
         neigh_idx = fib_entry.own_idx + route_offset
         if neigh_idx in (-1, len(fib_entry.route)):  # no left/right neighbor if own node is the left/right end node
             return None
@@ -317,7 +317,7 @@ class ProactiveForwarder(Application):
         if su_args:
             self.handle_swap_update(*su_args)
 
-    def qubit_is_purif(self, qubit: MemoryQubit, fib_entry: FIBEntry, partner: QNode):
+    def qubit_is_purif(self, qubit: MemoryQubit, fib_entry: FibEntry, partner: QNode):
         """
         Handle a qubit entering PURIF state.
         Determines the segment in which the qubit is entangled and number of required purification rounds from the FIB.
@@ -378,7 +378,7 @@ class ProactiveForwarder(Application):
 
         self._send_purif_solicit(qubit, mq1, fib_entry, partner)
 
-    def _send_purif_solicit(self, mq0: MemoryQubit, mq1: MemoryQubit, fib_entry: FIBEntry, partner: QNode):
+    def _send_purif_solicit(self, mq0: MemoryQubit, mq1: MemoryQubit, fib_entry: FibEntry, partner: QNode):
         """
         Initiate purification protocol.
 
@@ -417,7 +417,7 @@ class ProactiveForwarder(Application):
         }
         self.send_msg(partner, msg, fib_entry)
 
-    def handle_purif_solicit(self, msg: PurifSolicitMsg, fib_entry: FIBEntry):
+    def handle_purif_solicit(self, msg: PurifSolicitMsg, fib_entry: FibEntry):
         """Processes a PURIF_SOLICIT message from a partner node as part of the purification protocol.
         Retrieves the target and auxiliary qubits from memory, verifies their states, and attempts
         purification. If successful, updates the EPR and sends a PURIF_RESPONSE with result=True;
@@ -482,7 +482,7 @@ class ProactiveForwarder(Application):
 
     CLASSIC_SIGNALING_HANDLERS["PURIF_SOLICIT"] = handle_purif_solicit
 
-    def handle_purif_response(self, msg: PurifResponseMsg, fib_entry: FIBEntry):
+    def handle_purif_response(self, msg: PurifResponseMsg, fib_entry: FibEntry):
         """Handles a PURIF_RESPONSE message indicating the outcome of a purification attempt.
         If the current node is the destination and purification succeeded, the EPR is updated,
         the qubit's purification round counter is incremented, and the qubit may re-enter the
@@ -521,7 +521,7 @@ class ProactiveForwarder(Application):
 
     CLASSIC_SIGNALING_HANDLERS["PURIF_RESPONSE"] = handle_purif_response
 
-    def qubit_is_eligible(self, qubit: MemoryQubit, fib_entry: FIBEntry | None):
+    def qubit_is_eligible(self, qubit: MemoryQubit, fib_entry: FibEntry | None):
         """
         Handle a qubit entering ELIGIBLE state.
 
@@ -556,8 +556,8 @@ class ProactiveForwarder(Application):
         self,
         mq0: MemoryQubit,
         mq1: MemoryQubit,
-        fib_entry0: FIBEntry,
-        fib_entry1: FIBEntry,
+        fib_entry0: FibEntry,
+        fib_entry1: FibEntry,
     ):
         """
         Perform swapping between two qubits at an intermediate node.
@@ -580,11 +580,11 @@ class ProactiveForwarder(Application):
         prev_partner: QNode | None = None
         prev_qubit: MemoryQubit | None = None
         prev_epr: WernerStateEntanglement | None = None
-        prev_fibe: FIBEntry | None = None
+        prev_fibe: FibEntry | None = None
         next_partner: QNode | None = None
         next_qubit: MemoryQubit | None = None
         next_epr: WernerStateEntanglement | None = None
-        next_fibe: FIBEntry | None = None
+        next_fibe: FibEntry | None = None
 
         for addr in (mq0.addr, mq1.addr):
             qubit, epr = self.memory.read(addr, must=True)
@@ -665,7 +665,7 @@ class ProactiveForwarder(Application):
             qubit.state = QubitState.RELEASE
             simulator.add_event(QubitReleasedEvent(self.own, qubit, t=(simulator.tc + i * 1e-6), by=self))
 
-    def handle_swap_update(self, msg: SwapUpdateMsg, fib_entry: FIBEntry):
+    def handle_swap_update(self, msg: SwapUpdateMsg, fib_entry: FibEntry):
         """Processes an SWAP_UPDATE signaling message from a neighboring node, updating local
         qubit state, releasing decohered pairs, or forwarding the update along the path.
         Handles both sequential and parallel swap scenarios, updates quantum memory with
@@ -710,7 +710,7 @@ class ProactiveForwarder(Application):
     def _su_sequential(
         self,
         msg: SwapUpdateMsg,
-        fib_entry: FIBEntry,
+        fib_entry: FibEntry,
         qubit: MemoryQubit,
         new_epr: WernerStateEntanglement | None,
         maybe_purif: bool,
@@ -749,7 +749,7 @@ class ProactiveForwarder(Application):
             partner = self.own.network.get_node(msg["partner"])
             self.qubit_is_purif(qubit, fib_entry, partner)
 
-    def _su_parallel(self, msg: SwapUpdateMsg, fib_entry: FIBEntry, new_epr: WernerStateEntanglement | None):
+    def _su_parallel(self, msg: SwapUpdateMsg, fib_entry: FibEntry, new_epr: WernerStateEntanglement | None):
         """
         Process SWAP_UPDATE message during parallel swapping.
         """
@@ -854,7 +854,7 @@ class ProactiveForwarder(Application):
         if fib_entry.own_swap_rank == p_rank and merged_epr is not None:
             self.parallel_swappings[new_epr.name] = (new_epr, other_epr, merged_epr)
 
-    def can_consume(self, fib_entry: FIBEntry | None, epr: WernerStateEntanglement) -> bool:
+    def can_consume(self, fib_entry: FibEntry | None, epr: WernerStateEntanglement) -> bool:
         if fib_entry is None:
             assert epr.src is not None
             assert epr.dst is not None

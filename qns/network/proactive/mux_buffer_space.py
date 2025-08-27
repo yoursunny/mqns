@@ -4,8 +4,8 @@ from qns.entity.memory import MemoryQubit, PathDirection, QubitState
 from qns.entity.node import QNode
 from qns.entity.qchannel import QuantumChannel
 from qns.models.epr import WernerStateEntanglement
-from qns.network.proactive.fib import FIBEntry
-from qns.network.proactive.message import InstallPathInstructions
+from qns.network.proactive.fib import FibEntry
+from qns.network.proactive.message import PathInstructions
 from qns.network.proactive.mux import MuxScheme
 from qns.utils import log
 
@@ -18,8 +18,8 @@ except ImportError:
 class MuxSchemeFibBase(MuxScheme):
     @override
     def find_swap_candidate(
-        self, qubit: MemoryQubit, epr: WernerStateEntanglement, fib_entry: FIBEntry | None
-    ) -> tuple[MemoryQubit, FIBEntry] | None:
+        self, qubit: MemoryQubit, epr: WernerStateEntanglement, fib_entry: FibEntry | None
+    ) -> tuple[MemoryQubit, FibEntry] | None:
         _ = epr
         assert fib_entry is not None
         mq1 = self.select_eligible_qubit(qubit, fib_entry)
@@ -28,7 +28,7 @@ class MuxSchemeFibBase(MuxScheme):
         return None
 
     @abstractmethod
-    def select_eligible_qubit(self, mq0: MemoryQubit, fib_entry: FIBEntry) -> MemoryQubit | None:
+    def select_eligible_qubit(self, mq0: MemoryQubit, fib_entry: FibEntry) -> MemoryQubit | None:
         pass
 
 
@@ -37,7 +37,7 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
         super().__init__(name)
 
     @override
-    def validate_path_instructions(self, instructions: InstallPathInstructions) -> None:
+    def validate_path_instructions(self, instructions: PathInstructions) -> None:
         assert instructions["mux"] == "B"
         assert "m_v" in instructions
         assert len(instructions["m_v"]) + 1 == len(instructions["route"])
@@ -45,8 +45,8 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
     @override
     def install_path_neighbor(
         self,
-        instructions: InstallPathInstructions,
-        fib_entry: FIBEntry,
+        instructions: PathInstructions,
+        fib_entry: FibEntry,
         direction: PathDirection,
         neighbor: QNode,
         qchannel: QuantumChannel,
@@ -72,7 +72,7 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
         self.fw.qubit_is_purif(qubit, fib_entry, neighbor)
 
     @override
-    def select_eligible_qubit(self, mq0: MemoryQubit, fib_entry: FIBEntry) -> MemoryQubit | None:
+    def select_eligible_qubit(self, mq0: MemoryQubit, fib_entry: FibEntry) -> MemoryQubit | None:
         assert mq0.path_id is not None
         possible_path_ids = {fib_entry.path_id}
         if not self.fw.isolate_paths:

@@ -5,8 +5,8 @@ from qns.entity.memory import MemoryQubit, PathDirection, QuantumMemory
 from qns.entity.node import QNode
 from qns.entity.qchannel import QuantumChannel
 from qns.models.epr import WernerStateEntanglement
-from qns.network.proactive.fib import FIB, FIBEntry
-from qns.network.proactive.message import InstallPathInstructions
+from qns.network.proactive.fib import Fib, FibEntry
+from qns.network.proactive.message import PathInstructions
 
 if TYPE_CHECKING:
     from qns.network.proactive.forwarder import ProactiveForwarder
@@ -36,19 +36,19 @@ class MuxScheme(ABC):
         return self.fw.memory
 
     @property
-    def fib(self) -> FIB:
+    def fib(self) -> Fib:
         return self.fw.fib
 
     @abstractmethod
-    def validate_path_instructions(self, instructions: InstallPathInstructions) -> None:
+    def validate_path_instructions(self, instructions: PathInstructions) -> None:
         """Validate install_path instructions are compatible."""
         pass
 
     @abstractmethod
     def install_path_neighbor(
         self,
-        instructions: InstallPathInstructions,
-        fib_entry: FIBEntry,
+        instructions: PathInstructions,
+        fib_entry: FibEntry,
         direction: PathDirection,
         neighbor: QNode,
         qchannel: QuantumChannel,
@@ -71,8 +71,8 @@ class MuxScheme(ABC):
 
     @abstractmethod
     def find_swap_candidate(
-        self, qubit: MemoryQubit, epr: WernerStateEntanglement, fib_entry: FIBEntry | None
-    ) -> tuple[MemoryQubit, FIBEntry] | None:
+        self, qubit: MemoryQubit, epr: WernerStateEntanglement, fib_entry: FibEntry | None
+    ) -> tuple[MemoryQubit, FibEntry] | None:
         """
         Find another qubit to swap with an ELIGIBLE qubit.
 
