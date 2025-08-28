@@ -68,6 +68,22 @@ qns.network.proactive.mux\_statistical module
    :show-inheritance:
    :undoc-members:
 
+qns.network.proactive.routing module
+------------------------------------
+
+.. automodule:: qns.network.proactive.routing
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+qns.network.proactive.swap\_sequence module
+-------------------------------------------
+
+.. automodule:: qns.network.proactive.swap_sequence
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 Module contents
 ---------------
 
