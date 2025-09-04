@@ -71,15 +71,16 @@ class LinkArchDimBk(LinkArch):
         # 5. Both A and B emit photons at +τl+2τ0, which arrive at M at +(1 1/2)τl+2τ0
         # 6. M sends heralding results to both A and B, which arrive at +2τl+2τ0
         # If either heralding result indicates failure, the next attempt can immediately start.
+        # The attempt duration is lower bounded by twice of reset_time for two memory excitations.
         attempt_duration = 2 * (tau_l + tau_0)
-        attempt_interval = max(attempt_duration, reset_time)
+        attempt_interval = max(attempt_duration, 2 * reset_time)
         return (k - 1) * attempt_interval, attempt_duration, attempt_duration
 
 
 class LinkArchDimBkSeq(LinkArchDimBk):
     """
     Detection-in-Midpoint link architecture with single-rail encoding using Barrett-Kok protocol,
-    timing adjusted as per reservation logic implemented by SeQUeNCe simulator.
+    timing adjusted as per negotiation logic implemented by SeQUeNCe simulator.
     """
 
     def __init__(self, name="DIM-BK-SeQUeNCe"):
@@ -87,12 +88,30 @@ class LinkArchDimBkSeq(LinkArchDimBk):
 
     @override
     def delays(self, k: int, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
-        attempt_duration = max(5 * (tau_l + tau_0), reset_time)
-        return (
-            (k - 1) * attempt_duration + tau_l + 4 * tau_0,
-            4 * tau_l + tau_0,
-            4 * tau_l + tau_0,
-        )
+        # According to SeQUeNCe logic:
+        # 1. A and B perform the first round negotiation, which completes at +2τl
+        # 2. Qubits are generated at +2τl
+        # 3. Both A and B emit photons at +2τl+τ0, which arrive at M at +(2 1/2)τl+τ0
+        # 4. M sends heralding results to both A and B, which arrive at +3τl+τ0
+        # 5. If the heralding result indicates failure, the current attempt is aborted
+        # 6. A and B perform the second round negotiation, which completes at +5τl+τ0
+        # 7. Both A and B flip qubit gates locally
+        # 8. Both A and B emit photons at +5τl+2τ0, which arrive at M at +(5 1/2)τl+2τ0
+        # 9. M sends heralding results to both A and B, which arrive at +6τl+2τ0
+        # In summary, success occurs at +6τl+2τ0, failure occurs at either +3τl+τ0 or +6τl+2τ0.
+        #
+        # This model does not differentiate the two failure possibilities.
+        # The attempt duration is set to 5τl+2τ0, in between two possible failed attempt durations.
+        # It is also lower bounded by twice of reset_time for two memory excitations.
+        #
+        # The first round negotiation in the initial attempt, which takes 2τl, overlaps the reservation logic
+        # in LinkLayer, so that the initial attempt is 2τl shorter.
+        # For simplicity, this shortening is applied on the final attempt instead of the initial attempt.
+        # Thus, the final attempt succeeds at +4τl+2τ0 as calculated in d_notify.
+        attempt_duration = 5 * tau_l + 2 * tau_0
+        attempt_interval = max(attempt_duration, 2 * reset_time)
+        d_notify = 4 * tau_l + 2 * tau_0
+        return (k - 1) * attempt_interval, d_notify, d_notify
 
 
 class LinkArchSr(LinkArch):
