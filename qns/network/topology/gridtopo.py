@@ -18,15 +18,11 @@
 import math
 
 import numpy as np
+from typing_extensions import Unpack
 
 from qns.entity.node import QNode
 from qns.entity.qchannel import QuantumChannel
 from qns.network.topology.topo import Topology, TopologyInitKwargs
-
-try:
-    from typing import Unpack
-except ImportError:
-    from typing_extensions import Unpack
 
 
 class GridTopology(Topology):

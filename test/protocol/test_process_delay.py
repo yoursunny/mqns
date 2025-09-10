@@ -1,5 +1,7 @@
 from typing import Any, cast
 
+from typing_extensions import override
+
 from qns.entity.node import Application, Node
 from qns.network.protocol import NodeProcessDelayApp
 from qns.simulator.event import Event
@@ -12,6 +14,7 @@ class ProcessEvent(Event):
         super().__init__(t, name=name, by=by)
         self.dest = dest
 
+    @override
     def invoke(self) -> None:
         self.dest.handle(self)
 

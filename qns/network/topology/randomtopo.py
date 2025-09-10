@@ -15,15 +15,12 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing_extensions import Unpack
+
 from qns.entity.node import QNode
 from qns.entity.qchannel import QuantumChannel
 from qns.network.topology.topo import Topology, TopologyInitKwargs
 from qns.utils.rnd import get_randint
-
-try:
-    from typing import Unpack
-except ImportError:
-    from typing_extensions import Unpack
 
 
 class RandomTopology(Topology):

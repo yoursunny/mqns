@@ -15,13 +15,10 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing_extensions import Unpack
+
 from qns.network.topology.gridtopo import GridTopology
 from qns.network.topology.topo import TopologyInitKwargs
-
-try:
-    from typing import Unpack
-except ImportError:
-    from typing_extensions import Unpack
 
 
 class LinearTopology(GridTopology):

@@ -1,4 +1,5 @@
 import pytest
+from typing_extensions import override
 
 from qns.entity.memory import QubitState
 from qns.entity.node import Application, Node, QNode
@@ -16,11 +17,6 @@ from qns.network.protocol.link_layer import LinkLayer
 from qns.network.topology import LinearTopology
 from qns.simulator import Simulator
 from qns.utils import log
-
-try:
-    from typing import override
-except ImportError:
-    from typing_extensions import override
 
 
 class NetworkLayer(Application):

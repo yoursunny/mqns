@@ -15,10 +15,12 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from abc import ABC, abstractmethod
+
 from qns.simulator import Event, Simulator
 
 
-class Entity:
+class Entity(ABC):
     """This is the basic entity class, including memories, channels and nodes."""
 
     def __init__(self, name: str):
@@ -52,6 +54,7 @@ class Entity:
         assert self._simulator is None or self._simulator == simulator
         self._simulator = simulator
 
+    @abstractmethod
     def handle(self, event: Event) -> None:
         """``handle`` is called to process an receiving ``Event``.
 
@@ -59,7 +62,7 @@ class Entity:
             event (qns.simulator.event.Event): the event that send to this entity
 
         """
-        raise NotImplementedError
+        pass
 
     def __repr__(self) -> str:
         return f"<entity {self.name}>"

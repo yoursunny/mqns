@@ -17,6 +17,8 @@
 
 from typing import TYPE_CHECKING, Any
 
+from typing_extensions import override
+
 from qns.entity.node.qnode import QNode
 from qns.models.core.backend import QuantumModel
 from qns.simulator.event import Event
@@ -42,6 +44,7 @@ class OperateRequestEvent(Event):
         self.operator = operator
         self.qubits = qubits
 
+    @override
     def invoke(self) -> None:
         self.operator.handle(self)
 
@@ -64,5 +67,6 @@ class OperateResponseEvent(Event):
         self.result = result
         self.request = request
 
+    @override
     def invoke(self) -> None:
         self.node.handle(self)

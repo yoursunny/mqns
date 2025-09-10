@@ -18,16 +18,13 @@
 
 from typing import TypedDict
 
+from typing_extensions import NotRequired
+
 from qns.entity.cchannel import ClassicChannel, ClassicChannelInitKwargs
 from qns.entity.memory import QuantumMemory, QuantumMemoryInitKwargs
 from qns.entity.node import Application, Controller, QNode
 from qns.entity.qchannel import QuantumChannel, QuantumChannelInitKwargs
 from qns.network.topology.topo import Topology
-
-try:
-    from typing import NotRequired
-except ImportError:
-    from typing_extensions import NotRequired
 
 
 class TopoQNode(TypedDict):

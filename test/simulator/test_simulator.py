@@ -2,12 +2,15 @@ import math
 from collections import defaultdict
 from typing import cast
 
+from typing_extensions import override
+
 from qns.simulator import Event, Simulator, Time
 
 
 class SimpleEvent(Event):
     invoke_count = defaultdict[str, int](lambda: 0)
 
+    @override
     def invoke(self) -> None:
         self.invoke_count[cast(str, self.name)] += 1
 

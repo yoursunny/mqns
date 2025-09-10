@@ -27,6 +27,8 @@
 
 from typing import TYPE_CHECKING, TypeVar
 
+from typing_extensions import override
+
 from qns.entity.entity import Entity
 from qns.entity.node.app import Application
 from qns.simulator import Event, Simulator
@@ -75,6 +77,7 @@ class Node(Entity):
         for app in self.apps:
             app.install(self, simulator)
 
+    @override
     def handle(self, event: Event) -> None:
         """
         Dispatch an `Event` that happens on this Node.

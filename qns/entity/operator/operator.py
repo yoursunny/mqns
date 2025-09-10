@@ -17,6 +17,8 @@
 
 from collections.abc import Callable
 
+from typing_extensions import override
+
 from qns.entity.entity import Entity
 from qns.entity.node.qnode import QNode
 from qns.entity.operator.event import OperateRequestEvent, OperateResponseEvent
@@ -50,6 +52,7 @@ class QuantumOperator(Entity):
     def install(self, simulator: Simulator) -> None:
         return super().install(simulator)
 
+    @override
     def handle(self, event: Event) -> None:
         simulator = self.simulator
 

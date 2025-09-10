@@ -30,15 +30,12 @@ import itertools
 from enum import Enum
 from typing import TypedDict
 
+from typing_extensions import Unpack
+
 from qns.entity.cchannel import ClassicChannel, ClassicChannelInitKwargs
 from qns.entity.memory import QuantumMemory, QuantumMemoryInitKwargs
 from qns.entity.node import Application, Controller, NodeT, QNode
 from qns.entity.qchannel import QuantumChannel, QuantumChannelInitKwargs
-
-try:
-    from typing import Unpack
-except ImportError:
-    from typing_extensions import Unpack
 
 
 class TopologyInitKwargs(TypedDict, total=False):

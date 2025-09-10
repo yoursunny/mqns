@@ -27,6 +27,8 @@
 
 from typing import Any
 
+from typing_extensions import Unpack, override
+
 from qns.entity.base_channel import BaseChannel, BaseChannelInitKwargs
 from qns.entity.node import QNode
 from qns.entity.qchannel.link_arch import (
@@ -36,11 +38,6 @@ from qns.entity.qchannel.link_arch import (
 from qns.models.core import QuantumModel
 from qns.models.epr import BaseEntanglement
 from qns.simulator import Event, Time
-
-try:
-    from typing import Unpack
-except ImportError:
-    from typing_extensions import Unpack
 
 
 class QuantumChannelInitKwargs(BaseChannelInitKwargs, total=False):
@@ -60,6 +57,10 @@ class QuantumChannel(BaseChannel[QNode]):
         self.link_arch = kwargs.get("link_arch", None) or LinkArchDimBkSeq()
         self.decoherence_rate = kwargs.get("decoherence_rate", 0.0)
         self.transfer_error_model_args = kwargs.get("transfer_error_model_args", {})
+
+    @override
+    def handle(self, event: Event):
+        raise RuntimeError(f"unexpected event {event}")
 
     def assign_memory_qubits(self, *, capacity: int | dict[str, int] = 1):
         """
@@ -121,5 +122,6 @@ class RecvQubitPacket(Event):
         self.qubit = qubit
         self.dest = dest
 
+    @override
     def invoke(self) -> None:
         self.dest.handle(self)

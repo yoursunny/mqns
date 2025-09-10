@@ -18,6 +18,8 @@
 
 from typing import TYPE_CHECKING, Any
 
+from typing_extensions import override
+
 from qns.entity.memory.memory_qubit import MemoryQubit
 from qns.entity.node import QNode
 from qns.models.core import QuantumModel
@@ -43,6 +45,7 @@ class MemoryReadRequestEvent(Event):
         self.memory = memory
         self.key = key
 
+    @override
     def invoke(self) -> None:
         self.memory.handle(self)
 
@@ -65,6 +68,7 @@ class MemoryReadResponseEvent(Event):
         self.result = result
         self.request = request
 
+    @override
     def invoke(self) -> None:
         self.node.handle(self)
 
@@ -77,6 +81,7 @@ class MemoryWriteRequestEvent(Event):
         self.memory = memory
         self.qubit = qubit
 
+    @override
     def invoke(self) -> None:
         self.memory.handle(self)
 
@@ -99,5 +104,6 @@ class MemoryWriteResponseEvent(Event):
         self.result = result
         self.request = request
 
+    @override
     def invoke(self) -> None:
         self.node.handle(self)

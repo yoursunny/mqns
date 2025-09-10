@@ -1,15 +1,29 @@
+from typing_extensions import override
+
 from qns.simulator.event import Event, func_to_event
 from qns.simulator.ts import Time
+
+
+class NopEventA(Event):
+    @override
+    def invoke(self) -> None:
+        pass
+
+
+class NopEventB(Event):
+    @override
+    def invoke(self) -> None:
+        pass
 
 
 def test_event_compare():
     t1 = Time(sec=1.0)
     t2 = Time(sec=2.0)
 
-    e1a = Event(t1)
-    e1b = Event(t1)
-    e2a = Event(t2)
-    e2b = Event(t2)
+    e1a = NopEventA(t1)
+    e1b = NopEventB(t1)
+    e2a = NopEventA(t2)
+    e2b = NopEventB(t2)
 
     assert e1a == e1b
     assert e1a <= e2a
@@ -22,6 +36,7 @@ def test_event_compare():
 
 
 class PrintEvent(Event):
+    @override
     def invoke(self) -> None:
         print("event happened")
 

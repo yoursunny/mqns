@@ -1,15 +1,12 @@
 from typing import Generic, TypedDict, TypeVar
 
+from typing_extensions import Unpack
+
 from qns.entity.entity import Entity
 from qns.entity.node import NodeT
 from qns.models.delay import DelayInput, parseDelay
 from qns.simulator import Simulator, Time
 from qns.utils import get_rand, log
-
-try:
-    from typing import Unpack
-except ImportError:
-    from typing_extensions import Unpack
 
 default_light_speed: float = 2e5
 """

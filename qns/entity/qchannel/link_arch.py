@@ -1,9 +1,6 @@
 from abc import ABC, abstractmethod
 
-try:
-    from typing import override
-except ImportError:
-    from typing_extensions import override
+from typing_extensions import override
 
 
 def _calc_propagation_loss(length: float, alpha: float) -> float:

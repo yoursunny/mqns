@@ -17,6 +17,8 @@
 
 from typing import Any
 
+from typing_extensions import override
+
 from qns.entity.entity import Entity
 from qns.simulator import Event, Simulator, Time
 
@@ -57,6 +59,10 @@ class Timer(Entity):
             event = TimerEvent(timer=self, t=time, by=self)
             self.simulator.add_event(event)
 
+    @override
+    def handle(self, event: Event):
+        raise RuntimeError(f"unexpected event {event}")
+
     def trigger(self):
         if self.trigger_func is not None:
             self.trigger_func()
@@ -71,5 +77,6 @@ class TimerEvent(Event):
         super().__init__(t=t, name=name, by=by)
         self.timer = timer
 
+    @override
     def invoke(self) -> None:
         self.timer.trigger()
