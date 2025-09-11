@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from tap import Tap
 
-from qns.network import QuantumNetwork
+from qns.network.network import QuantumNetwork
 from qns.network.proactive import LinkLayer, ProactiveForwarder, ProactiveRoutingController, RoutingPathSingle
 from qns.network.topology.customtopo import CustomTopology, Topo, TopoCChannel, TopoController, TopoQChannel, TopoQNode
 from qns.simulator import Simulator

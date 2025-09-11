@@ -23,7 +23,7 @@ from qns.entity.cchannel import ClassicPacket, RecvClassicPacket
 from qns.entity.memory import MemoryQubit, PathDirection, QuantumMemory, QubitState
 from qns.entity.node import Application, Node, QNode
 from qns.models.epr import WernerStateEntanglement
-from qns.network import QuantumNetwork, SignalTypeEnum, TimingModeEnum
+from qns.network.network import QuantumNetwork, SignalTypeEnum, TimingModeEnum
 from qns.network.proactive.fib import Fib, FibEntry
 from qns.network.proactive.message import InstallPathMsg, PurifResponseMsg, PurifSolicitMsg, SwapUpdateMsg
 from qns.network.proactive.mux import MuxScheme

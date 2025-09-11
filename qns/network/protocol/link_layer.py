@@ -27,7 +27,7 @@ from qns.entity.memory import MemoryQubit, QuantumMemory, QubitState
 from qns.entity.node import Application, Node, QNode
 from qns.entity.qchannel import QuantumChannel
 from qns.models.epr import WernerStateEntanglement
-from qns.network import SignalTypeEnum, TimingModeEnum
+from qns.network.network import SignalTypeEnum, TimingModeEnum
 from qns.network.protocol.event import (
     LinkArchSuccessEvent,
     ManageActiveChannels,

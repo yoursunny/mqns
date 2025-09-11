@@ -30,7 +30,7 @@ from enum import Enum, auto
 from typing import cast, overload
 
 from qns.entity import ChannelT, ClassicChannel, Controller, Node, QNode, QuantumChannel, QuantumMemory
-from qns.network.requests import Request
+from qns.network.network.request import Request
 from qns.network.route import DijkstraRouteAlgorithm, RouteImpl
 from qns.network.topology import ClassicTopology, Topology
 from qns.simulator import Simulator, func_to_event

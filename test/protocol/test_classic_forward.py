@@ -1,6 +1,6 @@
 from qns.entity.cchannel import ClassicPacket, RecvClassicPacket
 from qns.entity.node import Application, Node
-from qns.network import QuantumNetwork
+from qns.network.network import QuantumNetwork
 from qns.network.protocol.classicforward import ClassicPacketForwardApp
 from qns.network.route import DijkstraRouteAlgorithm, RouteImpl
 from qns.network.topology import ClassicTopology, LinearTopology

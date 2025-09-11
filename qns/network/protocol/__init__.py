@@ -27,14 +27,12 @@
 
 from qns.network.protocol.bb84 import BB84RecvApp, BB84SendApp
 from qns.network.protocol.classicforward import ClassicPacketForwardApp
-from qns.network.protocol.entanglement_distribution import EntanglementDistributionApp
 from qns.network.protocol.link_layer import LinkLayer
 from qns.network.protocol.node_process_delay import NodeProcessDelayApp
 
 __all__ = [
     "BB84SendApp",
     "BB84RecvApp",
-    "EntanglementDistributionApp",
     "ClassicPacketForwardApp",
     "NodeProcessDelayApp",
     "LinkLayer",

@@ -5,7 +5,7 @@ from qns.entity.memory import QubitState
 from qns.entity.node import Application, Node, QNode
 from qns.entity.qchannel import LinkArchDimBk
 from qns.models.epr import BaseEntanglement
-from qns.network.network import ClassicTopology, QuantumNetwork
+from qns.network.network import QuantumNetwork
 from qns.network.protocol.event import (
     ManageActiveChannels,
     QubitDecoheredEvent,
@@ -14,7 +14,7 @@ from qns.network.protocol.event import (
     TypeEnum,
 )
 from qns.network.protocol.link_layer import LinkLayer
-from qns.network.topology import LinearTopology
+from qns.network.topology import ClassicTopology, LinearTopology
 from qns.simulator import Simulator
 from qns.utils import log
 
