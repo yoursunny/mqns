@@ -16,9 +16,10 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import itertools
+from copy import deepcopy
 
 import numpy as np
-from typing_extensions import Unpack
+from typing_extensions import Unpack, override
 
 from qns.entity.node import QNode
 from qns.entity.qchannel import QuantumChannel
@@ -42,6 +43,7 @@ class WaxmanTopology(Topology):
         self.alpha = alpha
         self.beta = beta
 
+    @override
     def build(self) -> tuple[list[QNode], list[QuantumChannel]]:
         nl: list[QNode] = []
         ll: list[QuantumChannel] = []
@@ -71,7 +73,9 @@ class WaxmanTopology(Topology):
             d = distance_table[(n1, n2)]
             p = self.alpha * np.exp(-d / (self.beta * L))
             if get_rand() < p:
-                link = QuantumChannel(name=f"l{n1}-{n2}", length=d, **self.qchannel_args)
+                qchannel_args = deepcopy(self.qchannel_args)
+                qchannel_args.setdefault("length", d)
+                link = QuantumChannel(name=f"l{n1}-{n2}", **qchannel_args)
                 ll.append(link)
                 n1.add_qchannel(link)
                 n2.add_qchannel(link)

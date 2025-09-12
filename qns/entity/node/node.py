@@ -83,15 +83,19 @@ class Node(Entity):
             if skip:
                 break
 
-    def add_apps(self, app: Application):
-        """Insert an Application into the app list.
-        Called from Topology.build() -> Topology._add_apps()
+    def add_apps(self, app: Application | list[Application]):
+        """
+        Insert one or more applications into the app list.
 
         Args:
-            app (Application): the inserting application.
+            app: an application or a list of applications.
+                 The caller is responsible for `deepcopy` if needed, so that each node has a separate instance.
 
         """
-        self.apps.append(app)
+        if isinstance(app, list):
+            self.apps += app
+        else:
+            self.apps.append(app)
 
     def get_apps(self, app_type: type[ApplicationT]) -> list[ApplicationT]:
         """

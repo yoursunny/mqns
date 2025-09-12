@@ -167,22 +167,20 @@ def test_timing_mode_sync():
     topo = CustomTopology(
         {
             "qnodes": [
-                {"name": "n0", "memory": {"decoherence_rate": 1 / 10.0}, "apps": [NetworkLayer(), LinkLayer()]},
-                {"name": "n1", "memory": {"decoherence_rate": 1 / 10.0}, "apps": [NetworkLayer(), LinkLayer()]},
-                {"name": "n2", "memory": {"decoherence_rate": 1 / 10.0}, "apps": [NetworkLayer(), LinkLayer()]},
-                {"name": "n3", "memory": {"decoherence_rate": 1 / 10.0}, "apps": [NetworkLayer(), LinkLayer()]},
+                {"name": "n0"},
+                {"name": "n1"},
+                {"name": "n2"},
+                {"name": "n3"},
             ],
             "qchannels": [
                 {"node1": "n0", "node2": "n1", "parameters": {"delay": 0.2, "link_arch": LinkArchDimBkAlways()}},
                 {"node1": "n2", "node2": "n3", "parameters": {"delay": 0.1, "link_arch": LinkArchDimBkAlways()}},
             ],
-            "cchannels": [
-                {"node1": "n0", "node2": "n1", "parameters": {"delay": 0.2}},
-                {"node1": "n2", "node2": "n3", "parameters": {"delay": 0.1}},
-            ],
-        }
+        },
+        nodes_apps=[NetworkLayer(), LinkLayer()],
+        memory_args={"decoherence_rate": 1 / 10.0},
     )
-    net = QuantumNetwork(topo=topo, timing=TimingModeSync(t_ext=0.6, t_int=0.4))
+    net = QuantumNetwork(topo=topo, classic_topo=ClassicTopology.Follow, timing=TimingModeSync(t_ext=0.6, t_int=0.4))
     net.build_route()
 
     simulator = Simulator(0.0, 5.0)

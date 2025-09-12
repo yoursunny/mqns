@@ -16,21 +16,34 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from typing import TypedDict
+from collections.abc import Iterable
+from copy import deepcopy
+from typing import Any, TypedDict, cast
 
-from typing_extensions import NotRequired
+from typing_extensions import NotRequired, override
 
 from qns.entity.cchannel import ClassicChannel, ClassicChannelInitKwargs
 from qns.entity.memory import QuantumMemory, QuantumMemoryInitKwargs
-from qns.entity.node import Application, Controller, QNode
+from qns.entity.node import Application, Controller, Node, QNode
 from qns.entity.qchannel import QuantumChannel, QuantumChannelInitKwargs
-from qns.network.topology.topo import Topology
+from qns.network.topology.topo import ClassicTopology, Topology
 
 
 class TopoQNode(TypedDict):
     name: str
-    memory: QuantumMemoryInitKwargs
-    apps: list[Application]
+    """Node name."""
+    memory: NotRequired[QuantumMemoryInitKwargs]
+    """
+    Memory parameters.
+
+    If omitted, use `memory_args` passed to CustomTopo constructor.
+    """
+    apps: NotRequired[list[Application]]
+    """
+    Applications installed on the node.
+
+    If omitted, use `nodes_apps` passed to CustomTopo constructor.
+    """
 
 
 class TopoQChannel(TypedDict):
@@ -61,9 +74,32 @@ class TopoController(TypedDict):
 
 class Topo(TypedDict):
     qnodes: list[TopoQNode]
+    """
+    List of quantum nodes.
+    """
     qchannels: list[TopoQChannel]
-    cchannels: list[TopoCChannel]
+    """
+    List of quantum channels.
+    """
+    cchannels: NotRequired[list[TopoCChannel]]
+    """
+    List of classic channels.
+
+    If omitted, the topology must be used with ClassicTopology.Follow and to reuse compatible quantum channel parameters.
+    If specified, the topology must be used with ClassicTopology.Empty (default) to use these specifications.
+    """
     controller: NotRequired[TopoController]
+    """
+    Controller parameters.
+    """
+
+
+def _qchannel_to_cchannel(qc: TopoQChannel) -> TopoCChannel:
+    parameters = {}
+    for key, value in qc["parameters"].items():
+        if key in ClassicChannelInitKwargs.__annotations__.keys():
+            parameters[key] = value
+    return {"node1": qc["node1"], "node2": qc["node2"], "parameters": cast(Any, parameters)}
 
 
 class CustomTopology(Topology):
@@ -73,10 +109,22 @@ class CustomTopology(Topology):
     Nodes and channels are individually specified and can have heterogeneous parameters.
     """
 
-    def __init__(self, topo: Topo):
-        super().__init__(0)
+    def __init__(
+        self,
+        topo: Topo,
+        *,
+        nodes_apps: list[Application] = [],
+        memory_args: QuantumMemoryInitKwargs = {},
+    ):
+        super().__init__(len(topo["qnodes"]), nodes_apps=nodes_apps, memory_args=memory_args)
         self.topo = topo
+        self._node_by_name = dict[str, Node]()
 
+    def _save_node(self, node: Node):
+        assert node.name not in self._node_by_name, f"duplicate node name {node.name}"
+        self._node_by_name[node.name] = node
+
+    @override
     def build(self) -> tuple[list[QNode], list[QuantumChannel]]:
         qnl: list[QNode] = []
         qcl: list[QuantumChannel] = []
@@ -84,15 +132,15 @@ class CustomTopology(Topology):
         # Create quantum nodes
         for node in self.topo["qnodes"]:
             qn = QNode(node["name"])
-            for app in node["apps"]:
-                qn.add_apps(app)
+            qn.add_apps(node["apps"] if "apps" in node else deepcopy(self.nodes_apps))
 
             # Assign a new memory
-            memory_args = node["memory"]
+            memory_args = node.get("memory", self.memory_args)
             m = QuantumMemory(f"{qn.name}.memory", **memory_args)
             qn.set_memory(m)
 
             qnl.append(qn)
+            self._save_node(qn)
 
         # Create quantum channels and assign memories with proper capacity
         for ch in self.topo["qchannels"]:
@@ -113,23 +161,27 @@ class CustomTopology(Topology):
             )
 
         if "controller" in self.topo:
-            self.controller = Controller(name=self.topo["controller"]["name"], apps=self.topo["controller"]["apps"])
+            ctrl = self.topo["controller"]
+            self.controller = Controller(name=ctrl["name"], apps=ctrl["apps"])
+            self._save_node(self.controller)
 
-        self.qnl = qnl
         return qnl, qcl
 
-    def add_cchannels(self, **kwargs):
-        if len(kwargs) != 0:
-            raise TypeError("CustomTopology.add_cchannels() does not accept classic_topo= keyword")
+    @override
+    def add_cchannels(self, *, classic_topo: ClassicTopology = ClassicTopology.Empty, **_):
+        if classic_topo == ClassicTopology.Follow:
+            assert "cchannels" not in self.topo
+            return self._add_cchannels_from([_qchannel_to_cchannel(qc) for qc in self.topo["qchannels"]])
+        else:
+            assert classic_topo == ClassicTopology.Empty
+            assert "cchannels" in self.topo
+            return self._add_cchannels_from(self.topo["cchannels"])
 
+    def _add_cchannels_from(self, cchannels: Iterable[TopoCChannel]):
         ccl: list[ClassicChannel] = []
-        for ch in self.topo["cchannels"]:
+        for ch in cchannels:
             link = ClassicChannel(name=f"c_{ch['node1']},{ch['node2']}", **ch["parameters"])
             ccl.append(link)
-
-            for node in self.qnl + [self.controller]:
-                if node and (node.name == ch["node1"] or node.name == ch["node2"]):
-                    # Attach classic channel to nodes
-                    node.add_cchannel(link)
-
+            self._node_by_name[ch["node1"]].add_cchannel(link)
+            self._node_by_name[ch["node2"]].add_cchannel(link)
         return ccl

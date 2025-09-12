@@ -15,6 +15,8 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing_extensions import override
+
 from qns.entity.node import QNode
 from qns.entity.qchannel import QuantumChannel
 from qns.network.topology.topo import Topology
@@ -23,6 +25,7 @@ from qns.network.topology.topo import Topology
 class BasicTopology(Topology):
     """BasicTopology includes `nodes_number` Qnodes. None of them are connected with each other"""
 
+    @override
     def build(self) -> tuple[list[QNode], list[QuantumChannel]]:
         nl: list[QNode] = []
         ll: list[QuantumChannel] = []

@@ -18,7 +18,7 @@
 import math
 
 import numpy as np
-from typing_extensions import Unpack
+from typing_extensions import Unpack, override
 
 from qns.entity.node import QNode
 from qns.entity.qchannel import QuantumChannel
@@ -41,6 +41,7 @@ class GridTopology(Topology):
             self.rows, self.cols = size, size
         assert self.rows * self.cols == self.nodes_number
 
+    @override
     def build(self) -> tuple[list[QNode], list[QuantumChannel]]:
         nl: list[QNode] = []
         ll: list[QuantumChannel] = []
