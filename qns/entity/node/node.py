@@ -36,7 +36,7 @@ from qns.utils import log
 
 if TYPE_CHECKING:
     from qns.entity import ClassicChannel
-    from qns.network.network import QuantumNetwork, SignalTypeEnum
+    from qns.network.network import QuantumNetwork
 
 ApplicationT = TypeVar("ApplicationT", bound=Application)
 
@@ -87,6 +87,16 @@ class Node(Entity):
             event (Event): the event that happens on this Node
 
         """
+        from qns.network.network import SignalTypeEnum, TimingPhase, TimingPhaseEvent  # noqa: PLC0415
+
+        if isinstance(event, TimingPhaseEvent):
+            signal_type = SignalTypeEnum.EXTERNAL if event.phase == TimingPhase.EXTERNAL else SignalTypeEnum.INTERNAL
+            log.debug(f"{self}:TIMING SIGNAL <{signal_type}>")
+            self.sync_current_phase = signal_type
+            for app in self.apps:
+                app.handle_sync_signal(signal_type)
+            return
+
         for app in self.apps:
             skip = app.handle(event)
             if skip:
@@ -162,8 +172,10 @@ class Node(Entity):
             network (qns.network.network.Network): the network object
 
         """
+        from qns.network.network import TimingModeAsync, TimingModeEnum  # noqa: PLC0415
+
         self._network = network
-        self.timing_mode = network.timing_mode
+        self.timing_mode = TimingModeEnum.ASYNC if isinstance(network.timing, TimingModeAsync) else TimingModeEnum.SYNC
 
     @property
     def network(self) -> "QuantumNetwork":
@@ -176,17 +188,6 @@ class Node(Entity):
         if self._network is None:
             raise IndexError(f"node {repr(self)} is not in a network")
         return self._network
-
-    def handle_sync_signal(self, signal_type: "SignalTypeEnum") -> None:
-        from qns.network.network import TimingModeEnum  # noqa: PLC0415
-
-        if self.timing_mode != TimingModeEnum.SYNC:
-            return
-
-        log.debug(f"{self}:[{self.timing_mode}] TIMING SIGNAL <{signal_type}>")
-        self.sync_current_phase = signal_type
-        for app in self.apps:
-            app.handle_sync_signal(signal_type)
 
     def __repr__(self) -> str:
         return f"<node {self.name}>"
