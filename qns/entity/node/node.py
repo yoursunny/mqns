@@ -27,14 +27,15 @@
 
 from typing import TYPE_CHECKING, TypeVar
 
+from typing_extensions import override
+
 from qns.entity.entity import Entity
 from qns.entity.node.app import Application
 from qns.simulator import Event, Simulator
-from qns.utils import log
 
 if TYPE_CHECKING:
-    from qns.entity import ClassicChannel
-    from qns.network.network import QuantumNetwork, SignalTypeEnum
+    from qns.entity.cchannel import ClassicChannel
+    from qns.network.network import QuantumNetwork, TimingMode
 
 ApplicationT = TypeVar("ApplicationT", bound=Application)
 
@@ -48,18 +49,10 @@ class Node(Entity):
         apps (List[Application]): the installing applications.
 
         """
-        from qns.network.network import SignalTypeEnum, TimingModeEnum  # noqa: PLC0415
-
         super().__init__(name=name)
         self._network: "QuantumNetwork|None" = None
         self.cchannels: list["ClassicChannel"] = []
         self.apps: list[Application] = [] if apps is None else apps
-
-        # set default timing to ASYNC
-        self.timing_mode = TimingModeEnum.ASYNC
-        """Network timing mode."""
-        self.sync_current_phase = SignalTypeEnum.EXTERNAL
-        """Phase set from last sync signal, only relevant with SYNC timing mode."""
 
     def install(self, simulator: Simulator) -> None:
         """Called from Network.install()"""
@@ -75,6 +68,7 @@ class Node(Entity):
         for app in self.apps:
             app.install(self, simulator)
 
+    @override
     def handle(self, event: Event) -> None:
         """
         Dispatch an `Event` that happens on this Node.
@@ -89,15 +83,19 @@ class Node(Entity):
             if skip:
                 break
 
-    def add_apps(self, app: Application):
-        """Insert an Application into the app list.
-        Called from Topology.build() -> Topology._add_apps()
+    def add_apps(self, app: Application | list[Application]):
+        """
+        Insert one or more applications into the app list.
 
         Args:
-            app (Application): the inserting application.
+            app: an application or a list of applications.
+                 The caller is responsible for `deepcopy` if needed, so that each node has a separate instance.
 
         """
-        self.apps.append(app)
+        if isinstance(app, list):
+            self.apps += app
+        else:
+            self.apps.append(app)
 
     def get_apps(self, app_type: type[ApplicationT]) -> list[ApplicationT]:
         """
@@ -160,7 +158,6 @@ class Node(Entity):
 
         """
         self._network = network
-        self.timing_mode = network.timing_mode
 
     @property
     def network(self) -> "QuantumNetwork":
@@ -174,16 +171,12 @@ class Node(Entity):
             raise IndexError(f"node {repr(self)} is not in a network")
         return self._network
 
-    def handle_sync_signal(self, signal_type: "SignalTypeEnum") -> None:
-        from qns.network.network import TimingModeEnum  # noqa: PLC0415
-
-        if self.timing_mode != TimingModeEnum.SYNC:
-            return
-
-        log.debug(f"{self}:[{self.timing_mode}] TIMING SIGNAL <{signal_type}>")
-        self.sync_current_phase = signal_type
-        for app in self.apps:
-            app.handle_sync_signal(signal_type)
+    @property
+    def timing(self) -> "TimingMode":
+        """
+        Access the network-wide application timing mode.
+        """
+        return self.network.timing
 
     def __repr__(self) -> str:
         return f"<node {self.name}>"

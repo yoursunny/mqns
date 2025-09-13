@@ -28,14 +28,11 @@
 import json
 from typing import Any
 
+from typing_extensions import Unpack, override
+
 from qns.entity.base_channel import BaseChannel, BaseChannelInitKwargs
 from qns.entity.node import Node
 from qns.simulator import Event, Time
-
-try:
-    from typing import Unpack
-except ImportError:
-    from typing_extensions import Unpack
 
 
 class ClassicPacket:
@@ -88,6 +85,10 @@ class ClassicChannel(BaseChannel[Node]):
     def __init__(self, name: str, **kwargs: Unpack[ClassicChannelInitKwargs]):
         super().__init__(name, **kwargs)
 
+    @override
+    def handle(self, event: Event):
+        raise RuntimeError(f"unexpected event {event}")
+
     def send(self, packet: ClassicPacket, next_hop: Node):
         """Send a classic packet to the next_hop
 
@@ -125,5 +126,6 @@ class RecvClassicPacket(Event):
         self.packet = packet
         self.dest = dest
 
+    @override
     def invoke(self) -> None:
         self.dest.handle(self)

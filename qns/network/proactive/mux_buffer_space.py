@@ -1,5 +1,7 @@
 from abc import abstractmethod
 
+from typing_extensions import override
+
 from qns.entity.memory import MemoryQubit, PathDirection, QubitState
 from qns.entity.node import QNode
 from qns.entity.qchannel import QuantumChannel
@@ -8,11 +10,6 @@ from qns.network.proactive.fib import FibEntry
 from qns.network.proactive.message import PathInstructions, validate_path_instructions
 from qns.network.proactive.mux import MuxScheme
 from qns.utils import log
-
-try:
-    from typing import override
-except ImportError:
-    from typing_extensions import override
 
 
 class MuxSchemeFibBase(MuxScheme):

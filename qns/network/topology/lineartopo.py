@@ -15,13 +15,10 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing_extensions import Unpack, override
+
 from qns.network.topology.gridtopo import GridTopology
 from qns.network.topology.topo import TopologyInitKwargs
-
-try:
-    from typing import Unpack
-except ImportError:
-    from typing_extensions import Unpack
 
 
 class LinearTopology(GridTopology):
@@ -29,6 +26,7 @@ class LinearTopology(GridTopology):
     LinearTopology creates a linear topology with `nodes_number` nodes.
     """
 
+    @override
     def __init__(self, nodes_number: int, **kwargs: Unpack[TopologyInitKwargs]):
         super().__init__((1, nodes_number), **kwargs)
         # A linear topology is a special case of a grid topology with one row and nodes_number columns.

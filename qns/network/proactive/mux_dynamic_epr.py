@@ -1,6 +1,8 @@
 import random
 from collections.abc import Callable
 
+from typing_extensions import override
+
 from qns.entity.memory import MemoryQubit, QubitState
 from qns.entity.node import QNode
 from qns.models.epr import WernerStateEntanglement
@@ -8,11 +10,6 @@ from qns.network.proactive.fib import FibEntry
 from qns.network.proactive.mux_buffer_space import MuxSchemeFibBase
 from qns.network.proactive.mux_statistical import MuxSchemeDynamicBase, has_intersect_tmp_path_ids
 from qns.utils import log
-
-try:
-    from typing import override
-except ImportError:
-    from typing_extensions import override
 
 
 def random_path_selector(fibs: list[FibEntry]) -> FibEntry:

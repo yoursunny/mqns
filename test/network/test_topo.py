@@ -15,6 +15,7 @@ from qns.network.topology import (
     TreeTopology,
     WaxmanTopology,
 )
+from qns.simulator import Simulator
 
 
 def collect_channels(net: QuantumNetwork, channels: Sequence[ClassicChannel | QuantumChannel]) -> set[tuple[int, int]]:
@@ -191,11 +192,13 @@ def test_custom_topo_empty():
         }
     )
     net = QuantumNetwork(topo=topo)
+    net.install(Simulator())
 
     assert len(net.nodes) == 0
     assert len(net.qchannels) == 0
     assert len(net.cchannels) == 0
     assert net.controller is None
+    assert len(net.all_nodes) == 0
 
 
 def test_custom_topo_basic():
@@ -220,10 +223,13 @@ def test_custom_topo_basic():
         }
     )
     net = QuantumNetwork(topo=topo)
+    net.install(Simulator())
 
     assert len(net.nodes) == 3
     assert len(net.qchannels) == 2
     assert len(net.cchannels) == 1
+    assert net.controller is not None
+    assert len(net.all_nodes) == 4
 
     mA = net.get_node("A").get_memory()
     mB = net.get_node("B").get_memory()
@@ -244,8 +250,6 @@ def test_custom_topo_basic():
     assert mC.get(0, must=True)[0].qchannel == qBC
     assert mC.get(1, must=True)[0].qchannel == qBC
     assert mC.get(2, must=True)[0].qchannel == qBC
-
-    assert net.controller is not None
 
 
 def test_custom_topo_low_memory():

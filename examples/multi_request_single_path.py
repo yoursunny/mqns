@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tap import Tap
 
-from qns.entity.node import Application
 from qns.network.network import QuantumNetwork
 from qns.network.proactive import (
     LinkLayer,
@@ -18,7 +17,7 @@ from qns.network.proactive import (
     RoutingPathSingle,
     select_weighted_by_swaps,
 )
-from qns.network.topology.customtopo import CustomTopology, Topo
+from qns.network.topology import CustomTopology, Topology
 from qns.simulator import Simulator
 from qns.utils import log, set_seed
 
@@ -58,13 +57,100 @@ ch_S2_R2 = 10
 ch_R3_D2 = 10
 
 
-def generate_topology(t_coherence: float, p_swap: float, mux: MuxScheme) -> Topo:
+def build_topology(t_coherence: float, p_swap: float, mux: MuxScheme) -> Topology:
     """
     Defines the topology with globally declared simulation parameters.
     """
 
-    def make_qnode_apps() -> list[Application]:
-        return [
+    return CustomTopology(
+        {
+            "qnodes": [
+                {
+                    "name": "S1",
+                    "memory": {
+                        "decoherence_rate": 1 / t_coherence,
+                        "capacity": 1,
+                    },
+                },
+                {
+                    "name": "S2",
+                    "memory": {
+                        "decoherence_rate": 1 / t_coherence,
+                        "capacity": 1,
+                    },
+                },
+                {
+                    "name": "D1",
+                    "memory": {
+                        "decoherence_rate": 1 / t_coherence,
+                        "capacity": 1,
+                    },
+                },
+                {
+                    "name": "D2",
+                    "memory": {
+                        "decoherence_rate": 1 / t_coherence,
+                        "capacity": 1,
+                    },
+                },
+                {
+                    "name": "R1",
+                    "memory": {
+                        "decoherence_rate": 1 / t_coherence,
+                        "capacity": 2,
+                    },
+                },
+                {
+                    "name": "R2",
+                    "memory": {
+                        "decoherence_rate": 1 / t_coherence,
+                        "capacity": 3,
+                    },
+                },
+                {
+                    "name": "R3",
+                    "memory": {
+                        "decoherence_rate": 1 / t_coherence,
+                        "capacity": 3,
+                    },
+                },
+            ],
+            "qchannels": [
+                {"node1": "S1", "node2": "R1", "capacity": 1, "parameters": {"length": ch_S1_R1}},
+                {"node1": "R1", "node2": "R2", "capacity": 1, "parameters": {"length": ch_R1_R2}},
+                {"node1": "R2", "node2": "R3", "capacity": 1, "parameters": {"length": ch_R2_R3}},
+                {"node1": "R3", "node2": "D1", "capacity": 1, "parameters": {"length": ch_R3_D1}},
+                {"node1": "S2", "node2": "R2", "capacity": 1, "parameters": {"length": ch_S2_R2}},
+                {"node1": "R3", "node2": "D2", "capacity": 1, "parameters": {"length": ch_R3_D2}},
+            ],
+            "cchannels": [
+                {"node1": "S1", "node2": "R1", "parameters": {"length": ch_S1_R1}},
+                {"node1": "R1", "node2": "R2", "parameters": {"length": ch_R1_R2}},
+                {"node1": "R2", "node2": "R3", "parameters": {"length": ch_R2_R3}},
+                {"node1": "R3", "node2": "D1", "parameters": {"length": ch_R3_D1}},
+                {"node1": "S2", "node2": "R2", "parameters": {"length": ch_S2_R2}},
+                {"node1": "R3", "node2": "D2", "parameters": {"length": ch_R3_D2}},
+                {"node1": "ctrl", "node2": "S1", "parameters": {"length": 1.0}},
+                {"node1": "ctrl", "node2": "S2", "parameters": {"length": 1.0}},
+                {"node1": "ctrl", "node2": "R1", "parameters": {"length": 1.0}},
+                {"node1": "ctrl", "node2": "R2", "parameters": {"length": 1.0}},
+                {"node1": "ctrl", "node2": "R3", "parameters": {"length": 1.0}},
+                {"node1": "ctrl", "node2": "D1", "parameters": {"length": 1.0}},
+                {"node1": "ctrl", "node2": "D2", "parameters": {"length": 1.0}},
+            ],
+            "controller": {
+                "name": "ctrl",
+                "apps": [
+                    ProactiveRoutingController(
+                        [
+                            RoutingPathSingle("S1", "D1", qubit_allocation=QubitAllocationType.DISABLED, swap=swapping_policy),
+                            RoutingPathSingle("S2", "D2", qubit_allocation=QubitAllocationType.DISABLED, swap=swapping_policy),
+                        ]
+                    )
+                ],
+            },
+        },
+        nodes_apps=[
             LinkLayer(
                 attempt_rate=entg_attempt_rate,
                 init_fidelity=init_fidelity,
@@ -74,113 +160,16 @@ def generate_topology(t_coherence: float, p_swap: float, mux: MuxScheme) -> Topo
                 frequency=frequency,
             ),
             ProactiveForwarder(ps=p_swap, mux=mux),
-        ]
-
-    return {
-        "qnodes": [
-            {
-                "name": "S1",
-                "memory": {
-                    "decoherence_rate": 1 / t_coherence,
-                    "capacity": 1,
-                },
-                "apps": make_qnode_apps(),
-            },
-            {
-                "name": "S2",
-                "memory": {
-                    "decoherence_rate": 1 / t_coherence,
-                    "capacity": 1,
-                },
-                "apps": make_qnode_apps(),
-            },
-            {
-                "name": "D1",
-                "memory": {
-                    "decoherence_rate": 1 / t_coherence,
-                    "capacity": 1,
-                },
-                "apps": make_qnode_apps(),
-            },
-            {
-                "name": "D2",
-                "memory": {
-                    "decoherence_rate": 1 / t_coherence,
-                    "capacity": 1,
-                },
-                "apps": make_qnode_apps(),
-            },
-            {
-                "name": "R1",
-                "memory": {
-                    "decoherence_rate": 1 / t_coherence,
-                    "capacity": 2,
-                },
-                "apps": make_qnode_apps(),
-            },
-            {
-                "name": "R2",
-                "memory": {
-                    "decoherence_rate": 1 / t_coherence,
-                    "capacity": 3,
-                },
-                "apps": make_qnode_apps(),
-            },
-            {
-                "name": "R3",
-                "memory": {
-                    "decoherence_rate": 1 / t_coherence,
-                    "capacity": 3,
-                },
-                "apps": make_qnode_apps(),
-            },
         ],
-        "qchannels": [
-            {"node1": "S1", "node2": "R1", "capacity": 1, "parameters": {"length": ch_S1_R1}},
-            {"node1": "R1", "node2": "R2", "capacity": 1, "parameters": {"length": ch_R1_R2}},
-            {"node1": "R2", "node2": "R3", "capacity": 1, "parameters": {"length": ch_R2_R3}},
-            {"node1": "R3", "node2": "D1", "capacity": 1, "parameters": {"length": ch_R3_D1}},
-            {"node1": "S2", "node2": "R2", "capacity": 1, "parameters": {"length": ch_S2_R2}},
-            {"node1": "R3", "node2": "D2", "capacity": 1, "parameters": {"length": ch_R3_D2}},
-        ],
-        "cchannels": [
-            {"node1": "S1", "node2": "R1", "parameters": {"length": ch_S1_R1}},
-            {"node1": "R1", "node2": "R2", "parameters": {"length": ch_R1_R2}},
-            {"node1": "R2", "node2": "R3", "parameters": {"length": ch_R2_R3}},
-            {"node1": "R3", "node2": "D1", "parameters": {"length": ch_R3_D1}},
-            {"node1": "S2", "node2": "R2", "parameters": {"length": ch_S2_R2}},
-            {"node1": "R3", "node2": "D2", "parameters": {"length": ch_R3_D2}},
-            {"node1": "ctrl", "node2": "S1", "parameters": {"length": 1.0}},
-            {"node1": "ctrl", "node2": "S2", "parameters": {"length": 1.0}},
-            {"node1": "ctrl", "node2": "R1", "parameters": {"length": 1.0}},
-            {"node1": "ctrl", "node2": "R2", "parameters": {"length": 1.0}},
-            {"node1": "ctrl", "node2": "R3", "parameters": {"length": 1.0}},
-            {"node1": "ctrl", "node2": "D1", "parameters": {"length": 1.0}},
-            {"node1": "ctrl", "node2": "D2", "parameters": {"length": 1.0}},
-        ],
-        "controller": {
-            "name": "ctrl",
-            "apps": [
-                ProactiveRoutingController(
-                    [
-                        RoutingPathSingle("S1", "D1", qubit_allocation=QubitAllocationType.DISABLED, swap=swapping_policy),
-                        RoutingPathSingle("S2", "D2", qubit_allocation=QubitAllocationType.DISABLED, swap=swapping_policy),
-                    ]
-                )
-            ],
-        },
-    }
+    )
 
 
 def run_simulation(t_coherence: float, p_swap: float, mux: MuxScheme, seed: int):
-    json_topology = generate_topology(t_coherence, p_swap, mux)
-    # print(json_topology)
-
     set_seed(seed)
     s = Simulator(0, sim_duration + 5e-06, accuracy=1000000)
     log.install(s)
 
-    topo = CustomTopology(json_topology)
+    topo = build_topology(t_coherence, p_swap, mux)
     net = QuantumNetwork(topo=topo)
     net.install(s)
 

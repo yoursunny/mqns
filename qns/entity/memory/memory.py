@@ -29,6 +29,8 @@ import itertools
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, Literal, TypedDict, overload
 
+from typing_extensions import Unpack, override
+
 from qns.entity.entity import Entity
 from qns.entity.memory.event import (
     MemoryReadRequestEvent,
@@ -42,11 +44,6 @@ from qns.models.core import QuantumModel
 from qns.models.delay import DelayInput, parseDelay
 from qns.models.epr import BaseEntanglement
 from qns.simulator import Event, func_to_event
-
-try:
-    from typing import Unpack, override
-except ImportError:
-    from typing_extensions import Unpack, override
 
 if TYPE_CHECKING:
     from qns.entity.qchannel import QuantumChannel

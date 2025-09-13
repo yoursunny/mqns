@@ -1,5 +1,7 @@
 from typing import Any
 
+from typing_extensions import override
+
 from qns.entity.cchannel import ClassicChannel, ClassicPacket, RecvClassicPacket
 from qns.entity.node import Node
 from qns.models.delay import NormalDelayModel, UniformDelayModel
@@ -40,6 +42,7 @@ class SendEvent(Event):
         super().__init__(t=t, name=name, by=by)
         self.node: ClassicSendNode = node
 
+    @override
     def invoke(self) -> None:
         self.node.send()
 

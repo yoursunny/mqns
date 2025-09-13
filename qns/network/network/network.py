@@ -25,31 +25,14 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections import deque
-from enum import Enum, auto
 from typing import cast, overload
 
-from qns.entity import ChannelT, ClassicChannel, Controller, QNode, QuantumChannel, QuantumMemory
-from qns.network.requests import Request
+from qns.entity import ChannelT, ClassicChannel, Controller, Node, QNode, QuantumChannel, QuantumMemory
+from qns.network.network.request import Request
+from qns.network.network.timing import TimingMode, TimingModeAsync
 from qns.network.route import DijkstraRouteAlgorithm, RouteImpl
 from qns.network.topology import ClassicTopology, Topology
-from qns.simulator import Simulator, func_to_event
-from qns.utils import log
-
-
-class TimingModeEnum(Enum):
-    ASYNC = auto()
-    SYNC = auto()
-
-
-class SignalTypeEnum(Enum):
-    INTERNAL = auto()  # used by SYNC to set the phase
-    EXTERNAL = auto()  # used by SYNC to set the phase
-    ROUTING = auto()  # used by SYNC to set the phase
-    APP = auto()  # used by SYNC to set the phase
-
-
-SignalSequence = deque[tuple[SignalTypeEnum, float]]
+from qns.simulator import Simulator
 
 
 def _save_channel(l: list[ChannelT], d: dict[tuple[str, str], ChannelT], ch: ChannelT):
@@ -88,22 +71,16 @@ class QuantumNetwork:
         topo: Topology | None = None,
         classic_topo: ClassicTopology | None = None,
         route: RouteImpl | None = None,
-        timing_mode: TimingModeEnum = TimingModeEnum.ASYNC,
-        t_ext: float = 0,
-        t_int: float = 0,
+        timing: TimingMode = TimingModeAsync(),
     ):
         """
         Args:
             topo: topology builder.
             classic_topo: classic topology parameter, passed to topology builder.
             route: routing algorithm, defaults to dijkstra.
-            timing_mode: network-wide application timing mode.
-            t_ext: EXTERNAL phase duration in SYNC timing mode.
-            t_int: INTERNAL phase duration in SYNC timing mode.
+            timing: network-wide application timing mode.
         """
-        self.timing_mode = timing_mode
-        self.t_ext = t_ext
-        self.t_int = t_int
+        self.timing = timing
 
         self.controller: Controller | None = None
         self.nodes: list[QNode] = []
@@ -138,43 +115,25 @@ class QuantumNetwork:
             self.set_controller(topo.controller)
 
     def install(self, simulator: Simulator):
-        """Install all nodes (including channels, memories and applications) in this network
+        """
+        Install all nodes (including channels, memories and applications) in this network
 
         Args:
-            simulator (Simulator): the simulator
+            simulator: the simulator
 
         """
-        self._simulator = simulator
+        self.simulator = simulator
 
-        for n in self.nodes:
-            n.install(simulator)
+        self.all_nodes: list[Node] = []
+        """A collection of quantum nodes and the controller (if present)."""
+        self.all_nodes += self.nodes
         if self.controller:
-            self.controller.install(simulator)
+            self.all_nodes.append(self.controller)
 
-        if self.timing_mode == TimingModeEnum.SYNC and self.t_ext > 0 and self.t_int > 0:
-            signal_seq = SignalSequence(
-                [
-                    (SignalTypeEnum.EXTERNAL, self.t_ext),
-                    (SignalTypeEnum.INTERNAL, self.t_int),
-                ]
-            )
-            simulator.add_event(func_to_event(self._simulator.ts, self.send_sync_signal, signal_seq, by=self))
+        for node in self.all_nodes:
+            node.install(simulator)
 
-    def send_sync_signal(self, signal_seq: SignalSequence):
-        this_phase = signal_seq.popleft()
-        signal_seq.append(this_phase)
-        phase_signal, phase_duration = this_phase
-
-        # schedule next sync signal
-        self._simulator.add_event(
-            func_to_event(self._simulator.tc + phase_duration, self.send_sync_signal, signal_seq, by=self)
-        )
-
-        log.debug(f"TIME_SYNC: signal {phase_signal.name} phase")
-        for node in self.nodes:
-            node.handle_sync_signal(phase_signal)
-        if self.controller:
-            self.controller.handle_sync_signal(phase_signal)
+        self.timing.install(self)
 
     def add_node(self, node: QNode):
         """

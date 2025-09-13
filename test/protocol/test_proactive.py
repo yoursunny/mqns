@@ -1,7 +1,7 @@
 import pytest
 
 from qns.entity import Controller
-from qns.network.network import ClassicTopology, QuantumNetwork
+from qns.network.network import QuantumNetwork
 from qns.network.proactive import (
     LinkLayer,
     MuxScheme,
@@ -16,7 +16,7 @@ from qns.network.proactive import (
 )
 from qns.network.proactive.message import validate_path_instructions
 from qns.network.route import RouteImpl, YenRouteAlgorithm
-from qns.network.topology import GridTopology, LinearTopology, Topology, TreeTopology
+from qns.network.topology import ClassicTopology, GridTopology, LinearTopology, Topology, TreeTopology
 from qns.simulator import Simulator
 from qns.utils import log
 

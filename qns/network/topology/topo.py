@@ -25,20 +25,18 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import copy
 import itertools
+from abc import ABC, abstractmethod
+from copy import deepcopy
 from enum import Enum
 from typing import TypedDict
+
+from typing_extensions import Unpack
 
 from qns.entity.cchannel import ClassicChannel, ClassicChannelInitKwargs
 from qns.entity.memory import QuantumMemory, QuantumMemoryInitKwargs
 from qns.entity.node import Application, Controller, NodeT, QNode
 from qns.entity.qchannel import QuantumChannel, QuantumChannelInitKwargs
-
-try:
-    from typing import Unpack
-except ImportError:
-    from typing_extensions import Unpack
 
 
 class TopologyInitKwargs(TypedDict, total=False):
@@ -54,7 +52,7 @@ class ClassicTopology(Enum):
     Follow = 3
 
 
-class Topology:
+class Topology(ABC):
     """Topology is a factory for QuantumNetwork"""
 
     def __init__(self, nodes_number: int, **kwargs: Unpack[TopologyInitKwargs]):
@@ -73,6 +71,7 @@ class Topology:
         self.memory_args = kwargs.get("memory_args", {})
         self.controller: Controller | None = None
 
+    @abstractmethod
     def build(self) -> tuple[list[QNode], list[QuantumChannel]]:
         """Build the special topology
 
@@ -80,7 +79,7 @@ class Topology:
             the list of QNodes and the list of QuantumChannel
 
         """
-        raise NotImplementedError
+        pass
 
     def _add_apps(self, nl: list[QNode]):
         """Add apps for all nodes in `nl`
@@ -90,9 +89,7 @@ class Topology:
 
         """
         for n in nl:
-            for p in self.nodes_apps:
-                tmp_p = copy.deepcopy(p)
-                n.add_apps(tmp_p)
+            n.add_apps(deepcopy(self.nodes_apps))
 
     def _add_memories(self, nl: list[QNode]):
         """Add quantum memories to all nodes in `nl`

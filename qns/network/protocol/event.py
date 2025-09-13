@@ -18,6 +18,8 @@
 from enum import Enum, auto
 from typing import Any
 
+from typing_extensions import override
+
 from qns.entity.memory import MemoryQubit, QubitState
 from qns.entity.node import QNode
 from qns.models.epr import WernerStateEntanglement
@@ -51,6 +53,7 @@ class ManageActiveChannels(Event):
         self.path_id = path_id
         self.type = type
 
+    @override
     def invoke(self) -> None:
         self.node.handle(self)
 
@@ -73,6 +76,7 @@ class LinkArchSuccessEvent(Event):
         self.node = node
         self.epr = epr
 
+    @override
     def invoke(self) -> None:
         self.node.handle(self)
 
@@ -98,6 +102,7 @@ class QubitEntangledEvent(Event):
         self.qubit = qubit
         assert self.qubit.state == QubitState.ENTANGLED0
 
+    @override
     def invoke(self) -> None:
         self.qubit.state = QubitState.ENTANGLED1
         self.node.handle(self)
@@ -114,6 +119,7 @@ class QubitDecoheredEvent(Event):
         self.qubit = qubit
         assert self.qubit.state == QubitState.RELEASE
 
+    @override
     def invoke(self) -> None:
         assert self.qubit.state == QubitState.RELEASE
         self.node.handle(self)
@@ -138,6 +144,7 @@ class QubitReleasedEvent(Event):
         self.qubit = qubit
         assert self.qubit.state == QubitState.RELEASE
 
+    @override
     def invoke(self) -> None:
         assert self.qubit.state == QubitState.RELEASE
         self.node.handle(self)

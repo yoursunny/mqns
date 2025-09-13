@@ -1,10 +1,6 @@
 from typing import Literal, TypedDict
 
-try:
-    from typing import NotRequired
-except ImportError:
-    from typing_extensions import NotRequired
-
+from typing_extensions import NotRequired
 
 MultiplexingVector = list[tuple[int, int]]
 

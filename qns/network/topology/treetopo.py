@@ -15,14 +15,11 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing_extensions import Unpack, override
+
 from qns.entity.node import QNode
 from qns.entity.qchannel import QuantumChannel
 from qns.network.topology.topo import Topology, TopologyInitKwargs
-
-try:
-    from typing import Unpack
-except ImportError:
-    from typing_extensions import Unpack
 
 
 class TreeTopology(Topology):
@@ -39,6 +36,7 @@ class TreeTopology(Topology):
         super().__init__(nodes_number, **kwargs)
         self.children_number = children_number
 
+    @override
     def build(self) -> tuple[list[QNode], list[QuantumChannel]]:
         nl: list[QNode] = []
         ll: list[QuantumChannel] = []

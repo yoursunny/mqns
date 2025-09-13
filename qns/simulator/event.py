@@ -15,13 +15,16 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any
+
+from typing_extensions import override
 
 from qns.simulator.ts import Time
 
 
-class Event:
+class Event(ABC):
     """Basic event class in simulator"""
 
     def __init__(self, t: Time, name: str | None = None, by: Any = None):
@@ -36,9 +39,10 @@ class Event:
         self.by = by
         self._is_canceled: bool = False
 
+    @abstractmethod
     def invoke(self) -> None:
-        """Invoke the event, should be implemented"""
-        raise NotImplementedError
+        """Invoke the event."""
+        pass
 
     def cancel(self) -> None:
         """Cancel this event"""
@@ -74,9 +78,7 @@ class Event:
         return hash(self.t)
 
     def __repr__(self) -> str:
-        if self.name is not None:
-            return f"Event({self.name})"
-        return "Event()"
+        return f"Event({self.name or ''})"
 
 
 class WrapperEvent(Event):
@@ -86,6 +88,7 @@ class WrapperEvent(Event):
         self.args = args
         self.kwargs = kwargs
 
+    @override
     def invoke(self) -> None:
         self.fn(*self.args, **self.kwargs)
 

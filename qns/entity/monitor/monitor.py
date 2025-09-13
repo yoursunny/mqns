@@ -19,6 +19,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
+from typing_extensions import override
 
 from qns.entity.entity import Entity
 from qns.simulator import Event, Simulator, Time
@@ -39,6 +40,7 @@ class MonitorEvent(Event):
         self.monitor = monitor
         self.period = period
 
+    @override
     def invoke(self) -> None:
         self.monitor.handle(self)
 
@@ -80,6 +82,7 @@ class Monitor(Entity):
         for event_type in self.watch_event:
             simulator.watch_event[event_type].append(self)
 
+    @override
     def handle(self, event: Event) -> None:
         simulator = self.simulator
 

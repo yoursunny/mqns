@@ -4,15 +4,12 @@ from collections.abc import Iterator
 from enum import Enum, auto
 from itertools import pairwise
 
+from typing_extensions import override
+
 from qns.network.network import QuantumNetwork
 from qns.network.proactive.message import MultiplexingVector, PathInstructions, make_path_instructions
 from qns.network.proactive.swap_sequence import parse_swap_sequence
 from qns.utils import log
-
-try:
-    from typing import override
-except ImportError:
-    from typing_extensions import override
 
 
 class QubitAllocationType(Enum):
