@@ -241,3 +241,22 @@ class LinkArchSim(LinkArch):
         attempt_duration = tau_l + tau_0
         attempt_interval = max(attempt_duration, reset_time)
         return (k - 1) * attempt_interval, attempt_duration, attempt_duration
+
+
+class LinkArchAlways(LinkArch):
+    """
+    Link architecture wrapper that always succeeds, primarily for unit testing.
+    """
+
+    def __init__(self, inner: LinkArch):
+        super().__init__(f"{inner.name}-always")
+        self.inner = inner
+
+    @override
+    def success_prob(self, **_) -> float:
+        return 1
+
+    @override
+    def delays(self, k: int, **kwargs) -> tuple[float, float, float]:
+        assert k == 1
+        return self.inner.delays(k, **kwargs)

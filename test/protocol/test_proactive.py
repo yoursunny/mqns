@@ -1,6 +1,8 @@
 import pytest
 
-from qns.entity import Controller
+from qns.entity.cchannel import ClassicChannelInitKwargs
+from qns.entity.node import Controller
+from qns.entity.qchannel import LinkArchAlways, LinkArchDimBk, QuantumChannelInitKwargs
 from qns.network.network import QuantumNetwork
 from qns.network.proactive import (
     LinkLayer,
@@ -20,8 +22,25 @@ from qns.network.topology import ClassicTopology, GridTopology, LinearTopology, 
 from qns.simulator import Simulator
 from qns.utils import log
 
+init_fidelity = 0.90
 
-def build_network_finish(topo: Topology, qchannel_capacity: int, *, route: RouteImpl | None = None):
+qchannel_args = QuantumChannelInitKwargs(
+    length=100,  # delay is 0.0005 seconds
+    link_arch=LinkArchAlways(LinkArchDimBk()),  # entanglement in 0.002 seconds
+)
+
+cchannel_args = ClassicChannelInitKwargs(
+    length=100,  # delay is 0.0005 seconds
+)
+
+
+def build_network_finish(
+    topo: Topology,
+    qchannel_capacity: int,
+    *,
+    end_time: float,
+    route: RouteImpl | None = None,
+):
     topo.controller = Controller("ctrl", apps=[ProactiveRoutingController()])
 
     net = QuantumNetwork(topo=topo, classic_topo=ClassicTopology.Follow, route=route)
@@ -29,7 +48,7 @@ def build_network_finish(topo: Topology, qchannel_capacity: int, *, route: Route
         qchannel.assign_memory_qubits(capacity=qchannel_capacity)
     topo.connect_controller(net.nodes)
 
-    simulator = Simulator(0.0, 60.0)
+    simulator = Simulator(0.0, end_time)
     log.install(simulator)
     net.install(simulator)
 
@@ -41,21 +60,26 @@ def build_linear_network(
     *,
     qchannel_capacity=1,
     mux: MuxScheme = MuxSchemeBufferSpace(),
+    end_time=10.0,
 ) -> tuple[QuantumNetwork, Simulator]:
     topo = LinearTopology(
         n_nodes,
-        nodes_apps=[LinkLayer(), ProactiveForwarder(ps=0.5, mux=mux)],
-        qchannel_args={"length": 100},  # delay is 0.0005 seconds
-        cchannel_args={"length": 100},
+        nodes_apps=[
+            LinkLayer(init_fidelity=init_fidelity),
+            ProactiveForwarder(ps=0.5, mux=mux),
+        ],
+        qchannel_args=qchannel_args,
+        cchannel_args=cchannel_args,
         memory_args={"decoherence_rate": 1 / 5.0, "capacity": 2 * qchannel_capacity},
     )
-    return build_network_finish(topo, qchannel_capacity)
+    return build_network_finish(topo, qchannel_capacity, end_time=end_time)
 
 
 def build_dumbbell_network(
     *,
     qchannel_capacity=1,
     mux: MuxScheme = MuxSchemeBufferSpace(),
+    end_time=10.0,
 ) -> tuple[QuantumNetwork, Simulator]:
     """
     Build the following topology:
@@ -69,18 +93,22 @@ def build_dumbbell_network(
     topo = TreeTopology(
         nodes_number=7,
         children_number=2,
-        nodes_apps=[LinkLayer(), ProactiveForwarder(ps=0.5, mux=mux)],
-        qchannel_args={"length": 100},  # delay is 0.0005 seconds
-        cchannel_args={"length": 100},
+        nodes_apps=[
+            LinkLayer(init_fidelity=init_fidelity),
+            ProactiveForwarder(ps=0.5, mux=mux),
+        ],
+        qchannel_args=qchannel_args,
+        cchannel_args=cchannel_args,
         memory_args={"decoherence_rate": 1 / 5.0, "capacity": 3 * qchannel_capacity},
     )
-    return build_network_finish(topo, qchannel_capacity)
+    return build_network_finish(topo, qchannel_capacity, end_time=end_time)
 
 
 def build_rect_network(
     *,
     qchannel_capacity=1,
     mux: MuxScheme = MuxSchemeBufferSpace(),
+    end_time=10.0,
 ) -> tuple[QuantumNetwork, Simulator]:
     """
     Build the following topology:
@@ -91,12 +119,15 @@ def build_rect_network(
     """
     topo = GridTopology(
         (2, 2),
-        nodes_apps=[LinkLayer(), ProactiveForwarder(ps=0.5, mux=mux)],
-        qchannel_args={"length": 100},  # delay is 0.0005 seconds
-        cchannel_args={"length": 100},
+        nodes_apps=[
+            LinkLayer(init_fidelity=init_fidelity),
+            ProactiveForwarder(ps=0.5, mux=mux),
+        ],
+        qchannel_args=qchannel_args,
+        cchannel_args=cchannel_args,
         memory_args={"decoherence_rate": 1 / 5.0, "capacity": 2 * qchannel_capacity},
     )
-    return build_network_finish(topo, qchannel_capacity, route=YenRouteAlgorithm(k_paths=2))
+    return build_network_finish(topo, qchannel_capacity, end_time=end_time, route=YenRouteAlgorithm(k_paths=2))
 
 
 def test_path_validation():
@@ -139,12 +170,13 @@ def test_no_swap():
     ctrl.install_path(RoutingPathStatic(["n1", "n2", "n3"], swap=[0, 0, 0]))
     simulator.run()
 
-    for app in (f1, f2, f3):
-        print((app.own.name, app.cnt))
+    for fw in (f1, f2, f3):
+        print((fw.own.name, fw.cnt))
+        assert 0.88 <= fw.cnt.consumed_avg_fidelity <= 0.90
 
-    assert f1.cnt.n_entg == f1.cnt.n_eligible == f1.cnt.n_consumed > 0
-    assert f2.cnt.n_entg == f2.cnt.n_eligible == f2.cnt.n_consumed > 0
-    assert f3.cnt.n_entg == f3.cnt.n_eligible == f3.cnt.n_consumed > 0
+    assert f1.cnt.n_entg == f1.cnt.n_eligible == f1.cnt.n_consumed == pytest.approx(5000, abs=5)
+    assert f2.cnt.n_entg == f2.cnt.n_eligible == f2.cnt.n_consumed == pytest.approx(10000, abs=5)
+    assert f3.cnt.n_entg == f3.cnt.n_eligible == f3.cnt.n_consumed == pytest.approx(5000, abs=5)
     assert f1.cnt.n_swapped == f2.cnt.n_swapped == f3.cnt.n_swapped == 0
     assert f1.cnt.n_consumed + f3.cnt.n_consumed == f2.cnt.n_consumed
 
@@ -160,21 +192,22 @@ def test_swap_1():
     ctrl.install_path(RoutingPathStatic(["n1", "n2", "n3"], swap=[1, 0, 1]))
     simulator.run()
 
-    for app in (f1, f2, f3):
-        print((app.own.name, app.cnt))
+    for fw in (f1, f2, f3):
+        print((fw.own.name, fw.cnt))
 
     # entanglements at n2 are immediately eligible because there's no purification
-    assert f1.cnt.n_entg + f3.cnt.n_entg == f2.cnt.n_entg == f2.cnt.n_eligible
+    assert f1.cnt.n_entg + f3.cnt.n_entg == f2.cnt.n_entg == f2.cnt.n_eligible == pytest.approx(8000, abs=5)
     # only eligible qubits may be swapped at n2, with 50% success rate
-    assert f2.cnt.n_swapped <= f2.cnt.n_eligible * 0.8
+    assert 0 < f2.cnt.n_swapped <= f2.cnt.n_eligible * 0.7
     # no swapping is expected at n1 and n3
     assert f1.cnt.n_swapped == f3.cnt.n_swapped == 0
     # successful swap at n2 should make the qubit eligible at n1 and n3, but allow 1 lost at end of simulation
-    assert 0 <= f2.cnt.n_swapped - f1.cnt.n_eligible <= 1
+    assert f2.cnt.n_swapped >= f1.cnt.n_eligible >= f2.cnt.n_swapped - 2
     # eligible qubits at n1 and n3 are immediately consumed
-    assert f1.cnt.n_eligible == f3.cnt.n_eligible == f1.cnt.n_consumed == f3.cnt.n_consumed >= 15
-    # consumed entanglement should have expected fidelity above 0.7
-    assert 0.7 <= f1.cnt.consumed_avg_fidelity == pytest.approx(f3.cnt.consumed_avg_fidelity, abs=1e-3)
+    assert f1.cnt.n_eligible == f3.cnt.n_eligible == f1.cnt.n_consumed == f3.cnt.n_consumed
+    # consumed entanglement should have expected fidelity worse than initial fidelity
+    assert f1.cnt.consumed_avg_fidelity == pytest.approx(f3.cnt.consumed_avg_fidelity, abs=1e-3)
+    assert 0.78 <= f1.cnt.consumed_avg_fidelity <= 0.84
     # no consumption is expected at n2
     assert f2.cnt.n_consumed == 0
 
@@ -191,15 +224,15 @@ def test_swap_parallel():
     ctrl.install_path(RoutingPathStatic(["n1", "n2", "n3", "n4"], swap=[1, 0, 0, 1]))
     simulator.run()
 
-    for app in (f1, f2, f3, f4):
-        print((app.own.name, app.cnt))
+    for fw in (f1, f2, f3, f4):
+        print((fw.own.name, fw.cnt))
 
     # entanglements at n2 and n3 are immediately eligible because there's no purification
-    assert f2.cnt.n_entg == f2.cnt.n_eligible
-    assert f3.cnt.n_entg == f3.cnt.n_eligible
+    assert f2.cnt.n_entg == f2.cnt.n_eligible > 6000
+    assert f3.cnt.n_entg == f3.cnt.n_eligible > 6000
     # only eligible qubits may be swapped at n2 and n3, with 50% success rate
-    assert f2.cnt.n_swapped <= f2.cnt.n_eligible * 0.8
-    assert f3.cnt.n_swapped <= f3.cnt.n_eligible * 0.8
+    assert 0 < f2.cnt.n_swapped <= f2.cnt.n_eligible * 0.7
+    assert 0 < f3.cnt.n_swapped <= f3.cnt.n_eligible * 0.7
     # some swaps were completed in parallel
     assert f2.cnt.n_swapped_p > 0
     assert f3.cnt.n_swapped_p > 0
@@ -207,14 +240,15 @@ def test_swap_parallel():
     # but there would be losses because parallel swaps require coincidence
     assert min(f2.cnt.n_swapped, f3.cnt.n_swapped) > f1.cnt.n_eligible > 0
     # eligible qubits at n1 and n4 are immediately consumed
-    assert f1.cnt.n_eligible == f4.cnt.n_eligible == f1.cnt.n_consumed == f4.cnt.n_consumed >= 10
-    # consumed entanglement should have expected fidelity above 0.6
-    assert 0.6 <= f1.cnt.consumed_avg_fidelity == pytest.approx(f4.cnt.consumed_avg_fidelity, abs=1e-3)
+    assert f1.cnt.n_eligible == f4.cnt.n_eligible == f1.cnt.n_consumed == f4.cnt.n_consumed >= 600
+    # consumed entanglement should have expected fidelity worse than initial fidelity
+    assert f1.cnt.consumed_avg_fidelity == pytest.approx(f4.cnt.consumed_avg_fidelity, abs=1e-3)
+    assert 0.71 <= f1.cnt.consumed_avg_fidelity <= 0.77
 
 
 def test_swap_mr():
     """Test swapping over multiple requests."""
-    net, simulator = build_dumbbell_network(qchannel_capacity=2, mux=MuxSchemeDynamicEpr())
+    net, simulator = build_dumbbell_network(qchannel_capacity=2, mux=MuxSchemeDynamicEpr(), end_time=60.0)
     ctrl = net.get_controller().get_app(ProactiveRoutingController)
     f4 = net.get_node("n4").get_app(ProactiveForwarder)
     f6 = net.get_node("n6").get_app(ProactiveForwarder)
@@ -231,9 +265,9 @@ def test_swap_mr():
         print((app.own.name, app.cnt))
 
     # some end-to-end entanglements should be consumed at n4 and n6
-    assert f4.cnt.n_consumed == f6.cnt.n_consumed > 0
+    assert pytest.approx(f4.cnt.n_consumed, abs=1) == f6.cnt.n_consumed > 0
     # some end-to-end entanglements should be consumed at n5 and n7
-    assert f5.cnt.n_consumed == f7.cnt.n_consumed > 0
+    assert pytest.approx(f5.cnt.n_consumed, abs=1) == f7.cnt.n_consumed > 0
 
 
 def test_swap_mp():
@@ -252,11 +286,13 @@ def test_swap_mp():
     for app in (f1, f2, f3, f4):
         print((app.own.name, app.cnt))
 
-    # some end-to-end entanglements should be consumed at n1 and n4
-    assert f1.cnt.n_consumed == f4.cnt.n_consumed > 0
-    # some swaps should occur in n2 and n3
-    assert f2.cnt.n_swapped_s > 0
-    assert f3.cnt.n_swapped_s > 0
+    # end-to-end entanglements are consumed at n1 and n4
+    assert f1.cnt.n_consumed == f4.cnt.n_consumed > 12000
+    # each swap allows one end-to-end entanglements, but some can be lost
+    assert f1.cnt.n_consumed <= f2.cnt.n_swapped_s + f3.cnt.n_swapped_s < f1.cnt.n_consumed * 1.02
+    # both paths are used
+    assert f2.cnt.n_swapped_s > 4000
+    assert f3.cnt.n_swapped_s > 4000
 
 
 def test_purif_link1r():
@@ -279,13 +315,14 @@ def test_purif_link1r():
     # entanglements at n2 are eligible after 1-round purification
     assert pytest.approx(f1.cnt.n_purif[0] + f3.cnt.n_purif[0], abs=1) == f2.cnt.n_purif[0] == f2.cnt.n_eligible
     # only eligible qubits may be swapped at n2, with 50% success rate
-    assert f2.cnt.n_swapped <= f2.cnt.n_eligible * 0.8
-    # successful swap at n2 should make the qubit eligible at n1 and n3, but allow 1 lost at end of simulation
-    assert 0 <= f2.cnt.n_swapped - f1.cnt.n_eligible <= 1
+    assert 0 < f2.cnt.n_swapped <= f2.cnt.n_eligible * 0.7
+    # successful swap at n2 should make the qubit eligible at n1 and n3, but allow small loss at end of simulation
+    assert f2.cnt.n_swapped >= f1.cnt.n_eligible >= f2.cnt.n_swapped - 2
     # eligible qubits at n1 and n3 are immediately consumed
-    assert f1.cnt.n_eligible == f3.cnt.n_eligible == f1.cnt.n_consumed == f3.cnt.n_consumed >= 15
-    # consumed entanglement should have expected fidelity above 0.7
-    assert 0.7 <= f1.cnt.consumed_avg_fidelity == pytest.approx(f3.cnt.consumed_avg_fidelity, abs=1e-3)
+    assert f1.cnt.n_eligible == f3.cnt.n_eligible == f1.cnt.n_consumed == f3.cnt.n_consumed >= 1000
+    # consumed entanglement should have expected fidelity better than swap_1
+    assert f1.cnt.consumed_avg_fidelity == pytest.approx(f3.cnt.consumed_avg_fidelity, abs=1e-3)
+    assert 0.82 <= f1.cnt.consumed_avg_fidelity <= 0.88
 
 
 def test_purif_link2r():
@@ -310,13 +347,14 @@ def test_purif_link2r():
     assert pytest.approx(f1.cnt.n_purif[0] + f3.cnt.n_purif[0], abs=1) == f2.cnt.n_purif[0]
     assert pytest.approx(f1.cnt.n_purif[1] + f3.cnt.n_purif[1], abs=1) == f2.cnt.n_purif[1] == f2.cnt.n_eligible
     # only eligible qubits may be swapped at n2, with 50% success rate
-    assert f2.cnt.n_swapped <= f2.cnt.n_eligible * 0.8
+    assert 0 < f2.cnt.n_swapped <= f2.cnt.n_eligible * 0.7
     # successful swap at n2 should make the qubit eligible at n1 and n3, but allow 1 lost at end of simulation
-    assert 0 <= f2.cnt.n_swapped - f1.cnt.n_eligible <= 1
+    assert f2.cnt.n_swapped >= f1.cnt.n_eligible >= f2.cnt.n_swapped - 2
     # eligible qubits at n1 and n3 are immediately consumed
-    assert f1.cnt.n_eligible == f3.cnt.n_eligible == f1.cnt.n_consumed == f3.cnt.n_consumed >= 15
-    # consumed entanglement should have expected fidelity above 0.8
-    assert 0.8 <= f1.cnt.consumed_avg_fidelity == pytest.approx(f3.cnt.consumed_avg_fidelity, abs=1e-3)
+    assert f1.cnt.n_eligible == f3.cnt.n_eligible == f1.cnt.n_consumed == f3.cnt.n_consumed >= 600
+    # consumed entanglement should have expected fidelity better than purif_link1r
+    assert f1.cnt.consumed_avg_fidelity == pytest.approx(f3.cnt.consumed_avg_fidelity, abs=1e-3)
+    assert 0.86 <= f1.cnt.consumed_avg_fidelity <= 0.92
 
 
 def test_purif_ee2r():
@@ -330,15 +368,16 @@ def test_purif_ee2r():
     ctrl.install_path(RoutingPathStatic(["n1", "n2", "n3"], swap=[1, 0, 1], purif={"n1-n3": 2}))
     simulator.run()
 
-    for app in (f1, f2, f3):
-        print((app.own.name, app.cnt))
+    for fw in (f1, f2, f3):
+        print((fw.own.name, fw.cnt))
 
     # successful swap at n2 enables first round of n1-n3 purification; some purifications should fail
-    assert pytest.approx(f1.cnt.n_purif[0], abs=1) == f3.cnt.n_purif[0] < f2.cnt.n_swapped * 0.8
-    assert pytest.approx(f1.cnt.n_purif[1], abs=1) == f3.cnt.n_purif[1] < f3.cnt.n_purif[0] * 0.8
+    assert pytest.approx(f1.cnt.n_purif[0], abs=1) == f3.cnt.n_purif[0] < f2.cnt.n_swapped * 0.6
+    assert pytest.approx(f1.cnt.n_purif[1], abs=1) == f3.cnt.n_purif[1] < f3.cnt.n_purif[0] * 0.6
     # no purification may occur in n2
     assert len(f2.cnt.n_purif) == 0
     # eligible qubits at n1 and n3 are consumed after completing 2-round purification
-    assert f1.cnt.n_eligible == f3.cnt.n_eligible == f1.cnt.n_consumed == f3.cnt.n_consumed >= 5
-    # consumed entanglement should have expected fidelity above 0.8
-    assert 0.8 <= f1.cnt.consumed_avg_fidelity == pytest.approx(f3.cnt.consumed_avg_fidelity, abs=1e-3)
+    assert f1.cnt.n_eligible == f3.cnt.n_eligible == f1.cnt.n_consumed == f3.cnt.n_consumed >= 500
+    # consumed entanglement should have expected fidelity better than swap_1
+    assert f1.cnt.consumed_avg_fidelity == pytest.approx(f3.cnt.consumed_avg_fidelity, abs=1e-3)
+    assert 0.85 <= f1.cnt.consumed_avg_fidelity <= 0.91

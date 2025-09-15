@@ -1,9 +1,8 @@
 import pytest
-from typing_extensions import override
 
 from qns.entity.memory import QubitState
 from qns.entity.node import Application, Node, QNode
-from qns.entity.qchannel import LinkArchDimBk
+from qns.entity.qchannel import LinkArchAlways, LinkArchDimBk
 from qns.models.epr import BaseEntanglement
 from qns.network.network import QuantumNetwork, TimingModeSync
 from qns.network.protocol.event import (
@@ -51,15 +50,6 @@ class NetworkLayer(Application):
         self.decohere.append(event.t.sec)
 
 
-class LinkArchDimBkAlways(LinkArchDimBk):
-    def __init__(self, name="DIM-BK-always"):
-        super().__init__(name)
-
-    @override
-    def success_prob(self, **_) -> float:
-        return 1.0
-
-
 def add_active_channel(simulator: Simulator, t: float, src: NetworkLayer, dst: NetworkLayer):
     simulator.add_event(
         ManageActiveChannels(
@@ -76,7 +66,7 @@ def test_basic():
     topo = LinearTopology(
         nodes_number=2,
         nodes_apps=[NetworkLayer(), LinkLayer()],
-        qchannel_args={"delay": 0.1, "link_arch": LinkArchDimBkAlways()},
+        qchannel_args={"delay": 0.1, "link_arch": LinkArchAlways(LinkArchDimBk())},
         cchannel_args={"delay": 0.1},
         memory_args={"decoherence_rate": 1 / 4.1},
     )
@@ -133,25 +123,15 @@ def test_skip_ahead():
     )
     net = QuantumNetwork(topo=topo, classic_topo=ClassicTopology.Follow)
     net.build_route()
-    n1 = net.get_node("n1")
-    n2 = net.get_node("n2")
     net.get_qchannel("n1", "n2").assign_memory_qubits(capacity=1)
 
     simulator = Simulator(0.0, 10.0)
     log.install(simulator)
     net.install(simulator)
 
-    a1 = n1.get_app(NetworkLayer)
-    a2 = n2.get_app(NetworkLayer)
-    simulator.add_event(
-        ManageActiveChannels(
-            n1,
-            n2,
-            TypeEnum.ADD,
-            t=simulator.time(sec=0.5),
-            by=a1,
-        )
-    )
+    a1 = net.get_node("n1").get_app(NetworkLayer)
+    a2 = net.get_node("n2").get_app(NetworkLayer)
+    add_active_channel(simulator, 0.5, a1, a2)
 
     simulator.run()
 
@@ -173,8 +153,8 @@ def test_timing_mode_sync():
                 {"name": "n3"},
             ],
             "qchannels": [
-                {"node1": "n0", "node2": "n1", "parameters": {"delay": 0.2, "link_arch": LinkArchDimBkAlways()}},
-                {"node1": "n2", "node2": "n3", "parameters": {"delay": 0.1, "link_arch": LinkArchDimBkAlways()}},
+                {"node1": "n0", "node2": "n1", "parameters": {"delay": 0.2, "link_arch": LinkArchAlways(LinkArchDimBk())}},
+                {"node1": "n2", "node2": "n3", "parameters": {"delay": 0.1, "link_arch": LinkArchAlways(LinkArchDimBk())}},
             ],
         },
         nodes_apps=[NetworkLayer(), LinkLayer()],
