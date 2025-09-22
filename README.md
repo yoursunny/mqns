@@ -17,7 +17,7 @@ This project is part of an ongoing research effort to evaluate the quantum netwo
 * Global path computation at simulation start:
   * **Dijkstra's algorithm** for single-path routing.
   * **Yen’s algorithm** for multipath routing.
-* Paths are pre-installed at quantum routers; simulation focuses on the **forwarding phase**.
+* Paths can be installed/uninstalled at quantum routers; simulation focuses on the **forwarding phase**.
 
 ### Forwarding Phase Components
 
