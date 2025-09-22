@@ -16,79 +16,89 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import math
-from typing import Any, cast
+from typing import Any
 
-from qns.network.route.route import ChannelT, MetricFunc, NetworkRouteError, NodeT, RouteImpl
+import numpy as np
+from scipy.sparse.csgraph import dijkstra
+
+from qns.network.route.route import ChannelT, MetricFunc, NodeT, RouteImpl, make_csr
 
 
 class DijkstraRouteAlgorithm(RouteImpl[NodeT, ChannelT]):
-    """This is the dijkstra route algorithm implement"""
+    """This is the Dijkstra algorithm implementation"""
 
     INF = math.inf
 
-    def __init__(self, name: str = "dijkstra", metric_func: MetricFunc = lambda _: 1) -> None:
-        """Args:
-        name: the routing algorithm's name
-        metric_func: the function that returns the metric for each channel.
-            The default is the const function m(l)=1
-
+    def __init__(self, name: str = "dijkstra", metric_func: MetricFunc | None = None) -> None:
+        """
+        Args:
+            name: Name of the routing algorithm (default: "dijkstra").
+            metric_func: Function returning the metric (weight) for each channel.
+                Defaults to a constant function m(l) = 1.
         """
         self.name = name
         self.route_table: dict[NodeT, dict[NodeT, tuple[float, list[NodeT]]]] = {}
-        self.metric_func = metric_func
+
+        if metric_func is None:
+            self.metric_func = lambda _: 1  # hop count
+            self.unweighted = True
+        else:
+            self.metric_func = metric_func
+            self.unweighted = False
 
     def build(self, nodes: list[NodeT], channels: list[ChannelT]):
-        for n in nodes:
-            selected = []
-            unselected = [u for u in nodes]
-
-            d: dict[NodeT, Any] = {}  # value is a list of metric (float) + path (list[NodeT])
-            for nn in nodes:
-                if nn == n:
-                    d[n] = [0, []]
-                else:
-                    d[nn] = [self.INF, [nn]]
-
-            while len(unselected) != 0:
-                ms = unselected[0]
-                mi = d[ms][0]
-
-                for s in unselected:
-                    if d[s][0] < mi:
-                        ms = s
-                        mi = d[s][0]
-
-                # d[ms] = [d[ms][0], d[ms][1]]
-                selected.append(ms)
-                unselected.remove(ms)
-
-                for link in channels:
-                    if ms not in link.node_list:
-                        continue
-                    if len(link.node_list) < 2:
-                        raise NetworkRouteError("broken link")
-                    idx = cast(list[NodeT], link.node_list).index(ms)
-                    idx_s = 1 - idx
-                    s = cast(list[NodeT], link.node_list)[idx_s]
-                    if s in unselected and d[s][0] > d[ms][0] + self.metric_func(link):
-                        d[s] = [d[ms][0] + self.metric_func(link), [ms] + d[ms][1]]
-
-            for nn in nodes:
-                d[nn][1] = [nn] + d[nn][1]
-            self.route_table[n] = d
-
-    def query(self, src: NodeT, dest: NodeT) -> list[tuple[float, NodeT, list[NodeT]]]:
-        """Query the metric, nexthop and the path
+        """
+        Build the routing table using SciPy's csgraph Dijkstra on a CSR adjacency.
 
         Args:
-            src: the source node
-            dest: the destination node
-
-        Returns:
-            A list of route paths. The result should be sortted by the priority.
-            The element is a tuple containing: metric, the next-hop and the whole path.
-
+            nodes: a list of quantum nodes or classic nodes
+            channels: a list of quantum channels or classic channels
         """
+
+        # build adjacency matrix
+        csr_adj = make_csr(nodes, channels, self.metric_func)
+
+        # unweighted=True -> hop count; directed=False for undirected topologies
+        dist, preds = dijkstra(
+            csr_adj,
+            directed=False,
+            unweighted=self.unweighted,
+            return_predecessors=True,
+        )
+
+        # Reconstruct path helper
+        def _reconstruct_path(src_idx: int, dst_idx: int) -> list[NodeT]:
+            # Backtrack from dst to src using predecessors
+            path_idx: list[int] = []
+            u = dst_idx
+            while u not in (-9999, src_idx):
+                path_idx.append(u)
+                u = preds[src_idx, u]
+            path_idx.append(src_idx)
+            return [nodes[i] for i in path_idx]
+
+        self.route_table.clear()
+
+        # For each source node, create the per-destination entry
+        for src_idx, src_node in enumerate(nodes):
+            dest_entry: dict[NodeT, Any] = {}
+
+            for dst_idx, dst_node in enumerate(nodes):
+                if src_idx == dst_idx:
+                    # Source to itself
+                    dest_entry[dst_node] = [0.0, [dst_node]]
+                    continue
+
+                hop = dist[src_idx, dst_idx]
+                if np.isinf(hop):  # Unreachable
+                    dest_entry[dst_node] = [self.INF, [dst_node]]
+                else:
+                    path_nodes = _reconstruct_path(src_idx, dst_idx)
+                    dest_entry[dst_node] = [hop, path_nodes]
+
+            self.route_table[src_node] = dest_entry
+
+    def query(self, src: NodeT, dest: NodeT) -> list[tuple[float, NodeT, list[NodeT]]]:
         ls = self.route_table.get(src, None)
         if ls is None:
             return []
@@ -99,7 +109,7 @@ class DijkstraRouteAlgorithm(RouteImpl[NodeT, ChannelT]):
             metric, path = le
             path = path.copy()
             path.reverse()
-            if len(path) <= 1 or metric == self.INF:
+            if len(path) <= 1 or metric == self.INF:  # unreachable
                 next_hop = None
                 return []
             else:

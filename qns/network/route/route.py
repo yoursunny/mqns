@@ -18,10 +18,50 @@
 from collections.abc import Callable
 from typing import Generic
 
+import numpy as np
+from scipy.sparse import csr_matrix
+
 from qns.entity import ChannelT, NodeT
 
 MetricFunc = Callable[[ChannelT], float]
 """Callback function that returns the edge cost of a channel."""
+
+
+def make_csr(
+    nodes: list[NodeT],
+    channels: list[ChannelT],
+    metric_func: MetricFunc,
+) -> csr_matrix:
+    """
+    Build a symmetric weighted adjacency matrix for SciPy CSR.
+
+    Args:
+        nodes: a list of quantum nodes or classic nodes
+        channels: a list of quantum channels or classic channels
+        metric_func: Function mapping a channel -> float weight.
+
+    Returns:
+        csr_matrix: (n x n) weighted adjacency matrix.
+    """
+    n = len(nodes)
+    node_index = {nd: i for i, nd in enumerate(nodes)}
+
+    rows, cols, data = [], [], []
+    for ch in channels:
+        if len(ch.node_list) != 2:
+            raise NetworkRouteError("broken link")
+        a, b = ch.node_list
+        ai, bi = node_index[a], node_index[b]
+        w = float(metric_func(ch))
+        # undirected: add both directions
+        rows.extend([ai, bi])
+        cols.extend([bi, ai])
+        data.extend([w, w])
+
+    return csr_matrix(
+        (np.asarray(data, np.float64), (np.asarray(rows, np.int32), np.asarray(cols, np.int32))),
+        shape=(n, n),
+    )
 
 
 class NetworkRouteError(Exception):
@@ -38,6 +78,7 @@ class RouteImpl(Generic[NodeT, ChannelT]):
         """Build static route tables for each nodes
 
         Args:
+            nodes: a list of quantum nodes or classic nodes
             channels: a list of quantum channels or classic channels
 
         """
@@ -51,7 +92,7 @@ class RouteImpl(Generic[NodeT, ChannelT]):
             dest: the destination node
 
         Returns:
-            A list of route paths. The result should be sorted by the priority.
+            A list of route paths. The result should be sorted by priority.
             The element is a tuple containing: metric, the next-hop and the whole path.
 
         """
