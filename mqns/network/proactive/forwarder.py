@@ -87,7 +87,6 @@ class ProactiveForwarder(Application):
         *,
         ps: float = 1.0,
         mux: MuxScheme = MuxSchemeBufferSpace(),
-        isolate_paths: bool = True,
     ):
         """
         This constructor sets up a node's entanglement forwarding logic in a quantum network.
@@ -98,7 +97,6 @@ class ProactiveForwarder(Application):
         Args:
             ps: Probability of successful entanglement swapping (default: 1.0).
             mux: Path multiplexing scheme (default: buffer-space).
-            isolate_paths: Whether to allow the swapping of qubits allocated to different paths
             but serving the same S-D request.
         """
         super().__init__()
@@ -108,8 +106,6 @@ class ProactiveForwarder(Application):
         """Probability of successful entanglement swapping."""
         self.mux = deepcopy(mux)
         """Multiplexing scheme."""
-        self.isolate_paths = isolate_paths
-        """Whether to isolate or not paths serving the same request."""
 
         self.fib = Fib()
         """FIB structure."""
@@ -625,14 +621,13 @@ class ProactiveForwarder(Application):
         swap_candidate_tuple = self.mux.find_swap_candidate(qubit, epr, fib_entry)
         if swap_candidate_tuple:
             mq1, fib_entry = swap_candidate_tuple
-            self.do_swapping(qubit, mq1, fib_entry, fib_entry)
+            self.do_swapping(qubit, mq1, fib_entry)
 
     def do_swapping(
         self,
         mq0: MemoryQubit,
         mq1: MemoryQubit,
-        fib_entry0: FibEntry,
-        fib_entry1: FibEntry,
+        fib_entry: FibEntry,
     ):
         """
         Perform swapping between two qubits at an intermediate node.
@@ -654,21 +649,17 @@ class ProactiveForwarder(Application):
         prev_partner: QNode | None = None
         prev_qubit: MemoryQubit | None = None
         prev_epr: WernerStateEntanglement | None = None
-        prev_fibe: FibEntry | None = None
         next_partner: QNode | None = None
         next_qubit: MemoryQubit | None = None
         next_epr: WernerStateEntanglement | None = None
-        next_fibe: FibEntry | None = None
 
         for addr in (mq0.addr, mq1.addr):
             qubit, epr = self.memory.read(addr, must=True)
             assert isinstance(epr, WernerStateEntanglement)
             if epr.dst == self.own:
                 prev_partner, prev_qubit, prev_epr = epr.src, qubit, epr
-                prev_fibe = fib_entry0 if qubit.path_id == fib_entry0.path_id else fib_entry1
             elif epr.src == self.own:
                 next_partner, next_qubit, next_epr = epr.dst, qubit, epr
-                next_fibe = fib_entry0 if qubit.path_id == fib_entry0.path_id else fib_entry1
             else:
                 raise Exception(f"Unexpected: swapping EPRs {mq0} x {mq1}")
 
@@ -676,17 +667,15 @@ class ProactiveForwarder(Application):
         assert prev_partner is not None
         assert prev_qubit is not None
         assert prev_epr is not None
-        assert prev_fibe is not None
         assert next_partner is not None
         assert next_qubit is not None
         assert next_epr is not None
-        assert next_fibe is not None
 
         # Save ch_index metadata field onto elementary EPR.
         if not prev_epr.orig_eprs:
-            prev_epr.ch_index = prev_fibe.own_idx - 1
+            prev_epr.ch_index = fib_entry.own_idx - 1
         if not next_epr.orig_eprs:
-            next_epr.ch_index = next_fibe.own_idx
+            next_epr.ch_index = fib_entry.own_idx
 
         # Attempt the swap.
         new_epr = prev_epr.swapping(epr=next_epr, ps=self.ps)
@@ -699,40 +688,36 @@ class ProactiveForwarder(Application):
             new_epr.src = prev_partner
             new_epr.dst = next_partner
 
-            # for dynamic EPR affectation and statistical mux
+            # Inform multiplexing scheme.
             self.mux.swapping_succeeded(prev_epr, next_epr, new_epr)
 
-            # another node just swapped on a shared EPR and changed its src/dst
-            if prev_partner.name not in prev_fibe.route or next_partner.name not in next_fibe.route:
-                raise Exception(f"{self.own}: Conflictual parallel swapping caused by SWAP-ASAP with non-isolated paths")
-
             # Keep records to support potential parallel swapping with prev_partner.
-            _, prev_p_rank = prev_fibe.find_index_and_swap_rank(prev_partner.name)
-            if prev_fibe.own_swap_rank == prev_p_rank:
+            _, prev_p_rank = fib_entry.find_index_and_swap_rank(prev_partner.name)
+            if fib_entry.own_swap_rank == prev_p_rank:
                 self.parallel_swappings[prev_epr.name] = (prev_epr, next_epr, new_epr)
 
             # Keep records to support potential parallel swapping with next_partner.
-            _, next_p_rank = next_fibe.find_index_and_swap_rank(next_partner.name)
-            if next_fibe.own_swap_rank == next_p_rank:
+            _, next_p_rank = fib_entry.find_index_and_swap_rank(next_partner.name)
+            if fib_entry.own_swap_rank == next_p_rank:
                 self.parallel_swappings[next_epr.name] = (next_epr, prev_epr, new_epr)
 
         # Send SWAP_UPDATE to partners.
-        for partner, old_epr, new_partner, qubit, fib_e in (
-            (prev_partner, prev_epr, next_partner, prev_qubit, prev_fibe),
-            (next_partner, next_epr, prev_partner, next_qubit, next_fibe),
+        for partner, old_epr, new_partner, qubit in (
+            (prev_partner, prev_epr, next_partner, prev_qubit),
+            (next_partner, next_epr, prev_partner, next_qubit),
         ):
             if new_epr is not None:
                 partner.get_app(ProactiveForwarder).remote_swapped_eprs[new_epr.name] = new_epr
 
             su_msg: SwapUpdateMsg = {
                 "cmd": "SWAP_UPDATE",
-                "path_id": fib_e.path_id,
+                "path_id": fib_entry.path_id,
                 "swapping_node": self.own.name,
                 "partner": new_partner.name,
                 "epr": old_epr.name,
                 "new_epr": None if new_epr is None else new_epr.name,
             }
-            self.send_msg(partner, su_msg, fib_e)
+            self.send_msg(partner, su_msg, fib_entry)
 
         # Release old qubits.
         for i, qubit in enumerate((prev_qubit, next_qubit)):
@@ -893,19 +878,6 @@ class ProactiveForwarder(Application):
         # adjust EPR paths for dynamic EPR affectation and statistical mux
         if merged_epr is not None:
             self.mux.su_parallel_succeeded(merged_epr, new_epr, other_epr)
-
-        # check EPR for non-isolated paths
-        # if merged_epr is not None:
-        #     endpoints = {merged_epr.src.name, merged_epr.dst.name}
-        #     if not endpoints.issubset(set(fib_entry["path_vector"])):
-        #         if self.isolate_paths:  # isolated-paths
-        #             raise Exception("Unexpected conflictual parallel swapping")
-        #         else:
-        #             log.debug(
-        #                 f"{self.own}: Ignored conflictual parallel swapping in non-isolated paths. "
-        #                 "Caused by two nodes swapping a the same EPR with two different paths."
-        #             )
-        #             return
 
         # Inform the "destination" of the swap result and new "partner".
         if merged_epr is not None:

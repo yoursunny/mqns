@@ -28,9 +28,6 @@ node_capacity = 4
 
 swapping_policy = "r2l"
 
-# NOTE: Non-isolated paths does not work with SWAP-ASAP
-isolate_paths = True  # Routers can/cannot swap qubits allocated to different paths (but serving same S-D request)
-
 # Quantum channel lengths
 ch_S_R1 = 10
 ch_R1_R2 = 10
@@ -138,7 +135,7 @@ def build_topology() -> Topology:
                 eta_s=eta_s,
                 frequency=frequency,
             ),
-            ProactiveForwarder(ps=p_swap, isolate_paths=isolate_paths),
+            ProactiveForwarder(ps=p_swap),
         ],
         memory_args={
             "decoherence_rate": 1 / t_coherence,
