@@ -646,30 +646,25 @@ class ProactiveForwarder(Application):
         # This qubit and related objects are assigned to prev_* variables.
         #
         # Likewise, the other qubit entangled with a partner node to the right is assigned to next_*.
-        prev_partner: QNode | None = None
-        prev_qubit: MemoryQubit | None = None
-        prev_epr: WernerStateEntanglement | None = None
-        next_partner: QNode | None = None
-        next_qubit: MemoryQubit | None = None
-        next_epr: WernerStateEntanglement | None = None
-
+        prev_tuple: tuple[QNode, MemoryQubit, WernerStateEntanglement] | None = None
+        next_tuple: tuple[QNode, MemoryQubit, WernerStateEntanglement] | None = None
         for addr in (mq0.addr, mq1.addr):
             qubit, epr = self.memory.read(addr, must=True)
             assert isinstance(epr, WernerStateEntanglement)
             if epr.dst == self.own:
-                prev_partner, prev_qubit, prev_epr = epr.src, qubit, epr
+                assert epr.src is not None
+                prev_tuple = epr.src, qubit, epr
             elif epr.src == self.own:
-                next_partner, next_qubit, next_epr = epr.dst, qubit, epr
+                assert epr.dst is not None
+                next_tuple = epr.dst, qubit, epr
             else:
                 raise Exception(f"Unexpected: swapping EPRs {mq0} x {mq1}")
 
         # Make sure both partners are found.
-        assert prev_partner is not None
-        assert prev_qubit is not None
-        assert prev_epr is not None
-        assert next_partner is not None
-        assert next_qubit is not None
-        assert next_epr is not None
+        assert prev_tuple is not None
+        assert next_tuple is not None
+        prev_partner, prev_qubit, prev_epr = prev_tuple
+        next_partner, next_qubit, next_epr = next_tuple
 
         # Save ch_index metadata field onto elementary EPR.
         if not prev_epr.orig_eprs:
@@ -691,37 +686,29 @@ class ProactiveForwarder(Application):
             # Inform multiplexing scheme.
             self.mux.swapping_succeeded(prev_epr, next_epr, new_epr)
 
-            # Keep records to support potential parallel swapping with prev_partner.
-            _, prev_p_rank = fib_entry.find_index_and_swap_rank(prev_partner.name)
-            if fib_entry.own_swap_rank == prev_p_rank:
-                self.parallel_swappings[prev_epr.name] = (prev_epr, next_epr, new_epr)
-
-            # Keep records to support potential parallel swapping with next_partner.
-            _, next_p_rank = fib_entry.find_index_and_swap_rank(next_partner.name)
-            if fib_entry.own_swap_rank == next_p_rank:
-                self.parallel_swappings[next_epr.name] = (next_epr, prev_epr, new_epr)
-
-        # Send SWAP_UPDATE to partners.
-        for partner, old_epr, new_partner, qubit in (
-            (prev_partner, prev_epr, next_partner, prev_qubit),
-            (next_partner, next_epr, prev_partner, next_qubit),
-        ):
+        for (a_partner, a_qubit, a_epr), (b_partner, _, b_epr) in ((prev_tuple, next_tuple), (next_tuple, prev_tuple)):
             if new_epr is not None:
-                partner.get_app(ProactiveForwarder).remote_swapped_eprs[new_epr.name] = new_epr
+                # Keep records to support potential parallel swapping.
+                _, a_rank = fib_entry.find_index_and_swap_rank(a_partner.name)
+                if fib_entry.own_swap_rank == a_rank:
+                    self.parallel_swappings[a_epr.name] = (a_epr, b_epr, new_epr)
 
+                # Deposit swapped EPR at the partner.
+                a_partner.get_app(ProactiveForwarder).remote_swapped_eprs[new_epr.name] = new_epr
+
+            # Send SWAP_UPDATE to the partner.
             su_msg: SwapUpdateMsg = {
                 "cmd": "SWAP_UPDATE",
                 "path_id": fib_entry.path_id,
                 "swapping_node": self.own.name,
-                "partner": new_partner.name,
-                "epr": old_epr.name,
+                "partner": b_partner.name,
+                "epr": a_epr.name,
                 "new_epr": None if new_epr is None else new_epr.name,
             }
-            self.send_msg(partner, su_msg, fib_entry)
+            self.send_msg(a_partner, su_msg, fib_entry)
 
-        # Release old qubits.
-        for i, qubit in enumerate((prev_qubit, next_qubit)):
-            self.release_qubit(qubit, delay=i * 1e-6)
+            # Release old qubit.
+            self.release_qubit(a_qubit)
 
     def handle_swap_update(self, msg: SwapUpdateMsg, fib_entry: FibEntry):
         """
@@ -922,13 +909,12 @@ class ProactiveForwarder(Application):
 
         self.release_qubit(qubit)
 
-    def release_qubit(self, qubit: MemoryQubit, *, read=False, delay=0.0):
+    def release_qubit(self, qubit: MemoryQubit, *, read=False):
         """
         Release a qubit.
 
         Args:
             read: whether to perform a destructive read.
-            delay: delay in seconds for scheduling QubitReleasedEvent.
         """
         simulator = self.simulator
 
@@ -936,4 +922,4 @@ class ProactiveForwarder(Application):
             self.memory.read(qubit.addr)
 
         qubit.state = QubitState.RELEASE
-        simulator.add_event(QubitReleasedEvent(self.own, qubit, t=simulator.tc + delay, by=self))
+        simulator.add_event(QubitReleasedEvent(self.own, qubit, t=simulator.tc, by=self))
