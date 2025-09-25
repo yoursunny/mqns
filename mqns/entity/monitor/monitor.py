@@ -65,6 +65,7 @@ class Monitor(Entity):
         self.watch_period: list[float] = []
         self.watch_event: list[type[Event]] = []
 
+    @override
     def install(self, simulator: Simulator) -> None:
         super().install(simulator)
 

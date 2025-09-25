@@ -22,7 +22,9 @@ class StopEvent(SimpleEvent):
 
     def invoke(self) -> None:
         super().invoke()
+        assert self.simulator.running
         self.simulator.stop()
+        assert not self.simulator.running
 
 
 def test_simulator_run():
@@ -52,8 +54,10 @@ def test_simulator_run():
     # 11 instances of t2 scheduled at 5, 6, .., 14, 15
     assert simulator.total_events == 1 + 25 + 11
 
+    assert not simulator.running
     simulator.run()
     assert simulator.tc == simulator.te
+    assert not simulator.running
 
     assert SimpleEvent.invoke_count["t0"] == 0
     assert SimpleEvent.invoke_count["t1"] == 25

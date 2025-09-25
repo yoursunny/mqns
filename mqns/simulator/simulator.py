@@ -74,6 +74,11 @@ class Simulator:
         """Current simulator time."""
         return self.event_pool.tc
 
+    @property
+    def running(self) -> bool:
+        """Is the simulator running?"""
+        return self._running
+
     def time(self, time_slot: int | None = None, sec: int | float | None = None) -> Time:
         """Produce a ``Time`` using either ``time_slot`` or ``sec``
 

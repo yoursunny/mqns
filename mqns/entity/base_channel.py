@@ -1,6 +1,6 @@
 from typing import Generic, TypedDict, TypeVar
 
-from typing_extensions import Unpack
+from typing_extensions import Unpack, override
 
 from mqns.entity.entity import Entity
 from mqns.entity.node import NodeT
@@ -61,13 +61,8 @@ class BaseChannel(Entity, Generic[NodeT]):
         self.drop_rate = kwargs.get("drop_rate", 0.0)
         assert 0.0 <= self.drop_rate <= 1.0
 
+    @override
     def install(self, simulator: Simulator) -> None:
-        """``install`` is called before ``simulator`` runs to initialize or set initial events
-
-        Args:
-            simulator (Simulator): the simulator
-
-        """
         super().install(simulator)
         self._next_send_time = simulator.ts
 

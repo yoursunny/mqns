@@ -42,6 +42,7 @@ class Timer(Entity):
         self.step_time = step_time
         self.trigger_func = trigger_func
 
+    @override
     def install(self, simulator: Simulator) -> None:
         super().install(simulator)
 

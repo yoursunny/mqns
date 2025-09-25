@@ -54,6 +54,7 @@ class Node(Entity):
         self.cchannels: list["ClassicChannel"] = []
         self.apps: list[Application] = [] if apps is None else apps
 
+    @override
     def install(self, simulator: Simulator) -> None:
         """Called from Network.install()"""
         super().install(simulator)
