@@ -7,7 +7,7 @@ def test_bell_state_epr():
     c0, c1 = 0, 0
     for _ in range(1000):
         q0 = Qubit(QUBIT_STATE_1)
-        e1 = BellStateEntanglement(fidelity=1, name="e0")
+        e1 = BellStateEntanglement(name="e0")
         q2 = e1.teleportion(q0)
         if q2.measure() == 0:
             c0 += 1

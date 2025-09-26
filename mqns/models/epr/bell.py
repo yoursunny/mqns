@@ -24,6 +24,16 @@ from mqns.models.epr.entanglement import BaseEntanglement
 class BellStateEntanglement(BaseEntanglement["BellStateEntanglement"], QuantumModel):
     """`BellStateEntanglement` is the ideal max entangled qubits. Its fidelity is always 1."""
 
+    @property
+    @override
+    def fidelity(self) -> float:
+        return 1.0
+
+    @fidelity.setter
+    @override
+    def fidelity(self, value: float):
+        assert value == 1.0, "BellStateEntanglement fidelity is always 1"
+
     @override
     def swapping(self, epr: "BellStateEntanglement", *, name: str | None = None, ps: float = 1) -> "BellStateEntanglement|None":
         _ = ps

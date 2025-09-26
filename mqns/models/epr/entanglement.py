@@ -51,18 +51,13 @@ EntanglementT = TypeVar("EntanglementT")
 class BaseEntanglement(ABC, Generic[EntanglementT]):
     """Base entanglement model."""
 
-    def __init__(self, *, fidelity: float = 1, name: str | None = None):
+    def __init__(self, *, name: str | None = None):
         """
-        Construct an entanglement with specified fidelity.
+        Constructor.
 
         Args:
-            fidelity: the fidelity.
             name: the entanglement name, defaults to a random string.
-
         """
-        assert 0.0 <= fidelity <= 1.0
-        self.fidelity = fidelity
-        """Fidelity between 0.0 and 1.0."""
         self.name = uuid.uuid4().hex if name is None else name
         """Descriptive name."""
         self.key: str | None = None
@@ -87,6 +82,16 @@ class BaseEntanglement(ABC, Generic[EntanglementT]):
         """Elementary entanglements that swapped into this entanglement."""
         self.tmp_path_ids: frozenset[int] | None = None
         """Possible path IDs, used by MuxSchemeStatistical and MuxSchemeDynamicEpr."""
+
+    @property
+    @abstractmethod
+    def fidelity(self) -> float:
+        pass
+
+    @fidelity.setter
+    @abstractmethod
+    def fidelity(self, value: float):
+        pass
 
     @abstractmethod
     def swapping(self, epr: EntanglementT, *, name: str | None = None, ps: float = 1) -> EntanglementT | None:

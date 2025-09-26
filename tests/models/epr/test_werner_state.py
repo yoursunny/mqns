@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from mqns.models.epr import WernerStateEntanglement
 from mqns.models.qubit.const import QUBIT_STATE_P
@@ -6,8 +7,11 @@ from mqns.simulator import Time
 
 
 def test_fidelity_conversion():
+    e = WernerStateEntanglement()
+    assert e.fidelity == pytest.approx(1.0, abs=1e-9)
+
     e = WernerStateEntanglement(fidelity=0.85)
-    assert e.fidelity == 0.85
+    assert e.fidelity == pytest.approx(0.85, abs=1e-9)
 
 
 def test_swap_success(monkeypatch):
@@ -80,19 +84,19 @@ def test_purify_decohered_input():
 
 
 def test_store_error_model():
-    e = WernerStateEntanglement(fidelity=1.0)
+    e = WernerStateEntanglement()
     e.store_error_model(t=1.0, decoherence_rate=0.5)
     assert 0 < e.fidelity < 1.0
 
 
 def test_transfer_error_model():
-    e = WernerStateEntanglement(fidelity=1.0)
+    e = WernerStateEntanglement()
     e.transfer_error_model(length=10.0, decoherence_rate=0.1)
     assert 0 < e.fidelity < 1.0
 
 
 def test_to_qubits_non_decohered():
-    e = WernerStateEntanglement(fidelity=1.0)
+    e = WernerStateEntanglement()
     qlist = e.to_qubits()
     assert len(qlist) == 2
     assert qlist[0].state is qlist[1].state

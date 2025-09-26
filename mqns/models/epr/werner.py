@@ -26,6 +26,8 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import overload
+
 import numpy as np
 from typing_extensions import override
 
@@ -38,21 +40,45 @@ from mqns.utils import get_rand
 phi_p: np.ndarray = 1 / np.sqrt(2) * np.array([[1], [0], [0], [1]])
 
 
+def _fidelity_from_w(w: float) -> float:
+    return (w * 3 + 1) / 4
+
+
+def _fidelity_to_w(f: float) -> float:
+    return (f * 4 - 1) / 3
+
+
+_w_0 = _fidelity_to_w(0.0)
+_w_1 = _fidelity_to_w(1.0)
+
+
 class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"], QuantumModel):
     """A pair of entangled qubits in Werner State with a hidden-variable."""
 
-    def __init__(self, *, fidelity: float = 1, name: str | None = None):
-        super().__init__(fidelity=fidelity, name=name)
-        self.w: float
+    @overload
+    def __init__(self, *, fidelity: float = 1.0, name: str | None = None):
+        """Construct with fidelity."""
+        pass
+
+    @overload
+    def __init__(self, *, w: float, name: str | None = None):
+        """Construct with Werner parameter."""
+        pass
+
+    def __init__(self, *, fidelity: float | None = None, w: float = _w_1, name: str | None = None):
+        super().__init__(name=name)
+        self.w = _fidelity_to_w(fidelity) if fidelity is not None else w
         """Werner parameter."""
+        assert _w_0 <= self.w <= _w_1
 
     @property
     def fidelity(self) -> float:
-        return (self.w * 3 + 1) / 4
+        return _fidelity_from_w(self.w)
 
     @fidelity.setter
-    def fidelity(self, fidelity: float = 1):
-        self.w = (fidelity * 4 - 1) / 3
+    def fidelity(self, value: float):
+        assert 0.0 <= value <= 1.0
+        self.w = _fidelity_to_w(value)
 
     @override
     def swapping(
@@ -69,7 +95,6 @@ class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"], Quant
         Returns:
             New entanglement.
         """
-        ne = WernerStateEntanglement(name=name)
         if self.is_decoherenced or epr.is_decoherenced:
             return None
 
@@ -78,18 +103,15 @@ class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"], Quant
             self.is_decoherenced = True
             return None
 
-        ne.w = self.w * epr.w
+        ne = WernerStateEntanglement(name=name, w=self.w * epr.w)
         ne._update_orig_eprs(self, epr, update_name=(name is None))
 
+        # set decoherence time and creation time to the earlier among the two pairs
         assert self.decoherence_time is not None
         assert epr.decoherence_time is not None
+        ne.decoherence_time = min(self.decoherence_time, epr.decoherence_time)
         assert self.creation_time is not None
         assert epr.creation_time is not None
-
-        # set decoherence time to the shorter among the two pairs
-        ne.decoherence_time = min(self.decoherence_time, epr.decoherence_time)
-
-        # set creation time to the older among the two pairs
         ne.creation_time = min(self.creation_time, epr.creation_time)
         return ne
 
@@ -111,7 +133,7 @@ class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"], Quant
         """
         if self.is_decoherenced or epr.is_decoherenced:
             self.is_decoherenced = True
-            self.fidelity = 0
+            self.w = _w_0
             return False
 
         epr.is_decoherenced = True
@@ -120,7 +142,7 @@ class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"], Quant
 
         if get_rand() > expr1:
             self.is_decoherenced = True
-            self.fidelity = 0
+            self.w = _w_0
             return False
 
         self.fidelity = (fmin**2 + (1 - fmin) ** 2 / 9) / expr1

@@ -58,22 +58,25 @@ class MixedStateEntanglement(BaseEntanglement["MixedStateEntanglement"], Quantum
             name (str): the entanglement name
 
         """
-        super().__init__(fidelity=fidelity, name=name)
+        super().__init__(name=name)
+        self.a = fidelity
         self.b = b if b is not None else (1 - fidelity) / 3
         self.c = c if c is not None else (1 - fidelity) / 3
         self.d = d if d is not None else (1 - fidelity) / 3
-        self.normalized()
+        self._normalize()
 
     @property
-    def a(self) -> float:
-        """A equals to the fidelity"""
-        return self.fidelity
+    @override
+    def fidelity(self) -> float:
+        return self.a
 
-    @a.setter
-    def a(self, fidelity: float = 1):
-        self.fidelity = fidelity
+    @fidelity.setter
+    @override
+    def fidelity(self, value: float):
+        assert 0 <= value <= 1
+        self.a = value
 
-    def normalized(self):
+    def _normalize(self):
         total = self.a + self.b + self.c + self.d
         # Normalized: a + b + c + d = 1
         self.a = self.a / total
@@ -108,7 +111,7 @@ class MixedStateEntanglement(BaseEntanglement["MixedStateEntanglement"], Quantum
         ne.b = self.a * epr.b + self.b * epr.a + self.c * epr.d + self.d * epr.c
         ne.c = self.a * epr.c + self.b * epr.d + self.c * epr.a + self.d * epr.b
         ne.d = self.a * epr.d + self.b * epr.c + self.c * epr.d + self.d * epr.a
-        ne.normalized()
+        ne._normalize()
         return ne
 
     @override
@@ -140,7 +143,7 @@ class MixedStateEntanglement(BaseEntanglement["MixedStateEntanglement"], Quantum
         ne.b = (self.b * epr.b + self.c * epr.c) / p_succ
         ne.c = (self.b * epr.c + self.c * epr.b) / p_succ
         ne.d = (self.a * epr.d + self.d * epr.a) / p_succ
-        ne.normalized()
+        ne._normalize()
         return ne
 
     @override
@@ -164,7 +167,7 @@ class MixedStateEntanglement(BaseEntanglement["MixedStateEntanglement"], Quantum
         self.b = 0.25 + (self.b - 0.25) * np.exp(-decoherence_rate * t)
         self.c = 0.25 + (self.c - 0.25) * np.exp(-decoherence_rate * t)
         self.d = 0.25 + (self.d - 0.25) * np.exp(-decoherence_rate * t)
-        self.normalized()
+        self._normalize()
 
     @override
     def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
@@ -187,7 +190,7 @@ class MixedStateEntanglement(BaseEntanglement["MixedStateEntanglement"], Quantum
         self.b = 0.25 + (self.b - 0.25) * np.exp(-decoherence_rate * length)
         self.c = 0.25 + (self.c - 0.25) * np.exp(-decoherence_rate * length)
         self.d = 0.25 + (self.d - 0.25) * np.exp(-decoherence_rate * length)
-        self.normalized()
+        self._normalize()
 
     @override
     def to_qubits(self) -> list[Qubit]:
