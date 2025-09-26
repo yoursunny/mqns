@@ -21,11 +21,16 @@ from mqns.simulator import Event, Simulator
 
 
 class Entity(ABC):
-    """This is the basic entity class, including memories, channels and nodes."""
+    """
+    Basic entity class.
+
+    Examples of entities include memories, channels, and nodes.
+    """
 
     def __init__(self, name: str):
-        """Args:
-        name (str): the name of this entity
+        """
+        Args:
+            name: the name of this entity.
 
         """
         self.name = name
@@ -40,26 +45,29 @@ class Entity(ABC):
             IndexError - simulator does not exist
         """
         if self._simulator is None:
-            raise IndexError(f"entity {repr(self)} is not in a simulator")
+            raise IndexError(f"{self} is not in a simulator")
         return self._simulator
 
     def install(self, simulator: Simulator) -> None:
-        """``install`` is called before ``simulator`` runs to initialize or set initial events.
-        For Node objects, it's called from Network.install()
+        """
+        Initialize the entity and schedule initial events.
+        This must be invoked before `simulator.run()`.
 
         Args:
-            simulator (mqns.simulator.simulator.Simulator): the simulator
+            simulator: the simulator.
 
         """
         assert self._simulator is None or self._simulator == simulator
+        assert not simulator.running
         self._simulator = simulator
 
     @abstractmethod
     def handle(self, event: Event) -> None:
-        """``handle`` is called to process an receiving ``Event``.
+        """
+        Process a received event.
 
         Args:
-            event (mqns.simulator.event.Event): the event that send to this entity
+            event: the event that targets this entity.
 
         """
         pass

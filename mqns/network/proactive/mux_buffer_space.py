@@ -94,10 +94,6 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
     def select_eligible_qubit(self, mq0: MemoryQubit, fib_entry: FibEntry) -> MemoryQubit | None:
         assert mq0.path_id is not None
         possible_path_ids = {fib_entry.path_id}
-        if not self.fw.isolate_paths:
-            # if not isolated paths -> include other paths serving the same request
-            possible_path_ids = self.fib.list_path_ids_by_request_id(fib_entry.req_id)
-            log.debug(f"{self.own}: path ids {possible_path_ids}")
 
         mq1, _ = next(
             self.memory.find(

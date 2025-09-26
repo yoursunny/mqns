@@ -24,7 +24,6 @@ from mqns.entity.node.qnode import QNode
 from mqns.entity.operator.event import OperateRequestEvent, OperateResponseEvent
 from mqns.models.delay import DelayInput, parseDelay
 from mqns.simulator.event import Event
-from mqns.simulator.simulator import Simulator
 
 
 class QuantumOperator(Entity):
@@ -48,9 +47,6 @@ class QuantumOperator(Entity):
         self.node = node
         self.gate = gate
         self.delay_model = parseDelay(delay)
-
-    def install(self, simulator: Simulator) -> None:
-        return super().install(simulator)
 
     @override
     def handle(self, event: Event) -> None:
