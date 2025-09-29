@@ -15,14 +15,28 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from mqns.models.core.backend import QuantumModel
+from typing_extensions import override
+
+from mqns.models.core import QuantumModel
 from mqns.models.epr.entanglement import BaseEntanglement
 
 
 class BellStateEntanglement(BaseEntanglement["BellStateEntanglement"], QuantumModel):
     """`BellStateEntanglement` is the ideal max entangled qubits. Its fidelity is always 1."""
 
+    @property
+    @override
+    def fidelity(self) -> float:
+        return 1.0
+
+    @fidelity.setter
+    @override
+    def fidelity(self, value: float):
+        assert value == 1.0, "BellStateEntanglement fidelity is always 1"
+
+    @override
     def swapping(self, epr: "BellStateEntanglement", *, name: str | None = None, ps: float = 1) -> "BellStateEntanglement|None":
+        _ = ps
         ne = BellStateEntanglement(name=name)
         if self.is_decoherenced or epr.is_decoherenced:
             return None
@@ -30,6 +44,7 @@ class BellStateEntanglement(BaseEntanglement["BellStateEntanglement"], QuantumMo
         self.is_decoherenced = True
         return ne
 
+    @override
     def distillation(self, epr: "BellStateEntanglement") -> "BellStateEntanglement":
         ne = BellStateEntanglement()
         if self.is_decoherenced or epr.is_decoherenced:
@@ -38,27 +53,3 @@ class BellStateEntanglement(BaseEntanglement["BellStateEntanglement"], QuantumMo
         epr.is_decoherenced = True
         self.is_decoherenced = True
         return ne
-
-    def store_error_model(self, t: float = 0, decoherence_rate: float = 0, **kwargs):
-        """The default error model for storing this entangled pair in a quantum memory.
-        The default behavior is doing nothing
-
-        Args:
-            t: the time stored in a quantum memory. The unit it second.
-            decoherence_rate (float): the decoherence_rate
-            kwargs: other parameters
-
-        """
-        pass
-
-    def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
-        """The default error model for transmitting this entanglement.
-        The default behavior is doing nothing
-
-        Args:
-            length (float): the length of the channel
-            decoherence_rate (float): the decoherency rate
-            kwargs: other parameters
-
-        """
-        pass

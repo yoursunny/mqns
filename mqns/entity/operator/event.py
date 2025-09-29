@@ -20,9 +20,8 @@ from typing import TYPE_CHECKING, Any
 from typing_extensions import override
 
 from mqns.entity.node.qnode import QNode
-from mqns.models.core.backend import QuantumModel
-from mqns.simulator.event import Event
-from mqns.simulator.ts import Time
+from mqns.models.core import QuantumModel
+from mqns.simulator import Event, Time
 
 if TYPE_CHECKING:
     from mqns.entity.operator.operator import QuantumOperator

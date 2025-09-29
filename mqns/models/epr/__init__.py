@@ -20,4 +20,9 @@ from mqns.models.epr.entanglement import BaseEntanglement
 from mqns.models.epr.mixed import MixedStateEntanglement
 from mqns.models.epr.werner import WernerStateEntanglement
 
-__all__ = ["BellStateEntanglement", "WernerStateEntanglement", "BaseEntanglement", "MixedStateEntanglement"]
+__all__ = [
+    "BaseEntanglement",
+    "BellStateEntanglement",
+    "MixedStateEntanglement",
+    "WernerStateEntanglement",
+]

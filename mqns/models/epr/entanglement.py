@@ -25,8 +25,10 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import hashlib
 import uuid
-from typing import TYPE_CHECKING, Generic, TypeVar
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Generic, TypeVar, cast
 
 import numpy as np
 
@@ -36,70 +38,108 @@ from mqns.models.qubit.qubit import QState, Qubit
 from mqns.simulator import Time
 
 if TYPE_CHECKING:
-    from mqns.entity import QNode
+    from mqns.entity.node import QNode
+
+
+def _name_hash(s1: str) -> str:
+    return hashlib.sha256(s1.encode()).hexdigest()
+
 
 EntanglementT = TypeVar("EntanglementT")
 
 
-class BaseEntanglement(Generic[EntanglementT]):
-    """This is the base entanglement model"""
+class BaseEntanglement(ABC, Generic[EntanglementT]):
+    """Base entanglement model."""
 
-    def __init__(self, fidelity: float = 1, name: str | None = None):
-        """Generate an entanglement with certain fidelity
+    def __init__(self, *, name: str | None = None):
+        """
+        Constructor.
 
         Args:
-            fidelity (float): the fidelity
-            name (str): the entanglement name
-
+            name: the entanglement name, defaults to a random string.
         """
-        self.fidelity = fidelity
         self.name = uuid.uuid4().hex if name is None else name
-        self.is_decoherenced = False
-        self.creation_time: Time | None = None
-        self.decoherence_time: Time | None = None
-        self.src: "QNode|None" = None
-        """src node"""
-        self.dst: "QNode|None" = None
-        """dst node"""
-        self.ch_index = -1
-        """index of this EPR along the path"""
-        self.orig_eprs: list[EntanglementT] = []
-        """Elementary EPRs from which this EPR is created via swapping"""
-        self.read = False
-        """to know when both end-nodes are aware of the EPR"""
+        """Descriptive name."""
         self.key: str | None = None
-        """to store the EPR in the right negotiated qubit at the dst node"""
+        """Reservation key used by LinkLayer."""
         self.attempts: int | None = None
+        """Number of attempts needed to establish this entanglement in link architecture."""
+        self.is_decoherenced = False
+        """Whether the entanglement has decohered."""
+        self.creation_time: Time | None = None
+        """Entanglement creation time assigned by LinkLayer or swapping."""
+        self.decoherence_time: Time | None = None
+        """Entanglement decoherence time assigned by memory or swapping."""
+        self.read = False
+        """Whether the entanglement has been read from the memory by either node."""
+        self.src: "QNode|None" = None
+        """One node that holds one entangled qubit, at the left side of a path."""
+        self.dst: "QNode|None" = None
+        """The other node that holds the other entangled qubit, at the right side of a path."""
+        self.ch_index = -1
+        """Index of this entanglement in a path, smaller indices are on the left side."""
+        self.orig_eprs: list[EntanglementT] = []
+        """Elementary entanglements that swapped into this entanglement."""
         self.tmp_path_ids: frozenset[int] | None = None
         """Possible path IDs, used by MuxSchemeStatistical and MuxSchemeDynamicEpr."""
 
-    def set_decoherenced(self, value: bool):
-        self.is_decoherenced = value
+    @property
+    @abstractmethod
+    def fidelity(self) -> float:
+        pass
 
+    @fidelity.setter
+    @abstractmethod
+    def fidelity(self, value: float):
+        pass
+
+    @abstractmethod
     def swapping(self, epr: EntanglementT, *, name: str | None = None, ps: float = 1) -> EntanglementT | None:
-        """Use `self` and `epr` to perform swapping and distribute a new entanglement
+        """
+        Use `self` and `epr` to perform swapping and distribute a new entanglement.
 
         Args:
-            epr (BaseEntanglement): another entanglement
+            epr: another entanglement.
+            name: name of the new entanglement.
+            ps: probability of successful swapping.
+
         Returns:
-            the new distributed entanglement
-
+            New entanglement.
         """
-        raise NotImplementedError
+        pass
 
+    def _update_orig_eprs(self, *eprs: "BaseEntanglement", update_name=False) -> None:
+        merged: dict[str, BaseEntanglement] = {}
+        for epr in eprs:
+            if epr.ch_index > -1:  # this is an elementary epr
+                merged[epr.name] = epr
+            else:  # this is not an elementary epr
+                for oe in cast(list[BaseEntanglement], epr.orig_eprs):
+                    merged[oe.name] = oe
+
+        orig_eprs = sorted(merged.values(), key=lambda e: e.ch_index)
+        self.orig_eprs = cast(list[EntanglementT], orig_eprs)
+
+        if update_name:
+            eprs_name_list = [e.name for e in orig_eprs]
+            self.name = _name_hash("-".join(eprs_name_list))
+
+    @abstractmethod
     def distillation(self, epr: EntanglementT) -> EntanglementT | None:
-        """Use `self` and `epr` to perform distillation and distribute a new entanglement
+        """
+        Use `self` and `epr` to perform distillation/purification and distribute a new entanglement.
 
         Args:
-            epr (BaseEntanglement): another entanglement
-        Returns:
-            the new distributed entanglement
+            epr: another entanglement.
 
+        Returns:
+            New entanglement.
         """
-        raise NotImplementedError
+        pass
 
     def to_qubits(self) -> list[Qubit]:
-        """Transport the entanglement into a pair of qubits based on the fidelity.
+        """
+        Transport the entanglement into a pair of qubits based on the fidelity.
         Suppose the first qubit is [1/sqrt(2), 1/sqrt(2)].H
 
         Returns:
@@ -121,13 +161,8 @@ class BaseEntanglement(Generic[EntanglementT]):
         return [q0, q1]
 
     def teleportion(self, qubit: Qubit) -> Qubit:
-        """Use `self` and `epr` to perform distillation and distribute a new entanglement
-
-        Args:
-            epr (BaseEntanglement): another entanglement
-        Returns:
-            the new distributed entanglement
-
+        """
+        Use `self` and `qubit` to perform teleportation.
         """
         q1, q2 = self.to_qubits()
         CNOT(qubit, q1)
@@ -144,7 +179,7 @@ class BaseEntanglement(Generic[EntanglementT]):
         self.is_decoherenced = True
         return q2
 
-    # def __repr__(self) -> str:
-    #    if self.name is not None:
-    #        return "<epr "+self.name+">"
-    #    return super().__repr__()
+    def __repr__(self) -> str:
+        if self.name is not None:
+            return "<epr " + self.name + ">"
+        return super().__repr__()

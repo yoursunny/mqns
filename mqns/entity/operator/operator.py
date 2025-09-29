@@ -27,10 +27,12 @@ from mqns.simulator.event import Event
 
 
 class QuantumOperator(Entity):
-    """Quantum operator can perform quantum operation or measurements on qubits.
+    """
+    Quantum operator can perform quantum operation or measurements on qubits.
     It has two modes:
-        Synchronous mode, users can use the `operate` function to operate qubits directly without delay
-        Asynchronous mode, users will use events to operate quantum operations asynchronously
+
+    - Synchronous mode, users can use the `operate` function to operate qubits directly without delay
+    - Asynchronous mode, users will use events to operate quantum operations asynchronously
     """
 
     def __init__(

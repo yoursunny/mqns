@@ -34,6 +34,11 @@ intersphinx_disabled_domains = ["std"]
 
 templates_path = ["_templates"]
 
+autodoc_default_options = {
+    # https://github.com/sphinx-doc/sphinx/issues/4961#issuecomment-1543858623
+    "ignore-module-all": True
+}
+
 # -- Options for HTML output
 
 html_theme = "sphinx_rtd_theme"

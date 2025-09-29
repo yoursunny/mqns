@@ -25,49 +25,76 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import hashlib
+
+from typing import overload
 
 import numpy as np
+from typing_extensions import override
 
-from mqns.models.core.backend import QuantumModel
+from mqns.models.core import QuantumModel
 from mqns.models.epr.entanglement import BaseEntanglement
 from mqns.models.qubit.const import QUBIT_STATE_0, QUBIT_STATE_P
 from mqns.models.qubit.qubit import QState, Qubit
-from mqns.utils.rnd import get_rand
+from mqns.utils import get_rand
+
+phi_p: np.ndarray = 1 / np.sqrt(2) * np.array([[1], [0], [0], [1]])
 
 
-def hash(s1: str) -> str:
-    return hashlib.sha256(s1.encode()).hexdigest()
+def _fidelity_from_w(w: float) -> float:
+    return (w * 3 + 1) / 4
+
+
+def _fidelity_to_w(f: float) -> float:
+    return (f * 4 - 1) / 3
+
+
+_w_0 = _fidelity_to_w(0.0)
+_w_1 = _fidelity_to_w(1.0)
 
 
 class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"], QuantumModel):
-    """A pair of entangled qubits in Werner State with a hidden-variable"""
+    """A pair of entangled qubits in Werner State with a hidden-variable."""
 
-    def __deepcopy__(self, memo):
-        return self
+    @overload
+    def __init__(self, *, fidelity: float = 1.0, name: str | None = None):
+        """Construct with fidelity."""
+        pass
+
+    @overload
+    def __init__(self, *, w: float, name: str | None = None):
+        """Construct with Werner parameter."""
+        pass
+
+    def __init__(self, *, fidelity: float | None = None, w: float = _w_1, name: str | None = None):
+        super().__init__(name=name)
+        self.w = _fidelity_to_w(fidelity) if fidelity is not None else w
+        """Werner parameter."""
+        assert _w_0 <= self.w <= _w_1
 
     @property
     def fidelity(self) -> float:
-        return (self.w * 3 + 1) / 4
+        return _fidelity_from_w(self.w)
 
     @fidelity.setter
-    def fidelity(self, fidelity: float = 1):
-        self.w = (fidelity * 4 - 1) / 3
+    def fidelity(self, value: float):
+        assert 0.0 <= value <= 1.0
+        self.w = _fidelity_to_w(value)
 
+    @override
     def swapping(
         self, epr: "WernerStateEntanglement", *, name: str | None = None, ps: float = 1
     ) -> "WernerStateEntanglement|None":
-        """Use `self` and `epr` to perform swapping and distribute a new entanglement
+        """
+        Use `self` and `epr` to perform swapping and distribute a new entanglement.
 
         Args:
-            epr (WernerEntanglement): another entanglement
-            name (str): the name of the new entanglement, defaults to a hash of the elementary origin EPR names
-            ps (float): probability of successful swapping
-        Returns:
-            the new distributed entanglement
+            epr: another entanglement.
+            name: name of the new entanglement, defaults to a hash of the elementary origin EPR names.
+            ps: probability of successful swapping.
 
+        Returns:
+            New entanglement.
         """
-        ne = WernerStateEntanglement(name=name)
         if self.is_decoherenced or epr.is_decoherenced:
             return None
 
@@ -76,75 +103,82 @@ class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"], Quant
             self.is_decoherenced = True
             return None
 
-        ne.w = self.w * epr.w
-        ne.orig_eprs = self._merge_orig_eprs(epr)
+        ne = WernerStateEntanglement(name=name, w=self.w * epr.w)
+        ne._update_orig_eprs(self, epr, update_name=(name is None))
 
-        if name is None:
-            eprs_name_list = [e.name for e in ne.orig_eprs]
-            ne.name = hash("-".join(eprs_name_list))
-
+        # set decoherence time and creation time to the earlier among the two pairs
         assert self.decoherence_time is not None
         assert epr.decoherence_time is not None
+        ne.decoherence_time = min(self.decoherence_time, epr.decoherence_time)
         assert self.creation_time is not None
         assert epr.creation_time is not None
-
-        # set decoherence time to the shorter among the two pairs
-        ne.decoherence_time = min(self.decoherence_time, epr.decoherence_time)
-
-        # set creation time to the older among the two pairs
         ne.creation_time = min(self.creation_time, epr.creation_time)
         return ne
 
+    @override
+    def distillation(self, epr: "WernerStateEntanglement") -> "WernerStateEntanglement|None":
+        _ = epr
+        raise NotImplementedError()
+
     def purify(self, epr: "WernerStateEntanglement") -> bool:
-        """Use `self` and `epr` to perform distillation and update this entanglement
-        Using Bennett 96 protocol and estimate lower bound
+        """
+        Use `self` and `epr` to perform distillation and update this entanglement.
+        Using Bennett 96 protocol and estimate lower bound.
 
         Args:
-            epr (WernerEntanglement): another entanglement
-        Returns:
-            whether purification succeeded
+            epr: another entanglement.
 
+        Returns:
+            Whether purification succeeded.
         """
         if self.is_decoherenced or epr.is_decoherenced:
             self.is_decoherenced = True
-            self.fidelity = 0
+            self.w = _w_0
             return False
 
         epr.is_decoherenced = True
         fmin = min(self.fidelity, epr.fidelity)
+        expr1 = fmin**2 + 5 / 9 * (1 - fmin) ** 2 + 2 / 3 * fmin * (1 - fmin)
 
-        if get_rand() > (fmin**2 + 5 / 9 * (1 - fmin) ** 2 + 2 / 3 * fmin * (1 - fmin)):
+        if get_rand() > expr1:
             self.is_decoherenced = True
-            self.fidelity = 0
+            self.w = _w_0
             return False
 
-        self.fidelity = (fmin**2 + (1 - fmin) ** 2 / 9) / (fmin**2 + 5 / 9 * (1 - fmin) ** 2 + 2 / 3 * fmin * (1 - fmin))
+        self.fidelity = (fmin**2 + (1 - fmin) ** 2 / 9) / expr1
         return True
 
+    @override
     def store_error_model(self, t: float = 0, decoherence_rate: float = 0, **kwargs):
-        """The default error model for storing this entangled pair in a quantum memory
-        The default behavior is: w = w*e^{-decoherence_rate*t}, default a = 0
+        """
+        Apply an error model for storing this entangled pair in quantum memory::
+
+            w = w * e^{-decoherence_rate * t}
 
         Args:
-            t: the time stored in a quantum memory. The unit is second
-            decoherence_rate: the decoherence rate, equals to 1/T_coh, where T_coh is the coherence time
-            kwargs: other parameters
+            t: the time stored in a quantum memory in seconds.
+            decoherence_rate: the decoherence rate, equals to the inverse of coherence time.
 
         """
-        self.w = self.w * np.exp(-decoherence_rate * t)
+        _ = kwargs
+        self.w *= np.exp(-decoherence_rate * t)
 
+    @override
     def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
-        """The default error model for transmitting this entanglement
-        The success possibility of transmitting is: w = w* e^{decoherence_rate * length}
+        """
+        Apply an error model for transmitting this entanglement::
+
+            w = w * e^{decoherence_rate * length}
 
         Args:
-            length (float): the length of the channel
-            decoherence_rate: the decoherence rate, equals to 1/T_coh, where T_coh is the coherence time
-            kwargs: other parameters
+            length: the length of the channel in kilometers.
+            decoherence_rate: the decoherence rate, equals to the inverse of coherence time.
 
         """
-        self.w = self.w * np.exp(-decoherence_rate * length)
+        _ = kwargs
+        self.w *= np.exp(-decoherence_rate * length)
 
+    @override
     def to_qubits(self) -> list[Qubit]:
         if self.is_decoherenced:
             q0 = Qubit(state=QUBIT_STATE_P, name="q0")
@@ -154,34 +188,14 @@ class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"], Quant
         q0 = Qubit(state=QUBIT_STATE_0, name="q0")
         q1 = Qubit(state=QUBIT_STATE_0, name="q1")
 
-        phi_p = 1 / np.sqrt(2) * np.array([[1], [0], [0], [1]])
         rho = self.w * np.dot(phi_p, phi_p.T.conjugate()) + (1 - self.w) / 4 * np.identity(4)
-        print(rho)
         qs = QState([q0, q1], rho=rho)
         q0.state = qs
         q1.state = qs
         self.is_decoherenced = True
         return [q0, q1]
 
-    def _merge_orig_eprs(self, epr: "WernerStateEntanglement") -> list["WernerStateEntanglement"]:
-        # Helper: get a dict of name -> epr from an object's orig_epr list
-        def epr_dict(obj) -> dict[str, "WernerStateEntanglement"]:
-            return {e.name: e for e in obj.orig_eprs}
-
-        # Merge by name
-        merged = epr_dict(self)
-        for name, epr1 in epr_dict(epr).items():
-            merged.setdefault(name, epr1)
-
-        # Add elementary eprs
-        if self.ch_index > -1 and self.name not in merged:
-            merged["self"] = self
-        if epr.ch_index > -1 and epr.name not in merged:
-            merged["epr"] = epr
-
-        # Sort the result by epr.index
-        return sorted(merged.values(), key=lambda e: e.ch_index)
-
+    @override
     def __repr__(self):
         return (
             f"{self.__class__.__name__}("

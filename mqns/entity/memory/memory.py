@@ -421,9 +421,9 @@ class QuantumMemory(Entity):
 
         Notes:
             - If `old_qm` is not found in memory but a pending decoherence event still exists,
-            that event is canceled and removed to avoid inconsistency.
+              that event is canceled and removed to avoid inconsistency.
             - This method does not modify the coherence time or reschedule it—only updates
-            the stored quantum model while maintaining timing integrity.
+              the stored quantum model while maintaining timing integrity.
         """
         addr = self._find_by_key(old_qm)
         if addr == -1:
@@ -483,9 +483,11 @@ class QuantumMemory(Entity):
         This is invoked through decoherence event from `_schedule_decohere`.
 
         1. Check whether the EPR pair still exists in memory via `self.read(key=qm)`.
+
            - If the qubit was already released via swap/purify, it is safely ignored.
            - If the qubit was re-entangled, it would be associated with a different quantum model
              and would not be found via `self.read(key=qm)`.
+
         2. If the EPR is still present, set the qubit to RELEASE state, and then
            schedule a `QubitDecoheredEvent` to inform the link layer.
 

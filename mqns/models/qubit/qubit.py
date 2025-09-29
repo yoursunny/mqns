@@ -19,7 +19,7 @@ from typing import Any, Literal, cast
 
 import numpy as np
 
-from mqns.models.core.backend import QuantumModel
+from mqns.models.core import QuantumModel
 from mqns.models.qubit.const import (
     QUBIT_STATE_0,
     QUBIT_STATE_1,
@@ -349,49 +349,3 @@ class Qubit(QuantumModel):
         if self.name is not None:
             return "<qubit " + self.name + ">"
         return super().__repr__()
-
-    def store_error_model(self, t: float = 0, decoherence_rate: float = 0, **kwargs):
-        """The default error model for storing a qubit in quantum memory.
-        The default behavior is doing nothing
-
-        Args:
-            t: the time stored in a quantum memory. The unit it second.
-            decoherence_rate (float): the decoherence rate in Db.
-            kwargs: other parameters
-
-        """
-        pass
-
-    def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
-        """The default error model for transmitting this qubit
-        The default behavior is doing nothing
-
-        Args:
-            length (float): the length of the channel
-            decoherence_rate (float): the decoherence rate
-            kwargs: other parameters
-
-        """
-        pass
-
-    def operate_error_model(self, decoherence_rate: float = 0, **kwargs):
-        """The error model for operating a qubit.
-        This function will change the quantum state.
-
-        Args:
-            decoherence_rate (float): the decoherency rate
-            kwargs: other parameters
-
-        """
-        pass
-
-    def measure_error_model(self, decoherence_rate: float = 0, **kwargs):
-        """The error model for measuring a qubit.
-        This function will change the quantum state.
-
-        Args:
-            decoherence_rate (float): the decoherency rate
-            kwargs: other parameters
-
-        """
-        pass
