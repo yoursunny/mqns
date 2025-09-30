@@ -277,8 +277,7 @@ for s_idx, (label, flows) in enumerate(SCENARIOS):
         flow_fids = [[] for _ in range(5)]
         for i in range(args.runs):
             print(f"{strategy}, {label}, run #{i}")
-            seed = SEED_BASE + (hash((strategy, s_idx)) % 10000) + i
-            ak, bl, ci, dh, gm = run_simulation(t_cohere, mux, seed, flows)
+            ak, bl, ci, dh, gm = run_simulation(t_cohere, mux, SEED_BASE + i, flows)
             for idx, (rate, fid) in enumerate([ak, bl, ci, dh, gm]):
                 flow_rates[idx].append(rate)
                 flow_fids[idx].append(fid)
