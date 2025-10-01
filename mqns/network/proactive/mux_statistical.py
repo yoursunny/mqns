@@ -11,6 +11,7 @@ from mqns.models.epr import BaseEntanglement, WernerStateEntanglement
 from mqns.network.proactive.fib import FibEntry
 from mqns.network.proactive.message import PathInstructions, validate_path_instructions
 from mqns.network.proactive.mux import MuxScheme
+from mqns.network.proactive.select import select_swap_qubit
 from mqns.utils import log
 
 
@@ -90,8 +91,27 @@ class MuxSchemeDynamicBase(MuxScheme):
 
 
 class MuxSchemeStatistical(MuxSchemeDynamicBase):
-    def __init__(self, name="statistical multiplexing"):
+    """
+    Statistical multiplexing scheme.
+    """
+
+    def __init__(
+        self,
+        name="statistical multiplexing",
+        *,
+        coordinated_decisions=False,
+    ):
+        """
+        Args:
+            coordinated_decisions:
+                If True, during a parallel swap, the path_id chosen at one node for selecting swap candidates
+                is instantly visible at other nodes. This behavior is physically unrealistic. It is implemented
+                for comparison purpose.
+                If False (default), during a parallel swap, each node selects swap candidates independently,
+                and then discards unusable entanglements due to conflictual swap decisions.
+        """
         super().__init__(name)
+        self.coordinated_decisions = coordinated_decisions
 
     @override
     def validate_path_instructions(self, instructions: PathInstructions):
@@ -118,6 +138,8 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         log.debug(f"{self.own}: qubit {qubit} has tmp_path_ids {possible_path_ids}")
         if epr.tmp_path_ids is None:
             epr.tmp_path_ids = possible_path_ids
+        elif self.coordinated_decisions:
+            assert epr.tmp_path_ids.issubset(possible_path_ids)
         else:
             # Assuming both primary and secondary nodes in an elementary EPR have the same path instructions,
             # both nodes should have the same qchannel_paths_map and thus derive the same tmp_path_ids.
@@ -146,7 +168,6 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
     def find_swap_candidate(
         self, qubit: MemoryQubit, epr: WernerStateEntanglement, fib_entry: FibEntry | None
     ) -> tuple[MemoryQubit, FibEntry] | None:
-        _ = fib_entry
         assert qubit.qchannel is not None
 
         # find qchannels whose qubits may be used with this qubit
@@ -158,22 +179,28 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         }
 
         # find another qubit to swap with
-        mq1, epr1 = next(
+        found = select_swap_qubit(
+            self.fw._select_swap_qubit,
+            qubit,
+            epr,
+            fib_entry,
             self.memory.find(
                 lambda q, v: q.state == QubitState.ELIGIBLE  # in ELIGIBLE state
                 and (q.qchannel is not None and q.qchannel.name in matched_channels)  # assigned to a matched channel
                 and has_intersect_tmp_path_ids(epr.tmp_path_ids, v.tmp_path_ids),  # has overlapping tmp_path_ids
                 has_epr=True,
             ),
-            (None, None),
         )
         # TODO selection algorithm among found qubits
-        if not mq1:
-            return
+        if not found:
+            return None
+        mq1, epr1 = found
         assert isinstance(epr1, WernerStateEntanglement)
 
-        path_ids = intersect_tmp_path_ids(epr, epr1)
-        fib_entry = self.fib.get(random.choice(list(path_ids)))  # no need to coordinate across the path
+        chosen_path_id = random.choice(list(intersect_tmp_path_ids(epr, epr1)))
+        if self.coordinated_decisions:
+            epr.tmp_path_ids = epr1.tmp_path_ids = frozenset([chosen_path_id])
+        fib_entry = self.fib.get(chosen_path_id)
         return mq1, fib_entry
 
     @override
@@ -186,9 +213,10 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         new_epr.tmp_path_ids = intersect_tmp_path_ids(prev_epr, next_epr)
 
     @override
-    def su_parallel_avoid_conflict(self, my_new_epr: WernerStateEntanglement, su_path_id: int) -> bool:
+    def su_parallel_has_conflict(self, my_new_epr: WernerStateEntanglement, su_path_id: int) -> bool:
         assert my_new_epr.tmp_path_ids is not None
         if su_path_id not in my_new_epr.tmp_path_ids:
+            assert not self.coordinated_decisions
             log.debug(f"{self.own}: Conflictual parallel swapping in statistical mux -> silently ignore")
             return True
         return False
