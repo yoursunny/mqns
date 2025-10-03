@@ -22,21 +22,17 @@ from mqns.utils import log, set_seed
 
 """
 This script measures how simulation performance and outcomes scale as the
-network size increases. A random topology is used with an average node degree of 3.5.
+network size increases. A random topology is used with an average node degree of 2.5.
 For each network size, the number of entanglement requests is chosen to be
-proportional to the number of nodes, with 50% of nodes involved in src-dst requests.
+proportional to the number of nodes, with 20% of nodes involved in src-dst requests (plus intermediate nodes).
 Proactive forwarding is used with Statistical multiplexing and SWAP-ASAP swapping policy.
-
-The simulation reports three key aspects across multiple trials:
-  - Average end-to-end entanglement generation rate
-  - Average fidelity of consumed entangled pairs
-  - Simulator execution time
+The simulation reports execution time.
 """
 
 
 # Command line arguments
 class Args(Tap):
-    runs: int = 3  # number of trials per parameter set
+    runs: int = 1  # number of trials per parameter set
     json: str = ""  # save results as JSON file
     plt: str = ""  # save plot as image file
 
@@ -45,16 +41,8 @@ args = Args().parse_args()
 
 log.set_default_level("CRITICAL")
 
-# avg. node degree = 3.5
+# avg. node degree = 2.5
 network_sizes: list[tuple[int, int]] = [
-    # (16, 28),
-    # (32, 56),
-    # (64, 112),
-    # (128, 224),
-    # (256, 448),
-    # (512, 896),
-    # (1024, 1792),
-    # avg. node degree = 2.5
     (16, 20),
     (32, 40),
     (64, 80),
@@ -82,7 +70,7 @@ p_swap = 0.5
 swapping_policy = "asap"
 
 nqubits = 2000  # large enough to support qchannel capacity in random topology
-qchannel_capacity = 100
+qchannel_capacity = 100  # full simulation tries 10, 50, 100 qubits
 
 
 def build_network(nnodes: int, nedges: int, nqubits: int) -> QuantumNetwork:
