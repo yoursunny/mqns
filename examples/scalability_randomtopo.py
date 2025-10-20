@@ -22,21 +22,17 @@ from mqns.utils import log, set_seed
 
 """
 This script measures how simulation performance and outcomes scale as the
-network size increases. A random topology is used with an average node degree of 3.5.
+network size increases. A random topology is used with an average node degree of 2.5.
 For each network size, the number of entanglement requests is chosen to be
-proportional to the number of nodes, with 50% of nodes involved in src-dst requests.
+proportional to the number of nodes, with 20% of nodes involved in src-dst requests (plus intermediate nodes).
 Proactive forwarding is used with Statistical multiplexing and SWAP-ASAP swapping policy.
-
-The simulation reports three key aspects across multiple trials:
-  - Average end-to-end entanglement generation rate
-  - Average fidelity of consumed entangled pairs
-  - Simulator execution time
+The simulation reports execution time.
 """
 
 
 # Command line arguments
 class Args(Tap):
-    runs: int = 3  # number of trials per parameter set
+    runs: int = 1  # number of trials per parameter set
     json: str = ""  # save results as JSON file
     plt: str = ""  # save plot as image file
 
@@ -45,15 +41,15 @@ args = Args().parse_args()
 
 log.set_default_level("CRITICAL")
 
-# avg. node degree = 3.5
+# avg. node degree = 2.5
 network_sizes: list[tuple[int, int]] = [
-    (16, 28),
-    (32, 56),
-    (64, 112),
-    (128, 224),
-    (256, 448),
-    (512, 896),
-    (1024, 1792),
+    (16, 20),
+    (32, 40),
+    (64, 80),
+    (128, 160),
+    (256, 320),
+    (512, 640),
+    # (1024, 1280),
 ]
 print(f"Simulate network sizes: {network_sizes}")
 
@@ -72,7 +68,9 @@ t_coherence = 5e-3  # 10e-3
 
 p_swap = 0.5
 swapping_policy = "asap"
-nqubits = 50
+
+nqubits = 2000  # large enough to support qchannel capacity in random topology
+qchannel_capacity = 100  # full simulation tries 10, 50, 100 qubits
 
 
 def build_network(nnodes: int, nedges: int, nqubits: int) -> QuantumNetwork:
@@ -102,11 +100,10 @@ def build_network(nnodes: int, nedges: int, nqubits: int) -> QuantumNetwork:
 
     # Default: Dijkstra with hop count metric
     net = QuantumNetwork(topo=topo, classic_topo=ClassicTopology.Follow)
-
     topo.connect_controller(net.nodes)
 
     for qchannel in net.qchannels:
-        qchannel.assign_memory_qubits(capacity=3)
+        qchannel.assign_memory_qubits(capacity=qchannel_capacity)
 
     return net
 
@@ -123,7 +120,7 @@ def run_simulation(nnodes: int, nedges: int, nqubits: int, seed: int):
     ctrl = net.get_controller().get_app(ProactiveRoutingController)
 
     # number of requests is proportional to network size
-    num_requests = max(2, int(nnodes / 4))
+    num_requests = max(2, int(nnodes / 10))
 
     # Time to generate requests
     t0 = time.perf_counter()
@@ -192,8 +189,8 @@ mpl.rcParams.update(
         "axes.titlesize": 14,
         "axes.labelsize": 14,
         "legend.fontsize": 12,
-        "xtick.labelsize": 10,
-        "ytick.labelsize": 10,
+        "xtick.labelsize": 12,
+        "ytick.labelsize": 12,
         "figure.titlesize": 16,
         "lines.linewidth": 2,
         "lines.markersize": 7,
@@ -204,8 +201,7 @@ mpl.rcParams.update(
 x_ticks = list(range(len(network_sizes)))
 x_ticklabels = [f"({n},{e})" for (n, e) in network_sizes]
 
-fig, axes = plt.subplots(1, 3, figsize=(12, 4), constrained_layout=True)
-ax_rate, ax_fid, ax_time = axes
+fig, ax = plt.subplots(figsize=(6, 4), constrained_layout=True)
 
 # ---- Collect means and stds
 mean_rates, std_rates = [], []
@@ -235,29 +231,13 @@ for netsize in network_sizes:
         mean_times.append(np.nan)
         std_times.append(0.0)
 
-# ---- Subplot 1: Entanglement Rate
-ax_rate.errorbar(x_ticks, mean_rates, yerr=std_rates, marker=None, linestyle="-", label="Rate")
-ax_rate.set_title("Average Entanglement Rate")
-ax_rate.set_ylabel("E2E Rate (eps)")
-ax_rate.set_xlabel("Net. size")
-ax_rate.set_xticks(x_ticks, x_ticklabels, rotation=45, ha="right")
-ax_rate.grid(True, alpha=0.4)
-
-# ---- Subplot 2: Fidelity
-ax_fid.errorbar(x_ticks, mean_fids, yerr=std_fids, marker=None, linestyle="-", label="Fidelity")
-ax_fid.set_title("Average Fidelity")
-ax_fid.set_ylabel("Fidelity")
-ax_fid.set_xlabel("Net. size")
-ax_fid.set_xticks(x_ticks, x_ticklabels, rotation=45, ha="right")
-ax_fid.grid(True, alpha=0.4)
-
-# ---- Subplot 3: Simulation Execution Time
-ax_time.errorbar(x_ticks, mean_times, yerr=std_times, marker=None, linestyle="-", label="Time")
-ax_time.set_title("Average Execution Time")
-ax_time.set_ylabel("Time (s)")
-ax_time.set_xlabel("Net. size")
-ax_time.set_xticks(x_ticks, x_ticklabels, rotation=45, ha="right")
-ax_time.grid(True, alpha=0.4)
+# ---- Plot Simulation Execution Time
+ax.errorbar(x_ticks, mean_times, yerr=std_times, marker=None, linestyle="-", label="Time")
+# ax.set_title("Average Execution Time")
+ax.set_ylabel("Time (s)")
+ax.set_xlabel("Network size (#nodes,#edges)")
+ax.set_xticks(x_ticks, x_ticklabels, rotation=45, ha="right")
+ax.grid(True, alpha=0.4)
 
 plt.show()
 

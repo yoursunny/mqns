@@ -19,12 +19,12 @@ from examples_common.topo_asymmetric_channel import build_topology
 log.set_default_level("CRITICAL")
 
 # Constants
-sim_duration = 3
+sim_duration = 0.5
 SEED_BASE = 42
-ch_lengths: list[float] = [20, 20]
+ch_lengths: list[float] = [30, 30]
 
 # Experiment parameters
-t_cohere_values = [1e-3, 10e-3]
+t_cohere_values = [5e-3, 10e-3]
 mem_allocs = [(1, 5), (2, 4), (3, 3), (4, 2), (5, 1)]
 mem_labels = [str(m) for m in mem_allocs]
 channel_configs: dict[str, list[LinkArch]] = {
@@ -116,7 +116,6 @@ def save_results(results: Any, *, save_json: str | None, save_plt: str | None):
         }
     )
 
-    # Redraw plot with updated font sizes
     fig_combined, axs = plt.subplots(2, 2, figsize=(8, 6), sharex=True)
 
     for idx, t_cohere in enumerate(t_cohere_values):
@@ -132,8 +131,6 @@ def save_results(results: Any, *, save_json: str | None, save_plt: str | None):
         ax_rate.set_title(f"T_cohere: {int(t_cohere * 1e3)} ms")
         ax_rate.set_ylabel("Ent. per second")
         ax_rate.grid(True, which="both", ls="--", lw=0.6, alpha=0.8)
-        if col == 1:
-            ax_rate.legend(loc="lower right")
 
         # Fidelity
         ax_fid = axs[row_fid][col]
@@ -144,10 +141,12 @@ def save_results(results: Any, *, save_json: str | None, save_plt: str | None):
         ax_fid.set_ylabel("Fidelity")
         ax_fid.grid(True, which="both", ls="--", lw=0.6, alpha=0.8)
 
-    # fig_combined.suptitle("Entanglement Rate and Fidelity vs Memory Allocation", fontsize=22)
-    fig_combined.tight_layout(rect=(0, 0, 1, 0.95))
+    handles, labels = ax_rate.get_legend_handles_labels()
+    fig_combined.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, -0.02), ncol=len(channel_configs))
+
+    fig_combined.tight_layout(rect=(0, 0, 1, 0.93))  # leave space for legend
     if save_plt:
-        plt.savefig(save_plt, dpi=300, transparent=True)
+        plt.savefig(save_plt, dpi=300, transparent=True, bbox_inches="tight")
     plt.show()
 
 
