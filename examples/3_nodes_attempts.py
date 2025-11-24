@@ -5,10 +5,9 @@ import numpy as np
 import pandas as pd
 from tap import Tap
 
-from mqns.entity.monitor import Monitor
 from mqns.network.network import QuantumNetwork
-from mqns.network.protocol.event import LinkArchSuccessEvent
-from mqns.simulator import Event, Simulator
+from mqns.network.protocol.link_layer import LinkLayer
+from mqns.simulator import Simulator
 from mqns.utils import log, set_seed
 
 from examples_common.topo_linear import build_topology
@@ -46,37 +45,24 @@ def run_simulation(num_qubits: int, seed: int):
     net = QuantumNetwork(topo=topo)
     net.install(s)
 
-    counts = defaultdict[str, list[int]](lambda: [0, 0])
-
-    def watch_ent_rate(simulator: Simulator, network: QuantumNetwork | None, event: Event):
-        _ = simulator
-        _ = network
-        assert isinstance(event, LinkArchSuccessEvent)
-        if event.node != event.epr.dst:  # only count at dst-node
-            return
-        assert event.epr.attempts is not None
-        record = counts[event.node.name]
-        record[0] += 1
-        record[1] += event.epr.attempts
-
-    m_ent_rate = Monitor(name="ent_rate", network=None)
-    m_ent_rate.add_attribution(name="ent_rate", calculate_func=watch_ent_rate)
-    m_ent_rate.at_event(LinkArchSuccessEvent)
-    m_ent_rate.install(s)
-
     s.run()
+
+    counts = defaultdict[str, list[int]](lambda: [0, 0])
+    for node in net.nodes:
+        cnt = node.get_app(LinkLayer).cnt
+        counts[node.name] = [cnt.n_etg, cnt.n_attempts]
 
     attempts_rate = {k: v[1] / sim_duration for k, v in counts.items()}
     ent_rate = {k: v[0] / sim_duration for k, v in counts.items()}
 
-    # fraction of successful attempts per dst-node
+    # fraction of successful attempts per src-node
     success_frac = {k: ent_rate[k] / attempts_rate[k] if attempts_rate[k] != 0 else 0 for k in ent_rate}
     return attempts_rate, ent_rate, success_frac
 
 
 node_map = {
-    "R": 32,  # dst-node corresponding to 32 km link
-    "D": 18,  # dst-node corresponding to 18 km link
+    "S": 32,  # src-node corresponding to 32 km link
+    "R": 18,  # src-node corresponding to 18 km link
 }
 
 all_data = {
