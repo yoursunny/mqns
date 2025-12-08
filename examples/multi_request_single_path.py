@@ -1,7 +1,6 @@
 import json
+from typing import cast
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import numpy as np
 from tap import Tap
 
@@ -20,6 +19,8 @@ from mqns.network.proactive import (
 from mqns.network.topology import CustomTopology, Topology
 from mqns.simulator import Simulator
 from mqns.utils import log, set_seed
+
+from examples_common.plotting import Axes2D, mpl, plt, plt_save
 
 
 # Command line arguments
@@ -245,49 +246,45 @@ mpl.rcParams.update(
     }
 )
 
-fig, axs = plt.subplots(2, 2, figsize=(9, 8), sharex=True, sharey="row")
+PATH_TITLES = ("S1-D1", "S2-D2")
+fig, axs = plt.subplots(nrows=2, ncols=len(PATH_TITLES), figsize=(9, 8), sharex=True, sharey="row")
+axs = cast(Axes2D, axs)
 
 # Plot Entanglement Rate
 for strategy in strategies:
-    for path in [0, 1]:
+    for path, path_title in enumerate(PATH_TITLES):
         rates = [results[strategy][path][i][0] for i in range(len(t_cohere_values))]
         stds = [results[strategy][path][i][1] for i in range(len(t_cohere_values))]
-        axs[0][path].errorbar(
+        ax = axs[0, path]
+        ax.errorbar(
             [t * 1e3 for t in t_cohere_values],
             rates,
             yerr=stds,
             marker="o",
             label=strategy,
         )
-
-axs[0][0].set_title("S1-D1")
-axs[0][1].set_title("S2-D2")
-for ax in axs[0]:
-    ax.set_ylabel("E2E Rate (eps)")
-    ax.grid(True)
+        ax.set_title(path_title)
+        ax.set_ylabel("E2E Rate (eps)")
+        ax.grid(True)
 
 # Plot Fidelity
 for strategy in strategies:
-    for path in [0, 1]:
+    for path, path_title in enumerate(PATH_TITLES):
         fids = [results[strategy][path][i][2] for i in range(len(t_cohere_values))]
         stds = [results[strategy][path][i][3] for i in range(len(t_cohere_values))]
-        axs[1][path].errorbar(
+        ax = axs[1, path]
+        ax.errorbar(
             [t * 1e3 for t in t_cohere_values],
             fids,
             yerr=stds,
             marker="s",
             label=strategy,
         )
+        ax.set_title(path_title)
+        ax.set_xlabel("T_cohere (ms)")
+        ax.set_ylabel("Fidelity")
+        ax.grid(True)
 
-axs[1][0].set_title("S1-D1")
-axs[1][1].set_title("S2-D2")
-for ax in axs[1]:
-    ax.set_xlabel("T_cohere (ms)")
-    ax.set_ylabel("Fidelity")
-    ax.grid(True)
-
-axs[1][1].legend(title="Strategy", loc="lower right")
+axs[1, 1].legend(title="Strategy", loc="lower right")
 fig.tight_layout(rect=(0, 0, 1, 0.95))
-if args.plt:
-    plt.savefig(args.plt, dpi=300, transparent=True)
-plt.show()
+plt_save(args.plt)

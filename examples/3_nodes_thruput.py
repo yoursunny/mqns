@@ -2,7 +2,6 @@ import itertools
 from multiprocessing import Pool, freeze_support
 from typing import Any
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from tap import Tap
@@ -12,6 +11,7 @@ from mqns.network.proactive import ProactiveForwarder
 from mqns.simulator import Simulator
 from mqns.utils import log, set_seed
 
+from examples_common.plotting import plt, plt_save
 from examples_common.topo_linear import build_topology
 
 log.set_default_level("CRITICAL")
@@ -77,7 +77,7 @@ def run_row(n_runs: int, t_cohere: float) -> tuple[float, list[float]]:
     return t_cohere, rates
 
 
-def save_results(results: Any, *, save_csv: str | None, save_plt: str | None):
+def save_results(results: Any, *, save_csv: str, save_plt: str):
     # Final results summary print
     print("\nT_coh    Rate")
     for t, mean, std in zip(results["T_cohere"], results["Mean Rate"], results["Std Rate"]):
@@ -108,9 +108,7 @@ def save_results(results: Any, *, save_csv: str | None, save_plt: str | None):
     plt.legend()
     plt.grid(True, which="both", ls="--", lw=0.5)
     plt.tight_layout()
-    if save_plt:
-        plt.savefig(save_plt, dpi=300, transparent=True)
-    plt.show()
+    plt_save(save_plt)
 
 
 if __name__ == "__main__":

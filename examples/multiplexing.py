@@ -1,7 +1,5 @@
 import json
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import numpy as np
 from tap import Tap
 
@@ -22,6 +20,8 @@ from mqns.network.proactive.message import MultiplexingVector
 from mqns.network.topology.customtopo import CustomTopology, TopoCChannel, Topology, TopoQChannel, TopoQNode
 from mqns.simulator import Simulator
 from mqns.utils import log, set_seed
+
+from examples_common.plotting import mpl, plt, plt_save
 
 
 # ------------------------------
@@ -431,10 +431,4 @@ def plot_stacked_aggregate_bars(results: dict, strategy_name: str, title: str):
 fig_stack_stat = plot_stacked_aggregate_bars(results, "Statistical", "Throughput for Statistical Multiplexing (eps)")
 fig_stack_buff = plot_stacked_aggregate_bars(results, "Buffer-Space", "Throughput for Buffer-Space  Multiplexing (eps)")
 
-if args.plt_stat:
-    fig_stack_stat.savefig(args.plt_stat, dpi=300, transparent=True)
-
-if args.plt_buff:
-    fig_stack_buff.savefig(args.plt_buff, dpi=300, transparent=True)
-
-plt.show()
+plt_save((fig_stack_stat, args.plt_stat), (fig_stack_buff, args.plt_buff))

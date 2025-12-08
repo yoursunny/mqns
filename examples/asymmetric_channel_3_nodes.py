@@ -1,10 +1,8 @@
 import itertools
 import json
 from multiprocessing import Pool, freeze_support
-from typing import Any
+from typing import Any, cast
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import numpy as np
 from tap import Tap
 
@@ -14,6 +12,7 @@ from mqns.network.proactive import ProactiveForwarder
 from mqns.simulator import Simulator
 from mqns.utils import log, set_seed
 
+from examples_common.plotting import Axes2D, mpl, plt, plt_save
 from examples_common.topo_linear import build_topology
 
 log.set_default_level("CRITICAL")
@@ -93,7 +92,7 @@ def run_row(
     return t_cohere, arch_label, rates, fids
 
 
-def save_results(results: Any, *, save_json: str | None, save_plt: str | None):
+def save_results(results: Any, *, save_json: str, save_plt: str):
     if save_json:
         with open(save_json, "w") as file:
             json.dump(results, file)
@@ -117,6 +116,8 @@ def save_results(results: Any, *, save_json: str | None, save_plt: str | None):
     )
 
     fig_combined, axs = plt.subplots(2, 2, figsize=(8, 6), sharex=True)
+    axs = cast(Axes2D, axs)
+    ax_rate = None
 
     for idx, t_cohere in enumerate(t_cohere_values):
         row_rate = 0
@@ -124,7 +125,7 @@ def save_results(results: Any, *, save_json: str | None, save_plt: str | None):
         col = idx
 
         # Entanglement Rate
-        ax_rate = axs[row_rate][col]
+        ax_rate = axs[row_rate, col]
         for arch_label in channel_configs:
             res = results[t_cohere][arch_label]
             ax_rate.errorbar(mem_labels, res["rate_mean"], yerr=res["rate_std"], fmt="o--", capsize=4, label=arch_label)
@@ -133,7 +134,7 @@ def save_results(results: Any, *, save_json: str | None, save_plt: str | None):
         ax_rate.grid(True, which="both", ls="--", lw=0.6, alpha=0.8)
 
         # Fidelity
-        ax_fid = axs[row_fid][col]
+        ax_fid = axs[row_fid, col]
         for arch_label in channel_configs:
             res = results[t_cohere][arch_label]
             ax_fid.errorbar(mem_labels, res["fid_mean"], yerr=res["fid_std"], fmt="s--", capsize=4, label=arch_label)
@@ -141,13 +142,12 @@ def save_results(results: Any, *, save_json: str | None, save_plt: str | None):
         ax_fid.set_ylabel("Fidelity")
         ax_fid.grid(True, which="both", ls="--", lw=0.6, alpha=0.8)
 
+    assert ax_rate is not None
     handles, labels = ax_rate.get_legend_handles_labels()
     fig_combined.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, -0.02), ncol=len(channel_configs))
 
     fig_combined.tight_layout(rect=(0, 0, 1, 0.93))  # leave space for legend
-    if save_plt:
-        plt.savefig(save_plt, dpi=300, transparent=True, bbox_inches="tight")
-    plt.show()
+    plt_save(save_plt, bbox_inches="tight")
 
 
 if __name__ == "__main__":

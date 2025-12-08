@@ -3,10 +3,8 @@ import json
 from multiprocessing import Pool, freeze_support
 from typing import TypedDict
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.axes import Axes
 from tap import Tap
 
 from mqns.network.network import QuantumNetwork
@@ -14,6 +12,7 @@ from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Simulator
 from mqns.utils import log, set_seed
 
+from examples_common.plotting import Axes, plt, plt_save
 from examples_common.topo_linear import build_topology
 
 log.set_default_level("CRITICAL")
@@ -140,9 +139,7 @@ def plot_results(L: list[float], df: pd.DataFrame, *, save_plt: str):
             ax.legend()
 
     fig.tight_layout()
-    if save_plt:
-        fig.savefig(save_plt, dpi=300, transparent=True)
-    plt.show()
+    plt_save(save_plt)
 
 
 if __name__ == "__main__":

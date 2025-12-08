@@ -1,7 +1,6 @@
 import json
+from typing import cast
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import numpy as np
 from tap import Tap
 
@@ -10,6 +9,7 @@ from mqns.network.proactive import ProactiveForwarder
 from mqns.simulator import Simulator
 from mqns.utils import log, set_seed
 
+from examples_common.plotting import Axes1D, mpl, plt, plt_save
 from examples_common.stats import gather_etg_decoh
 from examples_common.topo_linear import build_topology
 
@@ -77,7 +77,7 @@ t_cohere_values = [5e-3, 10e-3, 20e-3]
 
 # Store results: mem_label -> policy -> t_cohere -> list of rates
 results = {
-    mem_label: {order: {t: [] for t in t_cohere_values} for order in swapping_order_configs}
+    mem_label: {order: {t: (0.0, 0.0) for t in t_cohere_values} for order in swapping_order_configs}
     for mem_label in ch_capacities_configs
 }
 
@@ -100,7 +100,7 @@ for mem_label, mem_allocs in ch_capacities_configs.items():
                 )
                 run_rates.append(rate)
 
-            results[mem_label][order][t_cohere] = (np.mean(run_rates), np.std(run_rates))
+            results[mem_label][order][t_cohere] = (np.mean(run_rates).item(), np.std(run_rates).item())
 
 if args.json:
     with open(args.json, "w") as file:
@@ -125,6 +125,7 @@ mpl.rcParams.update(
 
 # Create plot with updated style
 fig, axs = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
+axs = cast(Axes1D, axs)
 
 colors = {"baln": "green", "baln2": "red", "l2r": "purple", "r2l": "brown", "asap": "pink"}
 markers = {"baln": "v", "baln2": "s", "l2r": "^", "r2l": "x", "asap": "d"}
@@ -153,6 +154,4 @@ for ax_idx, (mem_label, policy_dict) in enumerate(results.items()):
 
 axs[-1].legend(title="Policy", loc="lower right")
 plt.tight_layout()
-if args.plt:
-    plt.savefig(args.plt, dpi=300, transparent=True)
-plt.show()
+plt_save(args.plt)

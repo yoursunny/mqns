@@ -3,8 +3,8 @@ import sys
 from collections.abc import Callable
 from copy import deepcopy
 from multiprocessing import Pool, freeze_support
+from typing import cast
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from tap import Tap
@@ -15,6 +15,7 @@ from mqns.network.topology.topo import Topology
 from mqns.simulator import Simulator
 from mqns.utils import log, set_seed
 
+from examples_common.plotting import Axes2D, plt, plt_save
 from examples_common.stats import gather_etg_decoh
 from examples_common.topo_linear import build_topology
 
@@ -188,6 +189,7 @@ def save_results(results: list[dict], *, save_csv: str, save_plt: str) -> None:
 
     # === Combined Plot ===
     _, axes = plt.subplots(2, 3, figsize=(18, 10), sharey="row")
+    axes = cast(Axes2D, axes)
 
     x_labels = DIST_PROPORTIONS
     x = np.arange(len(x_labels))
@@ -235,9 +237,7 @@ def save_results(results: list[dict], *, save_csv: str, save_plt: str) -> None:
     axes[1, 0].legend(loc="upper left")
 
     plt.tight_layout()
-    if save_plt:
-        plt.savefig(save_plt, dpi=300, transparent=True)
-    plt.show()
+    plt_save(save_plt)
 
 
 NUM_ROUTERS_OPTIONS = [3, 4, 5]
