@@ -35,7 +35,7 @@ class MemoryReadRequestEvent(Event):
     def __init__(
         self,
         memory: "QuantumMemory",
-        key: QuantumModel | str,
+        key: str,
         *,
         t: Time,
         name: str | None = None,
