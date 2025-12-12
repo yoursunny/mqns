@@ -36,7 +36,6 @@ class NetworkLayer(Application):
         qubit, epr = self.memory.read(event.qubit.addr, must=True, destructive=False)
         assert qubit == event.qubit
         assert isinstance(epr, BaseEntanglement)
-        assert epr.creation_time is not None
         self.entangle.append((event.t.sec, epr.creation_time.sec))
 
         if not isinstance(self.release_after, float):

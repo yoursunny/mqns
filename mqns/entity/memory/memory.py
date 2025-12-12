@@ -364,10 +364,7 @@ class QuantumMemory(Entity):
 
         return (qubit, data)
 
-    def _read_epr(self, data: QuantumModel):
-        assert isinstance(data, BaseEntanglement)
-        assert data.creation_time is not None
-
+    def _read_epr(self, data: BaseEntanglement):
         sec_diff = self.simulator.tc.sec - data.creation_time.sec
 
         # set fidelity at read time
@@ -410,7 +407,7 @@ class QuantumMemory(Entity):
         self._storage[qubit.addr] = (qubit, qm)
         self._usage += 1
 
-        if isinstance(qm, BaseEntanglement) and qm.creation_time is not None and self.decoherence_delay:
+        if isinstance(qm, BaseEntanglement) and self.decoherence_delay:
             qm.decoherence_time = qm.creation_time + self.decoherence_delay
             self._schedule_decohere(qubit, qm)
 
@@ -482,7 +479,7 @@ class QuantumMemory(Entity):
         qubit.set_event(QuantumMemory, event)
         simulator.add_event(event)
 
-    def decohere_qubit(self, qubit: MemoryQubit, qm: QuantumModel):
+    def decohere_qubit(self, qubit: MemoryQubit, qm: BaseEntanglement):
         """
         Mark the `BaseEntanglement` quantum model associated with a qubit as decohered.
         This is invoked through decoherence event from `_schedule_decohere`.
@@ -503,7 +500,6 @@ class QuantumMemory(Entity):
         from mqns.network.protocol.event import QubitDecoheredEvent  # noqa: PLC0415
 
         simulator = self.simulator
-        assert isinstance(qm, BaseEntanglement)
 
         qm.is_decoherenced = True
         if self.read(qm.name) is None:

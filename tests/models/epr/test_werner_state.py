@@ -20,10 +20,8 @@ def test_fidelity_conversion():
 
 
 def test_swap_success(monkeypatch: pytest.MonkeyPatch):
-    e1 = WernerStateEntanglement(fidelity=0.9)
-    e2 = WernerStateEntanglement(fidelity=0.8)
-    e1.creation_time = micros(1000)
-    e2.creation_time = micros(2000)
+    e1 = WernerStateEntanglement(fidelity=0.9, creation_time=micros(1000))
+    e2 = WernerStateEntanglement(fidelity=0.8, creation_time=micros(2000))
     e1.decoherence_time = micros(3000)
     e2.decoherence_time = micros(4000)
 
@@ -45,14 +43,11 @@ def test_swap_fidelity():
     decoherence_time = micros(1000000)  # 1 second
     decoherence_rate = 1 / decoherence_time.sec
 
-    e1 = WernerStateEntanglement(fidelity=0.99)
-    e1.creation_time = micros(1000)
+    e1 = WernerStateEntanglement(fidelity=0.99, creation_time=micros(1000))
     e1.decoherence_time = e1.creation_time + decoherence_time
-    e2 = WernerStateEntanglement(fidelity=0.99)
-    e2.creation_time = micros(2000)
+    e2 = WernerStateEntanglement(fidelity=0.99, creation_time=micros(2000))
     e2.decoherence_time = e2.creation_time + decoherence_time
-    e3 = WernerStateEntanglement(fidelity=0.99)
-    e3.creation_time = micros(3000)
+    e3 = WernerStateEntanglement(fidelity=0.99, creation_time=micros(3000))
     e3.decoherence_time = e3.creation_time + decoherence_time
 
     ne1_time = micros(2500)
@@ -64,7 +59,6 @@ def test_swap_fidelity():
     assert ne1 is not None
     assert ne1.w == pytest.approx(0.969624844, abs=1e-6)
     assert ne1.fidelity == pytest.approx(0.977218633, abs=1e-6)
-    assert ne1.creation_time is not None
 
     ne2_time = micros(3500)
     ne1.store_error_model((ne2_time - ne1.creation_time).sec, decoherence_rate)
