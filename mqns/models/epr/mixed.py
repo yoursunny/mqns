@@ -84,35 +84,18 @@ class MixedStateEntanglement(BaseEntanglement["MixedStateEntanglement"]):
         self.c = self.c / total
         self.d = self.d / total
 
+    @staticmethod
     @override
-    def swapping(
-        self, epr: "MixedStateEntanglement", *, name: str | None = None, ps: float = 1
-    ) -> "MixedStateEntanglement|None":
-        """Use `self` and `epr` to perform swapping and distribute a new entanglement
-
-        Args:
-            epr (MixedEntanglement): another entanglement
-            name (str): the name of the new entanglement
-        Returns:
-            the new distributed entanglement
-
-        """
-        ne = MixedStateEntanglement(name=name)
-        if self.is_decoherenced or epr.is_decoherenced:
-            return None
-        epr.is_decoherenced = True
-        self.is_decoherenced = True
-
-        r = get_rand()
-        if r > ps:  # swap failed
-            return None
-
-        ne.a = self.a * epr.a + self.b * epr.b + self.c * epr.c + self.d * epr.d
-        ne.b = self.a * epr.b + self.b * epr.a + self.c * epr.d + self.d * epr.c
-        ne.c = self.a * epr.c + self.b * epr.d + self.c * epr.a + self.d * epr.b
-        ne.d = self.a * epr.d + self.b * epr.c + self.c * epr.d + self.d * epr.a
-        ne._normalize()
-        return ne
+    def _make_swapped(
+        epr0: "MixedStateEntanglement", epr1: "MixedStateEntanglement", **kwargs: Unpack[BaseEntanglementInitKwargs]
+    ):
+        return MixedStateEntanglement(
+            fidelity=epr0.a * epr1.a + epr0.b * epr1.b + epr0.c * epr1.c + epr0.d * epr1.d,
+            b=epr0.a * epr1.b + epr0.b * epr1.a + epr0.c * epr1.d + epr0.d * epr1.c,
+            c=epr0.a * epr1.c + epr0.b * epr1.d + epr0.c * epr1.a + epr0.d * epr1.b,
+            d=epr0.a * epr1.d + epr0.b * epr1.c + epr0.c * epr1.d + epr0.d * epr1.a,
+            **kwargs,
+        )
 
     @override
     def distillation(self, epr: "MixedStateEntanglement"):

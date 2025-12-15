@@ -708,6 +708,7 @@ class ProactiveForwarder(Application):
         assert mq0.addr != mq1.addr
         assert mq0.state == QubitState.ELIGIBLE
         assert mq1.state == QubitState.ELIGIBLE
+        simulator = self.simulator
 
         # Read both qubits and remove them from memory.
         #
@@ -734,8 +735,8 @@ class ProactiveForwarder(Application):
         # Make sure both partners are found.
         assert prev_tuple is not None
         assert next_tuple is not None
-        prev_partner, prev_qubit, prev_epr = prev_tuple
-        next_partner, next_qubit, next_epr = next_tuple
+        _, prev_qubit, prev_epr = prev_tuple
+        _, next_qubit, next_epr = next_tuple
 
         # Save ch_index metadata field onto elementary EPR.
         if not prev_epr.orig_eprs:
@@ -744,15 +745,11 @@ class ProactiveForwarder(Application):
             next_epr.ch_index = fib_entry.own_idx
 
         # Attempt the swap.
-        new_epr = prev_epr.swapping(epr=next_epr, ps=self.ps)
+        new_epr = WernerStateEntanglement.swap(prev_epr, next_epr, now=simulator.tc, ps=self.ps)
         log.debug(f"{self.own}: SWAP {'SUCC' if new_epr else 'FAILED'} | {prev_qubit} x {next_qubit}")
 
         if new_epr is not None:  # swapping succeeded
             self.cnt.n_swapped_s += 1
-
-            # Update properties in newly generated EPR.
-            new_epr.src = prev_partner
-            new_epr.dst = next_partner
 
             # Inform multiplexing scheme.
             self.mux.swapping_succeeded(prev_epr, next_epr, new_epr)
@@ -911,35 +908,25 @@ class ProactiveForwarder(Application):
             return
 
         # The swapping_node successfully swapped in parallel with this node.
-        # Merge the two swaps (physically already happened).
-        merged_epr = new_epr.swapping(epr=other_epr)
-
         # Determine the "destination" and "partner".
+        # Merge the two swaps (physically already happened).
         if other_epr.dst == self.own:  # destination is to the left of own node
-            if merged_epr is not None:
-                merged_epr.src = other_epr.src
-                merged_epr.dst = new_epr.dst
-            partner = new_epr.dst
-            destination = other_epr.src
+            merged_epr = WernerStateEntanglement.swap(other_epr, new_epr, now=simulator.tc)
+            partner = cast(QNode, new_epr.dst)
+            destination = cast(QNode, other_epr.src)
         else:  # destination is to the right of own node
-            if merged_epr is not None:
-                merged_epr.src = new_epr.src
-                merged_epr.dst = other_epr.dst
-            partner = new_epr.src
-            destination = other_epr.dst
-        assert partner is not None
+            merged_epr = WernerStateEntanglement.swap(new_epr, other_epr, now=simulator.tc)
+            partner = cast(QNode, new_epr.src)
+            destination = cast(QNode, other_epr.dst)
         assert partner.name == msg["partner"]
-        assert destination is not None
 
         if merged_epr is not None:
             self.cnt.n_swapped_p += 1
 
-        # adjust EPR paths for dynamic EPR affectation and statistical mux
-        if merged_epr is not None:
+            # adjust EPR paths for dynamic EPR affectation and statistical mux
             self.mux.su_parallel_succeeded(merged_epr, new_epr, other_epr)
 
-        # Inform the "destination" of the swap result and new "partner".
-        if merged_epr is not None:
+            # Inform the "destination" of the swap result and new "partner".
             destination.get_app(ProactiveForwarder).remote_swapped_eprs[merged_epr.name] = merged_epr
 
         su_msg: SwapUpdateMsg = {

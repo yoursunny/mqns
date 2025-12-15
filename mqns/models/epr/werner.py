@@ -79,38 +79,12 @@ class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"]):
         assert 0.0 <= value <= 1.0
         self.w = _fidelity_to_w(value)
 
+    @staticmethod
     @override
-    def swapping(
-        self, epr: "WernerStateEntanglement", *, name: str | None = None, ps: float = 1
-    ) -> "WernerStateEntanglement|None":
-        """
-        Use `self` and `epr` to perform swapping and distribute a new entanglement.
-
-        Args:
-            epr: another entanglement.
-            name: name of the new entanglement, defaults to a hash of the elementary origin EPR names.
-            ps: probability of successful swapping.
-
-        Returns:
-            New entanglement.
-        """
-        if self.is_decoherenced or epr.is_decoherenced:
-            return None
-
-        if ps < 1.0 and get_rand() >= ps:  # swap failed
-            epr.is_decoherenced = True
-            self.is_decoherenced = True
-            return None
-
-        ne = WernerStateEntanglement(name=name, w=self.w * epr.w)
-        ne._update_orig_eprs(self, epr, update_name=(name is None))
-
-        # set decoherence time and creation time to the earlier among the two pairs
-        assert self.decoherence_time is not None
-        assert epr.decoherence_time is not None
-        ne.decoherence_time = min(self.decoherence_time, epr.decoherence_time)
-        ne.creation_time = min(self.creation_time, epr.creation_time)
-        return ne
+    def _make_swapped(
+        epr0: "WernerStateEntanglement", epr1: "WernerStateEntanglement", **kwargs: Unpack[BaseEntanglementInitKwargs]
+    ):
+        return WernerStateEntanglement(w=epr0.w * epr1.w, **kwargs)
 
     @override
     def distillation(self, epr: "WernerStateEntanglement") -> "WernerStateEntanglement|None":
