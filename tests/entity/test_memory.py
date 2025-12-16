@@ -11,7 +11,7 @@ from mqns.entity.memory import (
 )
 from mqns.entity.node import Application, QNode
 from mqns.entity.qchannel import QuantumChannel
-from mqns.models.epr import BaseEntanglement, WernerStateEntanglement
+from mqns.models.epr import WernerStateEntanglement
 from mqns.models.qubit import Qubit
 from mqns.simulator import Simulator
 
@@ -49,14 +49,11 @@ def test_write_and_read_with_path_and_key():
     assert mem.write(epr2, path_id=0, key=key) is None
 
     # Should be able to read it
-    epr1Read = mem.read("epr1")  # destructive reading
-    assert epr1Read is not None
-    qubit, data = epr1Read
-    assert isinstance(data, BaseEntanglement)
+    qubit, data = mem.get("epr1", must=WernerStateEntanglement, remove=True)
     assert data.name == "epr1"
     assert mem._usage == 0
 
-    assert pytest.raises(ValueError, lambda: mem.read(qubit.addr, must=True))
+    assert pytest.raises(ValueError, lambda: mem.get(qubit.addr, must=WernerStateEntanglement))
 
 
 def test_channel_qubit_assignment_and_search():
@@ -170,12 +167,10 @@ def test_memory_sync_qubit():
     n1.install(s)
 
     assert m.write(q1)
-    assert m.read("test_qubit") is not None
+    assert m.get("test_qubit") is not None
 
     assert m.get("nonexistent") is None
-    assert m.read("nonexistent") is None
     assert pytest.raises(IndexError, lambda: m.get("nonexistent", must=True))
-    assert pytest.raises(IndexError, lambda: m.read("nonexistent", must=True))
 
 
 def test_memory_sync_qubit_limited():
@@ -195,7 +190,7 @@ def test_memory_sync_qubit_limited():
     assert not m.write(q)
     assert m.count == 5
 
-    q = m.read("q4")
+    q = m.get("q4", remove=True)
     assert q is not None
     assert m.count == 4
     q = Qubit(name="q6")

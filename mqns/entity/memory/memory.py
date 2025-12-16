@@ -28,7 +28,7 @@
 import heapq
 import itertools
 from collections.abc import Callable, Iterable, Iterator
-from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast, overload
+from typing import TYPE_CHECKING, Any, Literal, TypedDict, overload
 
 from typing_extensions import Unpack, override
 
@@ -123,7 +123,7 @@ class QuantumMemory(Entity):
         simulator = self.simulator
 
         if isinstance(event, MemoryReadRequestEvent):
-            result = self.read(event.key)
+            result = self.get(event.key)  # will not update fidelity
             simulator.add_event(
                 MemoryReadResponseEvent(self.node, result, request=event, t=simulator.tc + self.delay.calculate(), by=self)
             )
@@ -308,13 +308,16 @@ class QuantumMemory(Entity):
         pass
 
     @overload
-    def get(self, key: int | str, *, must: type[QuantumModelT], remove=False) -> tuple[MemoryQubit, QuantumModelT]:
+    def get(
+        self, key: int | str, *, must: type[QuantumModelT], set_fidelity=False, remove=False
+    ) -> tuple[MemoryQubit, QuantumModelT]:
         """
         Retrieve a qubit and associated quantum model.
 
         Args:
             key: Qubit address or EPR name.
-            must: expected subclass of QuantumModel.
+            must: Expected subclass of QuantumModel, tested with `type(data) is expected_type`.
+            set_fidelity: Whether to update fidelity, XXX current formula is inaccurate for EPRs.
             remove: Whether to remove the quantum model.
 
         Returns:
@@ -326,7 +329,7 @@ class QuantumMemory(Entity):
         """
         pass
 
-    def get(self, key: int | str, *, must: bool | type[QuantumModelT] | None = None, remove=False):
+    def get(self, key: int | str, *, must: bool | type[QuantumModelT] | None = None, set_fidelity=False, remove=False):
         addr = self._find_by_key(key)
         if addr == -1:
             if must:
@@ -334,8 +337,13 @@ class QuantumMemory(Entity):
             return None
 
         qubit, data = self._storage[addr]
-        if type(must) is type and type(data) is not must:
+        if must not in (None, True) and type(data) is not must:
             raise ValueError(f"{self}: data at {addr} is not {must}")
+
+        if set_fidelity and isinstance(data, BaseEntanglement) and not data.read:
+            data.read = True
+            now = self.simulator.tc
+            data.store_error_model((now - data.creation_time).sec, self.decoherence_rate)
 
         if remove:
             self._usage -= 1
@@ -345,56 +353,6 @@ class QuantumMemory(Entity):
             qubit.set_event(QuantumMemory, None)
 
         return qubit, data
-
-    @overload
-    def read(self, key: int | str, *, destructive=True, must: None = None) -> tuple[MemoryQubit, QuantumModel] | None:
-        """
-        Read a qubit and set fidelity on associated quantum model.
-
-        Args:
-            key: Qubit address or EPR name.
-            destructive: If True, remove the quantum model after reading.
-
-        Returns:
-            Qubit and associated quantum model, or None if it does not exist.
-        """
-        pass
-
-    @overload
-    def read(self, key: int | str, *, destructive=True, must: Literal[True]) -> tuple[MemoryQubit, QuantumModel]:
-        """
-        Read a qubit and set fidelity on associated quantum model.
-
-        Args:
-            key: Qubit address or EPR name.
-            destructive: If True, remove the quantum model after reading.
-            must: True.
-
-        Returns:
-            Qubit and associated quantum model.
-
-        Raises:
-            IndexError - qubit not found.
-            ValueError - no quantum information is stored
-        """
-        pass
-
-    def read(self, key: int | str, *, destructive=True, must: bool | None = None):
-        qubit_pair = self.get(key, must=cast(Any, must), remove=destructive)
-        if qubit_pair is None:
-            return None
-
-        qubit, data = qubit_pair
-        if data is None and must:
-            raise ValueError(f"{self}: no data at index {qubit.addr}")
-
-        if isinstance(data, BaseEntanglement) and not data.read:
-            # set fidelity at read time
-            sec_diff = self.simulator.tc.sec - data.creation_time.sec
-            data.store_error_model(t=sec_diff, decoherence_rate=self.decoherence_rate, **self.store_error_model_args)
-            data.read = True
-
-        return qubit_pair
 
     def write(
         self, qm: QuantumModel, *, path_id: int | None = None, address: int | None = None, key: str | None = None
@@ -526,7 +484,7 @@ class QuantumMemory(Entity):
         simulator = self.simulator
 
         qm.is_decoherenced = True
-        if self.read(qm.name) is None:
+        if self.get(qm.name, remove=True) is None:
             return
 
         qubit.state = QubitState.RELEASE

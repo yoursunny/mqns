@@ -3,7 +3,7 @@ import pytest
 from mqns.entity.memory import QubitState
 from mqns.entity.node import Application, Node, QNode
 from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk
-from mqns.models.epr import BaseEntanglement
+from mqns.models.epr import WernerStateEntanglement
 from mqns.network.network import QuantumNetwork, TimingModeSync
 from mqns.network.protocol.event import (
     ManageActiveChannels,
@@ -33,14 +33,13 @@ class NetworkLayer(Application):
         self.memory = self.own.memory
 
     def handle_entangle(self, event: QubitEntangledEvent):
-        qubit, epr = self.memory.read(event.qubit.addr, must=True, destructive=False)
+        qubit, epr = self.memory.get(event.qubit.addr, must=WernerStateEntanglement, set_fidelity=True)
         assert qubit == event.qubit
-        assert isinstance(epr, BaseEntanglement)
         self.entangle.append((event.t.sec, epr.creation_time.sec))
 
         if not isinstance(self.release_after, float):
             return
-        self.memory.read(event.qubit.addr)
+        self.memory.get(event.qubit.addr, remove=True)
         event.qubit.state = QubitState.RELEASE
         self.simulator.add_event(QubitReleasedEvent(self.own, event.qubit, t=event.t + self.release_after, by=self))
         self.release_after = None

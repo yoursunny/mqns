@@ -85,7 +85,7 @@ class MuxSchemeDynamicBase(MuxScheme):
         possible_path_ids = self.qchannel_paths_map.get(qubit.qchannel.name, [])
         if not possible_path_ids:
             log.debug(f"{self.own}: release entangled qubit {qubit.addr} due to uninstalled path")
-            self.fw.release_qubit(qubit, read=True)
+            self.fw.release_qubit(qubit, need_remove=True)
 
         return possible_path_ids
 
