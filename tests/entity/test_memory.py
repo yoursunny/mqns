@@ -49,11 +49,11 @@ def test_write_and_read_with_path_and_key():
     assert mem.write(epr2, path_id=0, key=key) is None
 
     # Should be able to read it
-    qubit, data = mem.get("epr1", must=WernerStateEntanglement, remove=True)
+    qubit, data = mem.read("epr1", must=WernerStateEntanglement, remove=True)
     assert data.name == "epr1"
     assert mem._usage == 0
 
-    assert pytest.raises(ValueError, lambda: mem.get(qubit.addr, must=WernerStateEntanglement))
+    assert pytest.raises(ValueError, lambda: mem.read(qubit.addr, must=WernerStateEntanglement))
 
 
 def test_channel_qubit_assignment_and_search():
@@ -97,7 +97,7 @@ def test_decoherence_event_removes_qubit():
     # Expect it to decohere at t=1.0
     sim.run()
 
-    res = mem.get("epr3")
+    res = mem.read("epr3")
     assert res is None
     assert qubit.state == QubitState.RELEASE
 
@@ -167,10 +167,10 @@ def test_memory_sync_qubit():
     n1.install(s)
 
     assert m.write(q1)
-    assert m.get("test_qubit") is not None
+    assert m.read("test_qubit") is not None
 
-    assert m.get("nonexistent") is None
-    assert pytest.raises(IndexError, lambda: m.get("nonexistent", must=True))
+    assert m.read("nonexistent") is None
+    assert pytest.raises(IndexError, lambda: m.read("nonexistent", must=True))
 
 
 def test_memory_sync_qubit_limited():
@@ -190,13 +190,13 @@ def test_memory_sync_qubit_limited():
     assert not m.write(q)
     assert m.count == 5
 
-    q = m.get("q4", remove=True)
+    q = m.read("q4", remove=True)
     assert q is not None
     assert m.count == 4
     q = Qubit(name="q6")
     assert m.write(q)
     assert m.count == 5
-    assert m.get("q6", must=True)[0].addr == 3
+    assert m.read("q6", must=True)[0].addr == 3
 
 
 def test_memory_async_qubit():

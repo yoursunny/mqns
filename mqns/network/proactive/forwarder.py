@@ -518,8 +518,8 @@ class ProactiveForwarder(Application):
             partner: quantum node with which entanglements are shared.
         """
         # read qubits to set fidelity at this time
-        _, epr0 = self.memory.get(mq0.addr, must=WernerStateEntanglement, set_fidelity=True)
-        _, epr1 = self.memory.get(mq1.addr, must=WernerStateEntanglement, set_fidelity=True, remove=True)
+        _, epr0 = self.memory.read(mq0.addr, must=WernerStateEntanglement, set_fidelity=True)
+        _, epr1 = self.memory.read(mq1.addr, must=WernerStateEntanglement, set_fidelity=True, remove=True)
 
         log.debug(
             f"{self.own}: request purif qubit {mq0.addr} (F={epr0.fidelity}) and "
@@ -561,8 +561,8 @@ class ProactiveForwarder(Application):
         """
         # mq0 is the "kept" memory whose fidelity would be increased if purification succeeds
         # mq1 is the "measured" memory that is consumed during purification
-        mq0, epr0 = self.memory.get(msg["epr"], must=WernerStateEntanglement, set_fidelity=True)
-        mq1, epr1 = self.memory.get(msg["measure_epr"], must=WernerStateEntanglement, set_fidelity=True, remove=True)
+        mq0, epr0 = self.memory.read(msg["epr"], must=WernerStateEntanglement, set_fidelity=True)
+        mq1, epr1 = self.memory.read(msg["measure_epr"], must=WernerStateEntanglement, set_fidelity=True, remove=True)
         # TODO: handle the exception case when an EPR is decohered and not found in memory
 
         for mq in (mq0, mq1):
@@ -625,7 +625,7 @@ class ProactiveForwarder(Application):
             fib_entry: FIB entry associated with path_id in the message.
 
         """
-        qubit, epr = self.memory.get(msg["epr"], must=WernerStateEntanglement)
+        qubit, epr = self.memory.read(msg["epr"], must=WernerStateEntanglement)
         # TODO: handle the exception case when an EPR is decohered and not found in memory
 
         result = msg["result"]
@@ -668,7 +668,7 @@ class ProactiveForwarder(Application):
             log.debug(f"{self.own}: INT phase is over -> stop swaps")
             return
 
-        _, epr = self.memory.get(qubit.addr, must=WernerStateEntanglement)
+        _, epr = self.memory.read(qubit.addr, must=WernerStateEntanglement)
         if self.can_consume(fib_entry, epr):
             self.consume_and_release(qubit)
             return
@@ -715,7 +715,7 @@ class ProactiveForwarder(Application):
         prev_tuple: tuple[QNode, MemoryQubit, WernerStateEntanglement] | None = None
         next_tuple: tuple[QNode, MemoryQubit, WernerStateEntanglement] | None = None
         for addr in (mq0.addr, mq1.addr):
-            qubit, epr = self.memory.get(addr, must=WernerStateEntanglement, remove=True)
+            qubit, epr = self.memory.read(addr, must=WernerStateEntanglement, remove=True)
             if epr.dst == self.own:
                 assert epr.src is not None
                 prev_tuple = epr.src, qubit, epr
@@ -804,7 +804,7 @@ class ProactiveForwarder(Application):
         new_epr = None if new_epr_name is None else self.remote_swapped_eprs.pop(new_epr_name)
 
         epr_name = msg["epr"]
-        qubit_pair = self.memory.get(epr_name)
+        qubit_pair = self.memory.read(epr_name)
         if qubit_pair is not None:
             qubit, _ = qubit_pair
             if qubit.state == QubitState.ENTANGLED0:
@@ -958,7 +958,7 @@ class ProactiveForwarder(Application):
         """
         Consume an entangled qubit.
         """
-        _, qm = self.memory.get(qubit.addr, must=WernerStateEntanglement, set_fidelity=True, remove=True)
+        _, qm = self.memory.read(qubit.addr, must=WernerStateEntanglement, set_fidelity=True, remove=True)
         assert qm.src is not None
         assert qm.dst is not None
 
@@ -977,7 +977,7 @@ class ProactiveForwarder(Application):
         simulator = self.simulator
 
         if need_remove:
-            self.memory.get(qubit.addr, remove=True)
+            self.memory.read(qubit.addr, remove=True)
 
         qubit.state = QubitState.RELEASE
         simulator.add_event(QubitReleasedEvent(self.own, qubit, t=simulator.tc, by=self))

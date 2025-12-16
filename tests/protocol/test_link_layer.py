@@ -33,13 +33,13 @@ class NetworkLayer(Application):
         self.memory = self.own.memory
 
     def handle_entangle(self, event: QubitEntangledEvent):
-        qubit, epr = self.memory.get(event.qubit.addr, must=WernerStateEntanglement, set_fidelity=True)
+        qubit, epr = self.memory.read(event.qubit.addr, must=WernerStateEntanglement, set_fidelity=True)
         assert qubit == event.qubit
         self.entangle.append((event.t.sec, epr.creation_time.sec))
 
         if not isinstance(self.release_after, float):
             return
-        self.memory.get(event.qubit.addr, remove=True)
+        self.memory.read(event.qubit.addr, remove=True)
         event.qubit.state = QubitState.RELEASE
         self.simulator.add_event(QubitReleasedEvent(self.own, event.qubit, t=event.t + self.release_after, by=self))
         self.release_after = None

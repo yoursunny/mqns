@@ -55,7 +55,6 @@ class QuantumMemoryInitKwargs(TypedDict, total=False):
     capacity: int
     delay: DelayInput
     t_cohere: float
-    store_error_model_args: dict
 
 
 class QuantumMemory(Entity):
@@ -73,7 +72,6 @@ class QuantumMemory(Entity):
             capacity: the capacity of this quantum memory, must be positive.
             delay: async read/write delay in seconds, or a ``DelayModel``.
             t_cohere: memory dephasing time in seconds, defaults to 1.0.
-            store_error_model_args: parameters passed to `QuantumModel.store_error_model()`.
         """
         super().__init__(name=name)
         self.node: QNode
@@ -91,7 +89,6 @@ class QuantumMemory(Entity):
         """Read/write delay, only applicable to async access."""
 
         self.t_cohere = kwargs.get("t_cohere", 1.0)
-        self.store_error_model_args = kwargs.get("store_error_model_args", {})
 
         assert self.capacity >= 1
         self._storage: list[tuple[MemoryQubit, QuantumModel | None]] = [
@@ -123,7 +120,7 @@ class QuantumMemory(Entity):
         simulator = self.simulator
 
         if isinstance(event, MemoryReadRequestEvent):
-            result = self.get(event.key)  # will not update fidelity
+            result = self.read(event.key)  # will not update fidelity
             simulator.add_event(
                 MemoryReadResponseEvent(self.node, result, request=event, t=simulator.tc + self.delay.calculate(), by=self)
             )
@@ -275,7 +272,7 @@ class QuantumMemory(Entity):
         return -1
 
     @overload
-    def get(self, key: int | str, *, must: None = None, remove=False) -> tuple[MemoryQubit, QuantumModel | None] | None:
+    def read(self, key: int | str, *, must: None = None, remove=False) -> tuple[MemoryQubit, QuantumModel | None] | None:
         """
         Retrieve a qubit and associated quantum model.
 
@@ -290,7 +287,7 @@ class QuantumMemory(Entity):
         pass
 
     @overload
-    def get(self, key: int | str, *, must: Literal[True], remove=False) -> tuple[MemoryQubit, QuantumModel | None]:
+    def read(self, key: int | str, *, must: Literal[True], remove=False) -> tuple[MemoryQubit, QuantumModel | None]:
         """
         Retrieve a qubit and associated quantum model.
 
@@ -308,7 +305,7 @@ class QuantumMemory(Entity):
         pass
 
     @overload
-    def get(
+    def read(
         self, key: int | str, *, must: type[QuantumModelT], set_fidelity=False, remove=False
     ) -> tuple[MemoryQubit, QuantumModelT]:
         """
@@ -329,7 +326,7 @@ class QuantumMemory(Entity):
         """
         pass
 
-    def get(self, key: int | str, *, must: bool | type[QuantumModelT] | None = None, set_fidelity=False, remove=False):
+    def read(self, key: int | str, *, must: bool | type[QuantumModelT] | None = None, set_fidelity=False, remove=False):
         addr = self._find_by_key(key)
         if addr == -1:
             if must:
@@ -484,7 +481,7 @@ class QuantumMemory(Entity):
         simulator = self.simulator
 
         qm.is_decoherenced = True
-        if self.get(qm.name, remove=True) is None:
+        if self.read(qm.name, remove=True) is None:
             return
 
         qubit.state = QubitState.RELEASE
