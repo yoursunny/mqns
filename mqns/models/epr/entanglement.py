@@ -124,6 +124,8 @@ class BaseEntanglement(ABC, Generic[EntanglementT], QuantumModel):
         *,
         now: Time,
         ps=1.0,
+        dr0: tuple[float, float] = (0.0, 0.0),
+        dr1: tuple[float, float] = (0.0, 0.0),
     ) -> EntanglementT | None:
         """
         Perform swapping between `epr0` and `epr1`, and distribute a new entanglement.
@@ -133,12 +135,13 @@ class BaseEntanglement(ABC, Generic[EntanglementT], QuantumModel):
             epr1: right entanglement.
             now: current timestamp.
             ps: probability of successful swapping.
+            dr0: decoherence rate of memories at epr0.src,dst.
+            dr1: decoherence rate of memories at epr1.src,dst.
 
         Returns:
             New entanglement, or None if swap failed.
         """
 
-        _ = now
         assert epr0.decoherence_time is not None
         assert epr1.decoherence_time is not None
         assert epr0.dst == epr1.src  # src and dst can be None
@@ -152,7 +155,14 @@ class BaseEntanglement(ABC, Generic[EntanglementT], QuantumModel):
             return None
 
         orig_eprs: list[EntanglementT] = []
-        for epr in (epr0, epr1):
+        for epr, dr_memories in ((epr0, dr0), (epr1, dr1)):
+            if not epr.read:
+                epr.read = True
+                epr.store_error_model(
+                    (now - epr.creation_time).sec,
+                    max(dr_memories),  # TODO #92 change to `sum`
+                )
+
             if epr.ch_index > -1:
                 orig_eprs.append(epr)
             else:

@@ -28,7 +28,7 @@
 import heapq
 import itertools
 from collections.abc import Callable, Iterable, Iterator
-from typing import TYPE_CHECKING, Any, Literal, TypedDict, overload
+from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast, overload
 
 from typing_extensions import Unpack, override
 
@@ -41,7 +41,7 @@ from mqns.entity.memory.event import (
 )
 from mqns.entity.memory.memory_qubit import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
-from mqns.models.core import QuantumModel
+from mqns.models.core import QuantumModel, QuantumModelT
 from mqns.models.delay import DelayInput, parseDelay
 from mqns.models.epr import BaseEntanglement
 from mqns.simulator import Event, func_to_event
@@ -269,43 +269,76 @@ class QuantumMemory(Entity):
         return -1
 
     @overload
-    def get(self, key: int | str, *, must: None = None) -> tuple[MemoryQubit, QuantumModel | None] | None:
+    def get(self, key: int | str, *, must: None = None, remove=False) -> tuple[MemoryQubit, QuantumModel | None] | None:
         """
-        Retrieve a qubit and associated quantum model without removing it.
+        Retrieve a qubit and associated quantum model.
 
         Args:
             key: Qubit address or EPR name.
+            must: None.
+            remove: Whether to remove the quantum model.
 
         Returns:
-            Qubit and associated quantum model, or None if it does not exist.
+            Qubit and associated quantum model (possibly empty), or None if it does not exist.
         """
         pass
 
     @overload
-    def get(self, key: int | str, *, must: Literal[True]) -> tuple[MemoryQubit, QuantumModel | None]:
+    def get(self, key: int | str, *, must: Literal[True], remove=False) -> tuple[MemoryQubit, QuantumModel | None]:
         """
-        Retrieve a qubit and associated quantum model without removing it.
+        Retrieve a qubit and associated quantum model.
 
         Args:
             key: Qubit address or EPR name.
             must: True.
+            remove: Whether to remove the quantum model.
 
         Returns:
-            Qubit and associated quantum model.
+            Qubit and associated quantum model (possibly empty).
 
         Raises:
             IndexError - qubit not found.
         """
         pass
 
-    def get(self, key: int | str, *, must: bool | None = None) -> tuple[MemoryQubit, QuantumModel | None] | None:
-        idx = self._find_by_key(key)
-        if idx != -1:
-            return self._storage[idx]
-        elif must:
-            raise IndexError(f"{self}: cannot find {key}")
-        else:
+    @overload
+    def get(self, key: int | str, *, must: type[QuantumModelT], remove=False) -> tuple[MemoryQubit, QuantumModelT]:
+        """
+        Retrieve a qubit and associated quantum model.
+
+        Args:
+            key: Qubit address or EPR name.
+            must: expected subclass of QuantumModel.
+            remove: Whether to remove the quantum model.
+
+        Returns:
+            Qubit and associated quantum model (has type specified in `must`).
+
+        Raises:
+            IndexError - qubit not found.
+            ValueError - no quantum information is stored or it is not the expected type.
+        """
+        pass
+
+    def get(self, key: int | str, *, must: bool | type[QuantumModelT] | None = None, remove=False):
+        addr = self._find_by_key(key)
+        if addr == -1:
+            if must:
+                raise IndexError(f"{self}: cannot find {key}")
             return None
+
+        qubit, data = self._storage[addr]
+        if type(must) is type and type(data) is not must:
+            raise ValueError(f"{self}: data at {addr} is not {must}")
+
+        if remove:
+            self._usage -= 1
+            self._storage[addr] = (qubit, None)
+
+            # cancel scheduled decoherence event
+            qubit.set_event(QuantumMemory, None)
+
+        return qubit, data
 
     @overload
     def read(self, key: int | str, *, destructive=True, must: None = None) -> tuple[MemoryQubit, QuantumModel] | None:
@@ -340,38 +373,22 @@ class QuantumMemory(Entity):
         """
         pass
 
-    def read(self, key: int | str, *, destructive=True, must: bool | None = None) -> tuple[MemoryQubit, QuantumModel] | None:
-        addr = self._find_by_key(key)
-        if addr == -1:
-            if must:
-                raise IndexError(f"{self}: cannot find {key}")
+    def read(self, key: int | str, *, destructive=True, must: bool | None = None):
+        qubit_pair = self.get(key, must=cast(Any, must), remove=destructive)
+        if qubit_pair is None:
             return None
 
-        qubit, data = self._storage[addr]
-        if not data:
-            if must:
-                raise ValueError(f"{self}: no data at index {addr}")
-            return None
+        qubit, data = qubit_pair
+        if data is None and must:
+            raise ValueError(f"{self}: no data at index {qubit.addr}")
 
-        if destructive:
-            self._usage -= 1
-            self._storage[addr] = (qubit, None)
-
-            # cancel scheduled decoherence event
-            qubit.set_event(QuantumMemory, None)
-
-        if isinstance(data, BaseEntanglement):
-            self._read_epr(data)
-
-        return (qubit, data)
-
-    def _read_epr(self, data: BaseEntanglement):
-        sec_diff = self.simulator.tc.sec - data.creation_time.sec
-
-        # set fidelity at read time
-        if not data.read:
+        if isinstance(data, BaseEntanglement) and not data.read:
+            # set fidelity at read time
+            sec_diff = self.simulator.tc.sec - data.creation_time.sec
             data.store_error_model(t=sec_diff, decoherence_rate=self.decoherence_rate, **self.store_error_model_args)
             data.read = True
+
+        return qubit_pair
 
     def write(
         self, qm: QuantumModel, *, path_id: int | None = None, address: int | None = None, key: str | None = None
