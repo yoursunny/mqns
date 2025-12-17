@@ -28,7 +28,7 @@
 import heapq
 import itertools
 from collections.abc import Callable, Iterable, Iterator
-from typing import TYPE_CHECKING, Any, Literal, TypedDict, overload
+from typing import Any, Literal, TypedDict, overload
 
 from typing_extensions import Unpack, override
 
@@ -41,13 +41,11 @@ from mqns.entity.memory.event import (
 )
 from mqns.entity.memory.memory_qubit import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
+from mqns.entity.qchannel import QuantumChannel
 from mqns.models.core import QuantumModel, QuantumModelT
 from mqns.models.delay import DelayInput, parseDelay
 from mqns.models.epr import BaseEntanglement
 from mqns.simulator import Event, Simulator
-
-if TYPE_CHECKING:
-    from mqns.entity.qchannel import QuantumChannel
 
 
 class QuantumMemoryInitKwargs(TypedDict, total=False):
@@ -95,7 +93,7 @@ class QuantumMemory(Entity):
         ]
         self._usage = 0
 
-        self._by_qchannel = dict["QuantumChannel", list[int]]()
+        self._by_qchannel = dict[QuantumChannel, list[int]]()
         """
         Mapping from qchannel to assigned qubit addrs.
         Key is quantum channel assigned to qubits.
@@ -139,7 +137,7 @@ class QuantumMemory(Entity):
         self,
         predicate: Callable[[MemoryQubit, QuantumModel | None], bool],
         *,
-        qchannel: "QuantumChannel|None" = None,
+        qchannel: QuantumChannel | None = None,
     ) -> Iterator[tuple[MemoryQubit, QuantumModel | None]]:
         pass
 
@@ -148,7 +146,7 @@ class QuantumMemory(Entity):
         self,
         predicate: Callable[[MemoryQubit, QuantumModelT], bool],
         *,
-        qchannel: "QuantumChannel|None" = None,
+        qchannel: QuantumChannel | None = None,
         has: type[QuantumModelT],
     ) -> Iterator[tuple[MemoryQubit, QuantumModelT]]:
         pass
@@ -157,7 +155,7 @@ class QuantumMemory(Entity):
         self,
         predicate: Callable[[MemoryQubit, Any], bool],
         *,
-        qchannel: "QuantumChannel|None" = None,
+        qchannel: QuantumChannel | None = None,
         has: type[QuantumModelT] | None = None,
     ) -> Iterator[Any]:
         """
@@ -176,7 +174,7 @@ class QuantumMemory(Entity):
             if (has is None or type(data) is has) and predicate(qubit, data):
                 yield (qubit, data)
 
-    def assign(self, ch: "QuantumChannel", *, n=1) -> list[int]:
+    def assign(self, ch: QuantumChannel, *, n=1) -> list[int]:
         """
         Assign n qubits to a particular quantum channel.
 
@@ -215,18 +213,17 @@ class QuantumMemory(Entity):
 
             qubit.qchannel = None
 
-    def allocate(self, ch: "QuantumChannel", path_id: int, path_direction: PathDirection, *, n=1) -> list[int]:
+    def allocate(
+        self, ch: QuantumChannel, path_id: int, path_direction: PathDirection, *, n: int | Literal["all"] = 1
+    ) -> list[int]:
         """
         Allocate n qubits to a given path ID.
-
-        This method searches for n qubits that have not yet been allocated
-        (i.e., `path_id` is None), assigns them the provided `path_id`, and returns their addresses.
 
         Args:
             ch: The quantum channel to which the memory qubit has been assigned.
             path_id: The identifier of the entanglement path to which the memory qubit will be allocated.
             path_direction: The end of the path to which the qubit allocated qubit points.
-                    This is typically either the source or the destination of the path (LEFT/RIGHT).
+            n: Desired quantity, or "all" for all remaining qubits assigned to the channel.
 
         Returns:
             List of qubit addresses.
@@ -234,14 +231,21 @@ class QuantumMemory(Entity):
         Raises:
             OverflowError - insufficient unallocated qubits.
         """
+        iterable = self.find(lambda q, _: q.path_id is None, qchannel=ch)
+        if n == "all":
+            want_all = True
+        else:
+            want_all = False
+            iterable = itertools.islice(iterable, n)
+
         addrs: list[int] = []
-        for qubit, _ in itertools.islice(self.find(lambda q, _: q.path_id is None, qchannel=ch), n):
+        for qubit, _ in iterable:
             qubit.path_id = path_id
             qubit.path_direction = path_direction
             addrs.append(qubit.addr)
 
-        if len(addrs) != n:
-            raise OverflowError(f"{self}: insufficient qubits for allocate(n={n})")
+        if not want_all and len(addrs) != n:
+            raise OverflowError(f"{self}: insufficient qubits for allocate({ch},n={n})")
         return addrs
 
     def deallocate(self, *addrs: int) -> None:
@@ -407,20 +411,6 @@ class QuantumMemory(Entity):
             qubit.reset_state()
             self._storage[qubit.addr] = (qubit, None)
         self._usage = 0
-
-    def get_channel_qubits(self, ch: "QuantumChannel") -> list[tuple[MemoryQubit, QuantumModel | None]]:
-        """Retrieve all memory qubits associated with a specific quantum channel.
-
-        This method returns all memory qubits that are linked to the given quantum channel name,
-        regardless of their state or usage.
-
-        Args:
-            ch: The quantum channel to filter qubits by.
-
-        Returns:
-            A list of memory qubits (along with their `QuantumModel`) that are bound to the specified quantum channel.
-        """
-        return list(self.find(lambda *_: True, qchannel=ch))
 
     def _schedule_decohere(self, qubit: MemoryQubit, epr: BaseEntanglement):
         from mqns.network.protocol.event import QubitDecoheredEvent  # noqa: PLC0415

@@ -325,13 +325,13 @@ class ProactiveForwarder(Application):
             l_qchannel = self.own.get_qchannel(l_neighbor)
 
             # associate path with qchannel and allocate qubits
-            self.mux.install_path_neighbor(instructions, fib_entry, PathDirection.LEFT, l_neighbor, l_qchannel)
+            self.mux.install_path_neighbor(instructions, fib_entry, PathDirection.L, l_neighbor, l_qchannel)
 
         if r_neighbor:
             r_qchannel = self.own.get_qchannel(r_neighbor)
 
             # associate path with qchannel and allocate qubits
-            self.mux.install_path_neighbor(instructions, fib_entry, PathDirection.RIGHT, r_neighbor, r_qchannel)
+            self.mux.install_path_neighbor(instructions, fib_entry, PathDirection.R, r_neighbor, r_qchannel)
 
             # instruct LinkLayer to start generating EPRs on the qchannel toward the right neighbor
             simulator.add_event(
@@ -373,13 +373,13 @@ class ProactiveForwarder(Application):
 
             # disassociate path with qchannel and deallocate qubits
             _ = l_qchannel
-            self.mux.uninstall_path_neighbor(fib_entry, PathDirection.LEFT, l_neighbor, l_qchannel)
+            self.mux.uninstall_path_neighbor(fib_entry, PathDirection.L, l_neighbor, l_qchannel)
 
         if r_neighbor:
             r_qchannel = self.own.get_qchannel(r_neighbor)
 
             # disassociate path with qchannel and deallocate qubits
-            self.mux.uninstall_path_neighbor(fib_entry, PathDirection.RIGHT, r_neighbor, r_qchannel)
+            self.mux.uninstall_path_neighbor(fib_entry, PathDirection.R, r_neighbor, r_qchannel)
 
             # instruct LinkLayer to stop generating EPRs on the qchannel toward the right neighbor
             simulator.add_event(

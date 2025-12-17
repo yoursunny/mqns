@@ -51,7 +51,7 @@ def test_write_and_read_with_path_and_key():
     key = "n1_peer_0_0"
 
     # First allocate memory with path ID
-    addrs = mem.allocate(scenario.qc, 0, PathDirection.LEFT)
+    addrs = mem.allocate(scenario.qc, 0, PathDirection.L)
     assert len(addrs) == 1
     addr = addrs[0]
     mem._storage[addr][0].active = key
@@ -79,15 +79,23 @@ def test_channel_qubit_assignment_and_search():
     scenario = TwoNodes(capacity=3)
     mem = scenario.m1
 
-    addrs = mem.assign(scenario.qc)
-    assert len(addrs) == 1
+    assigned = mem.assign(scenario.qc, n=2)
+    assert len(assigned) == 2
 
-    # Assigned qubit should now be returned by get_channel_qubits
-    qubits = mem.get_channel_qubits(scenario.qc)
-    assert len(qubits) == 1
-    qubit, data = qubits[0]
-    assert qubit.qchannel == scenario.qc
-    assert data is None
+    allocated = mem.allocate(scenario.qc, 7, PathDirection.R, n="all")
+    assert len(allocated) == 2
+
+    with pytest.raises(OverflowError, match="insufficient qubits"):
+        mem.allocate(scenario.qc, 9, PathDirection.L)
+
+    # Assigned qubit should now be returned by find()
+    qubits = list(mem.find(lambda *_: True, qchannel=scenario.qc))
+    assert len(qubits) == 2
+    for qubit, data in qubits:
+        assert qubit.qchannel == scenario.qc
+        assert qubit.path_id == 7
+        assert qubit.path_direction == PathDirection.R
+        assert data is None
 
 
 def test_decoherence_event_removes_qubit():
@@ -123,7 +131,7 @@ def test_memory_clear_and_deallocate():
     assert mem.count == 0
 
     # Test deallocate
-    addrs = mem.allocate(scenario.qc, 7, PathDirection.LEFT)
+    addrs = mem.allocate(scenario.qc, 7, PathDirection.L)
     assert len(addrs) == 1
     addr = addrs[0]
     mem.deallocate(addr)
@@ -136,7 +144,7 @@ def test_qubit_reservation_behavior():
     mem = scenario.m1
     mem.assign(scenario.qc, n=2)
 
-    addrs = mem.allocate(scenario.qc, 42, PathDirection.LEFT)
+    addrs = mem.allocate(scenario.qc, 42, PathDirection.L)
     assert len(addrs) == 1
     addr1 = addrs[0]
     q1 = mem._storage[addr1][0]

@@ -246,7 +246,7 @@ class LinkLayer(Application):
             - Qubit reservations are spaced out in time using a fixed `attempt_rate`.
 
         """
-        qubits = self.memory.get_channel_qubits(qchannel)
+        qubits = list(self.memory.find(lambda *_: True, qchannel=qchannel))
         log.debug(f"{self.own}: {qchannel.name} has assigned qubits: {qubits}")
         for qb, data in qubits:
             if qb.path_id != path_id or qb.state != QubitState.RAW:
