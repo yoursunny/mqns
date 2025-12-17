@@ -67,12 +67,12 @@ def test_write_and_read_with_path_and_key():
         mem.write(key, epr2)
 
     # Should be able to read it
-    qubit, data = mem.read("epr1", must=WernerStateEntanglement, remove=True)
+    qubit, data = mem.read("epr1", has=WernerStateEntanglement, remove=True)
     assert data.name == "epr1"
     assert mem._usage == 0
 
     with pytest.raises(ValueError, match="data at 0 is not"):
-        mem.read(qubit.addr, must=WernerStateEntanglement)
+        mem.read(qubit.addr, has=WernerStateEntanglement)
 
 
 def test_channel_qubit_assignment_and_search():

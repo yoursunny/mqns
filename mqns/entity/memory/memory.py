@@ -146,19 +146,19 @@ class QuantumMemory(Entity):
     @overload
     def find(
         self,
-        predicate: Callable[[MemoryQubit, BaseEntanglement], bool],
+        predicate: Callable[[MemoryQubit, QuantumModelT], bool],
         *,
-        has_epr: Literal[True],
         qchannel: "QuantumChannel|None" = None,
-    ) -> Iterator[tuple[MemoryQubit, BaseEntanglement]]:
+        has: type[QuantumModelT],
+    ) -> Iterator[tuple[MemoryQubit, QuantumModelT]]:
         pass
 
     def find(
         self,
         predicate: Callable[[MemoryQubit, Any], bool],
         *,
-        has_epr=False,
         qchannel: "QuantumChannel|None" = None,
+        has: type[QuantumModelT] | None = None,
     ) -> Iterator[Any]:
         """
         Iterate over qubits and associated data that satisfy a predicate.
@@ -166,18 +166,15 @@ class QuantumMemory(Entity):
         Args:
             predicate: Callback function to accept or reject each qubit and associated data.
             qchannel: If set, only qubits assigned to specified quantum channel are considered.
-            has_epr: If true, only qubits with associated entanglements are considered.
+            has: If set, only qubits with associated data of this type are considered.
         """
-        # This function is a hot spot for performance optimization.
-        # - self._by_qchannel speeds up filtering by assigned qchannel
-        # - hasattr(qm, "ch_index") is faster than isinstance(qm, BaseEntanglement)
         iterable: Iterable[tuple[MemoryQubit, QuantumModel | None]] = self._storage
         if qchannel is not None:
             ch_addrs = self._by_qchannel.get(qchannel, [])
             iterable = (self._storage[addr] for addr in ch_addrs)
-        for qubit, qm in iterable:
-            if (not has_epr or hasattr(qm, "ch_index")) and predicate(qubit, qm):
-                yield (qubit, qm)
+        for qubit, data in iterable:
+            if (has is None or type(data) is has) and predicate(qubit, data):
+                yield (qubit, data)
 
     def assign(self, ch: "QuantumChannel", *, n=1) -> list[int]:
         """
@@ -261,20 +258,20 @@ class QuantumMemory(Entity):
             qubit.path_direction = None
 
     @overload
-    def read(
-        self, key: int | str, *, must: None = None, remove: bool | QuantumModel = False
-    ) -> tuple[MemoryQubit, QuantumModel | None] | None:
+    def read(self, key: int | str, *, remove: bool | QuantumModel = False) -> tuple[MemoryQubit, QuantumModel | None] | None:
         """
-        Retrieve a qubit and associated quantum model.
+        Retrieve a qubit and associated data.
 
         Args:
             key: Qubit address or EPR name.
-            must: None.
-            remove: Whether to remove the quantum model.
+            remove: Whether to remove the data.
                     If specified as QuantumModel, remove only if stored data is the same object.
 
         Returns:
-            Qubit and associated quantum model (possibly empty), or None if it does not exist.
+            Qubit and associated data (possibly empty), or None if qubit is not found by EPR name.
+
+        Raises:
+            Index - qubit address out of range.
         """
         pass
 
@@ -283,16 +280,16 @@ class QuantumMemory(Entity):
         self, key: int | str, *, must: Literal[True], remove: bool | QuantumModel = False
     ) -> tuple[MemoryQubit, QuantumModel | None]:
         """
-        Retrieve a qubit and associated quantum model.
+        Retrieve a qubit and associated data.
 
         Args:
             key: Qubit address or EPR name.
             must: True.
-            remove: Whether to remove the quantum model.
+            remove: Whether to remove the data.
                     If specified as QuantumModel, remove only if stored data is the same object.
 
         Returns:
-            Qubit and associated quantum model (possibly empty).
+            Qubit and associated data (possibly empty).
 
         Raises:
             IndexError - qubit not found.
@@ -301,20 +298,27 @@ class QuantumMemory(Entity):
 
     @overload
     def read(
-        self, key: int | str, *, must: type[QuantumModelT], set_fidelity=False, remove: bool | QuantumModel = False
+        self,
+        key: int | str,
+        *,
+        must: Literal[True] = True,
+        has: type[QuantumModelT],
+        set_fidelity=False,
+        remove: bool | QuantumModel = False,
     ) -> tuple[MemoryQubit, QuantumModelT]:
         """
-        Retrieve a qubit and associated quantum model.
+        Retrieve a qubit and associated data.
 
         Args:
             key: Qubit address or EPR name.
-            must: Expected subclass of QuantumModel, tested with `type(data) is expected_type`.
+            must: True (implied).
+            has: Expected type of stored data.
             set_fidelity: Whether to update fidelity, XXX current formula is inaccurate for EPRs.
-            remove: Whether to remove the quantum model.
+            remove: Whether to remove the data.
                     If specified as QuantumModel, remove only if stored data is the same object.
 
         Returns:
-            Qubit and associated quantum model (has type specified in `must`).
+            Qubit and associated data (has type specified in `must`).
 
         Raises:
             IndexError - qubit not found.
@@ -326,7 +330,8 @@ class QuantumMemory(Entity):
         self,
         key: int | str,
         *,
-        must: bool | type[QuantumModelT] | None = None,
+        must=False,
+        has: type[QuantumModelT] | None = None,
         set_fidelity=False,
         remove: bool | QuantumModel = False,
     ):
@@ -336,12 +341,12 @@ class QuantumMemory(Entity):
             qubit, data = next(self.find(lambda _, v: getattr(v, "name", None) == key), (None, None))
 
         if qubit is None:
-            if must:
+            if must or has:
                 raise IndexError(f"{self}: cannot find {key}")
             return None
 
-        if must not in (None, True) and type(data) is not must:
-            raise ValueError(f"{self}: data at {qubit.addr} is not {must}")
+        if has and type(data) is not has:
+            raise ValueError(f"{self}: data at {qubit.addr} is not {has}")
 
         if set_fidelity and isinstance(data, BaseEntanglement) and not data.read:
             data.read = True
@@ -357,20 +362,20 @@ class QuantumMemory(Entity):
 
     def write(self, key: int | str | None, data: QuantumModel, *, replace=False) -> MemoryQubit:
         """
-        Store a quantum model in memory.
+        Store data in memory.
 
         Args:
             key: Qubit address, `qubit.active` identifier, or `None` for any unused qubit.
-            data: Quantum model to be stored.
+            data: Data to be stored.
                   If this is an EPR, a decoherence event is scheduled automatically.
-            replace: True allows replacing existing quantum model; False requires qubit to be empty.
+            replace: True allows replacing existing data; False requires qubit to be empty.
 
         Returns:
-            Qubit where the quantum model is stored.
+            Qubit where the data is stored.
 
         Raises:
             IndexError - qubit not found by `key` or no qubit available.
-            ValueError - `replace=False` but qubit has existing quantum model.
+            ValueError - `replace=False` but qubit has existing data.
         """
         if type(key) is int:
             qubit, old = self._storage[key]
@@ -433,7 +438,7 @@ class QuantumMemory(Entity):
 
         Args:
             qubit: The memory qubit that has reached its decoherence time.
-            qm: The assocated quantum model, which must also be an instance of `BaseEntanglement`.
+            epr: The associated entanglement.
 
         Returns:
             Whether the event should be dispatched to inform LinkLayer.

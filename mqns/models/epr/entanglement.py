@@ -108,8 +108,6 @@ class BaseEntanglement(ABC, Generic[EntanglementT], QuantumModel):
         Index of elementary entanglement in a path, smaller indices are on the left side.
         Negative means this is not an elementary entanglement.
         """
-        # QuantumMemory.find() performance optimization assumes that ch_index is present in this class
-        # but absent in other QuantumModel implementations.
         self.orig_eprs: list[EntanglementT] = []
         """Elementary entanglements that swapped into this entanglement."""
         self.tmp_path_ids: frozenset[int] | None = None
@@ -252,6 +250,4 @@ class BaseEntanglement(ABC, Generic[EntanglementT], QuantumModel):
         return q2
 
     def __repr__(self) -> str:
-        if self.name is not None:
-            return "<epr " + self.name + ">"
-        return super().__repr__()
+        return "<epr " + self.name + ">"
