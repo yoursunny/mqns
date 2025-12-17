@@ -44,7 +44,7 @@ from mqns.entity.node import QNode
 from mqns.models.core import QuantumModel, QuantumModelT
 from mqns.models.delay import DelayInput, parseDelay
 from mqns.models.epr import BaseEntanglement
-from mqns.simulator import Event, Simulator, func_to_event
+from mqns.simulator import Event, Simulator
 
 if TYPE_CHECKING:
     from mqns.entity.qchannel import QuantumChannel
@@ -261,7 +261,9 @@ class QuantumMemory(Entity):
             qubit.path_direction = None
 
     @overload
-    def read(self, key: int | str, *, must: None = None, remove=False) -> tuple[MemoryQubit, QuantumModel | None] | None:
+    def read(
+        self, key: int | str, *, must: None = None, remove: bool | QuantumModel = False
+    ) -> tuple[MemoryQubit, QuantumModel | None] | None:
         """
         Retrieve a qubit and associated quantum model.
 
@@ -269,6 +271,7 @@ class QuantumMemory(Entity):
             key: Qubit address or EPR name.
             must: None.
             remove: Whether to remove the quantum model.
+                    If specified as QuantumModel, remove only if stored data is the same object.
 
         Returns:
             Qubit and associated quantum model (possibly empty), or None if it does not exist.
@@ -276,7 +279,9 @@ class QuantumMemory(Entity):
         pass
 
     @overload
-    def read(self, key: int | str, *, must: Literal[True], remove=False) -> tuple[MemoryQubit, QuantumModel | None]:
+    def read(
+        self, key: int | str, *, must: Literal[True], remove: bool | QuantumModel = False
+    ) -> tuple[MemoryQubit, QuantumModel | None]:
         """
         Retrieve a qubit and associated quantum model.
 
@@ -284,6 +289,7 @@ class QuantumMemory(Entity):
             key: Qubit address or EPR name.
             must: True.
             remove: Whether to remove the quantum model.
+                    If specified as QuantumModel, remove only if stored data is the same object.
 
         Returns:
             Qubit and associated quantum model (possibly empty).
@@ -295,7 +301,7 @@ class QuantumMemory(Entity):
 
     @overload
     def read(
-        self, key: int | str, *, must: type[QuantumModelT], set_fidelity=False, remove=False
+        self, key: int | str, *, must: type[QuantumModelT], set_fidelity=False, remove: bool | QuantumModel = False
     ) -> tuple[MemoryQubit, QuantumModelT]:
         """
         Retrieve a qubit and associated quantum model.
@@ -305,6 +311,7 @@ class QuantumMemory(Entity):
             must: Expected subclass of QuantumModel, tested with `type(data) is expected_type`.
             set_fidelity: Whether to update fidelity, XXX current formula is inaccurate for EPRs.
             remove: Whether to remove the quantum model.
+                    If specified as QuantumModel, remove only if stored data is the same object.
 
         Returns:
             Qubit and associated quantum model (has type specified in `must`).
@@ -315,7 +322,14 @@ class QuantumMemory(Entity):
         """
         pass
 
-    def read(self, key: int | str, *, must: bool | type[QuantumModelT] | None = None, set_fidelity=False, remove=False):
+    def read(
+        self,
+        key: int | str,
+        *,
+        must: bool | type[QuantumModelT] | None = None,
+        set_fidelity=False,
+        remove: bool | QuantumModel = False,
+    ):
         if type(key) is int:
             qubit, data = self._storage[key]
         else:
@@ -334,7 +348,7 @@ class QuantumMemory(Entity):
             now = self.simulator.tc
             data.store_error_model((now - data.creation_time).sec, self.decoherence_rate)
 
-        if remove:
+        if remove in (True, data):
             qubit.set_event(QuantumMemory, None)  # cancel scheduled decoherence event
             self._usage -= 1
             self._storage[qubit.addr] = (qubit, None)
@@ -404,40 +418,36 @@ class QuantumMemory(Entity):
         return list(self.find(lambda *_: True, qchannel=ch))
 
     def _schedule_decohere(self, qubit: MemoryQubit, epr: BaseEntanglement):
+        from mqns.network.protocol.event import QubitDecoheredEvent  # noqa: PLC0415
+
         simulator = self.simulator
         assert epr.decoherence_time >= simulator.tc
-        event = func_to_event(epr.decoherence_time, self.decohere_qubit, qubit, epr, by=self)
+
+        event = QubitDecoheredEvent(self, qubit, epr, t=epr.decoherence_time)
         qubit.set_event(QuantumMemory, event)
         simulator.add_event(event)
 
-    def decohere_qubit(self, qubit: MemoryQubit, qm: BaseEntanglement):
+    def handle_decohere_qubit(self, qubit: MemoryQubit, epr: BaseEntanglement) -> bool:
         """
-        Mark the `BaseEntanglement` quantum model associated with a qubit as decohered.
-        This is invoked through decoherence event from `_schedule_decohere`.
-
-        1. Check whether the EPR pair still exists in memory via `self.read(key=qm)`.
-
-           - If the qubit was already released via swap/purify, it is safely ignored.
-           - If the qubit was re-entangled, it would be associated with a different quantum model
-             and would not be found via `self.read(key=qm)`.
-
-        2. If the EPR is still present, set the qubit to RELEASE state, and then
-           schedule a `QubitDecoheredEvent` to inform the link layer.
+        Part of `QubitDecoheredEvent` logic.
 
         Args:
             qubit: The memory qubit that has reached its decoherence time.
             qm: The assocated quantum model, which must also be an instance of `BaseEntanglement`.
+
+        Returns:
+            Whether the event should be dispatched to inform LinkLayer.
         """
-        from mqns.network.protocol.event import QubitDecoheredEvent  # noqa: PLC0415
 
-        simulator = self.simulator
+        epr.is_decoherenced = True
 
-        qm.is_decoherenced = True
-        if self.read(qm.name, remove=True) is None:
-            return
+        _, new_qm = self.read(qubit.addr, must=True, remove=epr)
+        if new_qm is not epr:
+            # qubit already released via swap/purify or re-entangled
+            return False
 
         qubit.state = QubitState.RELEASE
-        simulator.add_event(QubitDecoheredEvent(self.node, qubit, t=simulator.tc, by=self))
+        return True
 
     def __repr__(self) -> str:
         return "<memory " + self.name + ">"
