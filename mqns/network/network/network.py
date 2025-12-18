@@ -30,7 +30,7 @@ from typing import cast, overload
 from mqns.entity import ChannelT, ClassicChannel, Controller, Node, QNode, QuantumChannel
 from mqns.network.network.request import Request
 from mqns.network.network.timing import TimingMode, TimingModeAsync
-from mqns.network.route import DijkstraRouteAlgorithm, RouteImpl
+from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm
 from mqns.network.topology import ClassicTopology, Topology
 from mqns.simulator import Simulator
 from mqns.utils import get_randint
@@ -67,7 +67,7 @@ class QuantumNetwork:
         *,
         topo: Topology | None = None,
         classic_topo: ClassicTopology | None = None,
-        route: RouteImpl | None = None,
+        route: RouteAlgorithm | None = None,
         timing: TimingMode = TimingModeAsync(),
     ):
         """
@@ -90,7 +90,7 @@ class QuantumNetwork:
         if topo is not None:
             self._populate_from_topo(topo, classic_topo)
 
-        self.route: RouteImpl = DijkstraRouteAlgorithm() if route is None else route
+        self.route: RouteAlgorithm = DijkstraRouteAlgorithm() if route is None else route
 
         self.requests: list[Request] = []
         """

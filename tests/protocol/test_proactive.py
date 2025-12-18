@@ -25,7 +25,7 @@ from mqns.network.proactive import (
     RoutingPathStatic,
 )
 from mqns.network.proactive.message import validate_path_instructions
-from mqns.network.route import RouteImpl, YenRouteAlgorithm
+from mqns.network.route import RouteAlgorithm, YenRouteAlgorithm
 from mqns.network.topology import ClassicTopology, GridTopology, LinearTopology, Topology, TreeTopology
 from mqns.simulator import Simulator, func_to_event
 from mqns.utils import log
@@ -48,7 +48,7 @@ def build_network_finish(
     end_time: float,
     timing: TimingMode,
     *,
-    route: RouteImpl | None = None,
+    route: RouteAlgorithm | None = None,
 ):
     topo.controller = Controller("ctrl", apps=[ProactiveRoutingController()])
 
