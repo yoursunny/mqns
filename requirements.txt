@@ -1,5 +1,4 @@
 build
-Cython==0.29.28
 matplotlib>=3.4.0,<4
 numpy>=2.3.5,<3
 pandas[plot]>=2.3.3,<3
