@@ -39,7 +39,7 @@ setup(
     long_description_content_type="text/markdown",
     packages=find_packages(),
     include_package_data=True,
-    url="https://github.com/amar-ox/dynamic-qnetsim",
+    url="https://github.com/usnistgov/mqns",
     exclude_package_data={"docs": [".gitkeep"]},
     install_requires=["numpy", "pandas"],
     classifiers=[
