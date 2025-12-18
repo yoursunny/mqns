@@ -26,9 +26,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from collections import defaultdict
-from typing import TYPE_CHECKING, TypeVar, cast
-
-from typing_extensions import override
+from typing import TYPE_CHECKING, TypeVar, cast, override
 
 from mqns.entity.entity import Entity
 from mqns.entity.node.app import Application, ApplicationT
@@ -61,7 +59,7 @@ class Node(Entity):
         """Called from Network.install()"""
         super().install(simulator)
         # initiate sub-entities
-        from mqns.entity import ClassicChannel  # noqa: PLC0415
+        from mqns.entity.cchannel import ClassicChannel  # noqa: PLC0415
 
         self._install_channels(ClassicChannel, self.cchannels, self._cchannel_by_dst)
 

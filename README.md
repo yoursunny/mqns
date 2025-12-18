@@ -1,6 +1,6 @@
 # Multiverse Quantum Network Simulator
 
-![Build](https://github.com/amar-ox/dynamic-qnetsim/actions/workflows/build.yml/badge.svg) ![Lint](https://github.com/amar-ox/dynamic-qnetsim/actions/workflows/lint.yml/badge.svg)
+![Build](https://github.com/usnistgov/mqns/actions/workflows/build.yml/badge.svg) ![Lint](https://github.com/usnistgov/mqns/actions/workflows/lint.yml/badge.svg)
 
 ## Overview
 
@@ -100,15 +100,15 @@ This is a development version to be installed from source.
 First, clone the repository:
 
 ```bash
-git checkout https://github.com/amar-ox/dynamic-qnetsim.git
-cd dynamic-qnetsim
+git checkout https://github.com/usnistgov/mqns.git
+cd mqns
 ```
 
 Create a virtual environment:
 
 ```bash
-python -m venv mqns
-source mqns/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 ```
 
 Install dependencies:
