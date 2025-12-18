@@ -46,26 +46,19 @@ def make_csr(
     n = len(nodes)
     node_index = {nd: i for i, nd in enumerate(nodes)}
 
-    rows, cols, data = [], [], []
-    for ch in channels:
-        if len(ch.node_list) != 2:
-            raise NetworkRouteError("broken link")
+    rows = np.zeros((2 * len(channels),), dtype=np.int32)
+    cols = np.zeros((2 * len(channels),), dtype=np.int32)
+    data = np.zeros((2 * len(channels),), dtype=np.float64)
+    for i, ch in enumerate(channels):
+        assert len(ch.node_list) == 2
         a, b = ch.node_list
         ai, bi = node_index[a], node_index[b]
         w = float(metric_func(ch))
         # undirected: add both directions
-        rows.extend([ai, bi])
-        cols.extend([bi, ai])
-        data.extend([w, w])
+        rows[2 * i + 0], cols[2 * i + 0], data[2 * i + 0] = ai, bi, w
+        rows[2 * i + 1], cols[2 * i + 1], data[2 * i + 1] = bi, ai, w
 
-    return csr_matrix(
-        (np.asarray(data, np.float64), (np.asarray(rows, np.int32), np.asarray(cols, np.int32))),
-        shape=(n, n),
-    )
-
-
-class NetworkRouteError(Exception):
-    pass
+    return csr_matrix((data, (rows, cols)), shape=(n, n))
 
 
 class RouteImpl(Generic[NodeT, ChannelT]):
