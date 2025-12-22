@@ -1,14 +1,7 @@
-import configparser
 import heapq
 import json
 import os
 import random
-import threading
-import time
-import traceback
-from contextlib import contextmanager
-from copy import deepcopy
-from datetime import datetime
 
 import numpy as np
 from sequence.app.request_app import RequestApp
@@ -21,23 +14,14 @@ from sequence.entanglement_management.swapping import (
     SwappingMsgType,
 )
 from sequence.message import Message
-from sequence.network_management.network_manager import ResourceReservationProtocol
-from sequence.network_management.reservation import Reservation
 from sequence.resource_management.memory_manager import MemoryInfo
 from sequence.topology.node import QuantumRouter
 from sequence.topology.router_net_topo import RouterNetTopo
 
-from src.utils.swaping_rules.ResourceReservationProtocol import create_rules
-
 M = 2000
-STOP_TIME = 3e12
-MEMO_N = 1
-MAX_WALL_TIME = 10000  # 1 hour = 3600 seconds
-trs = time.time()
-original_create_rules = ResourceReservationProtocol.create_rules
 
 
-def _entanglement_succeed(self):
+def _EntanglementGenerationA_entanglement_succeed(self):
     self.memory.entangled_memory["node_id"] = self.remote_node_name
     self.memory.entangled_memory["memo_id"] = self.remote_memo_id
     self.memory.fidelity = self.memory.raw_fidelity
@@ -47,7 +31,7 @@ def _entanglement_succeed(self):
     self.update_resource_manager(self.memory, "ENTANGLED")
 
 
-def _entanglement_fail(self):
+def _EntanglementGenerationA_entanglement_fail(self):
     for event in self.scheduled_events:
         self.owner.timeline.remove_event(event)
 
@@ -57,7 +41,7 @@ def _entanglement_fail(self):
     self.update_resource_manager(self.memory, "RAW")
 
 
-def emit_event(self) -> None:
+def _EntanglementGenerationA_emit_event(self) -> None:
     """Method to set up memory and emit photons.
 
     If the protocol is in round 1, the memory will be first set to the |+> state.
@@ -77,7 +61,7 @@ def emit_event(self) -> None:
     self.owner.emit_number += 1
 
 
-def start(self) -> None:
+def _EntanglementSwappingA_start(self) -> None:
     """Method to start entanglement swapping protocol.
 
     Will run circuit and send measurement results to other protocols.
@@ -95,7 +79,7 @@ def start(self) -> None:
     if self.owner.get_generator().random() < self.success_probability():
         fidelity = self.updated_fidelity(self.left_memo.fidelity, self.right_memo.fidelity)
         self.is_success = True
-        self.owner.succes_swapping += 1
+        self.owner.success_swapping += 1
 
         expire_time = min(self.left_memo.get_expire_time(), self.right_memo.get_expire_time())
         generation_time = min(self.left_memo.generation_time, self.right_memo.generation_time)
@@ -141,7 +125,7 @@ def start(self) -> None:
     self.update_resource_manager(self.right_memo, "RAW")
 
 
-def memory_expire(self, memory: "Memory") -> None:
+def _QuantumRouter_memory_expire(self, memory: "Memory") -> None:
     """Method to receive expired memories.
 
     Args:
@@ -151,7 +135,7 @@ def memory_expire(self, memory: "Memory") -> None:
     self.resource_manager.memory_expire(memory)
 
 
-def __init__(self, msg_type: SwappingMsgType, receiver: str, **kwargs):
+def _EntanglementSwappingMessage_init(self, msg_type: SwappingMsgType, receiver: str, **kwargs):
     Message.__init__(self, msg_type, receiver)
     if self.msg_type is SwappingMsgType.SWAP_RES:
         self.fidelity = kwargs.get("fidelity")
@@ -165,7 +149,7 @@ def __init__(self, msg_type: SwappingMsgType, receiver: str, **kwargs):
         raise Exception("Entanglement swapping protocol create unkown type of message: %s" % str(msg_type))
 
 
-def received_message(self, src: str, msg: "EntanglementSwappingMessage") -> None:
+def _EntanglementSwappingB_received_message(self, src: str, msg: "EntanglementSwappingMessage") -> None:
     """Method to receive messages from EntanglementSwappingA.
 
     Args:
@@ -199,17 +183,16 @@ def received_message(self, src: str, msg: "EntanglementSwappingMessage") -> None
         self.update_resource_manager(self.memory, MemoryInfo.RAW)
 
 
-EntanglementGenerationA._entanglement_succeed = _entanglement_succeed
-EntanglementGenerationA._entanglement_fail = _entanglement_fail
-EntanglementGenerationA.emit_event = emit_event
-EntanglementSwappingA.start = start
-QuantumRouter.memory_expire = memory_expire
+EntanglementGenerationA._entanglement_succeed = _EntanglementGenerationA_entanglement_succeed
+EntanglementGenerationA._entanglement_fail = _EntanglementGenerationA_entanglement_fail
+EntanglementGenerationA.emit_event = _EntanglementGenerationA_emit_event
+EntanglementSwappingA.start = _EntanglementSwappingA_start
+QuantumRouter.memory_expire = _QuantumRouter_memory_expire
+EntanglementSwappingMessage.__init__ = _EntanglementSwappingMessage_init
+EntanglementSwappingB.received_message = _EntanglementSwappingB_received_message
 
-EntanglementSwappingMessage.__init__ = __init__
-EntanglementSwappingB.received_message = received_message
 
-
-class EnranglementRequestApp(RequestApp):
+class EntanglementRequestApp(RequestApp):
     def __init__(self, node: QuantumRouter, other_node: str):
         super().__init__(node)
         self.accumulated_fidelity = 0
@@ -337,36 +320,7 @@ class ResetApp:
         return self.memory_counter / (self.end_t - self.start_t) * 1e12
 
 
-# Context manager to temporarily override shared attributes
-@contextmanager
-def override_reservation(link_capacity, swapping_order):
-    # Save original values
-    original_link_capacity = deepcopy(Reservation.link_capacity)
-    original_create_rules = ResourceReservationProtocol.create_rules
-    original_swapping_order = deepcopy(Reservation.swapping_order)
-
-    try:
-        # Override for the current simulation
-        Reservation.link_capacity = link_capacity
-        Reservation.swapping_order = swapping_order
-        ResourceReservationProtocol.create_rules = create_rules
-        yield
-    finally:
-        # Restore original values
-        Reservation.link_capacity = original_link_capacity
-        Reservation.swapping_order = original_swapping_order
-        ResourceReservationProtocol.create_rules = original_create_rules
-
-
-def list_to_swapping_order(swap_tree):
-    result = []
-    for item in swap_tree:
-        if isinstance(item, int):
-            result.append("r" + str(item))
-        else:
-            for element in item:
-                result.append("r" + str(element))
-    return result
+type Request = tuple[EntanglementRequestApp, ResetApp]
 
 
 def dijkstra_hop_distances(adj):
@@ -388,7 +342,9 @@ def dijkstra_hop_distances(adj):
     return dist
 
 
-def create_random_quantum_network(num_nodes, num_edges, edge_length, output_file, attenuation=0.0002):
+def create_random_quantum_network(
+    num_nodes: int, num_edges: int, edge_length: int, stop_time: int, output_file: str, attenuation=0.0002
+):
     """
     Create a random connected topology compatible with SeQUeNCe, matching MQNS.RandomTopology.
 
@@ -474,7 +430,7 @@ def create_random_quantum_network(num_nodes, num_edges, edge_length, output_file
         "qconnections": qconnections,
         "cconnections": cconnections,
         "is_parallel": False,
-        "stop_time": STOP_TIME,
+        "stop_time": stop_time,
     }
 
     with open(output_file, "w") as f:
@@ -520,120 +476,3 @@ def set_parameters(topology: RouterNetTopo, config):
     # Set entanglement swapping parameters
     for node in topology.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER):
         node.network_manager.protocol_stack[1].set_swapping_success_rate(SWAPPING_SUCCESS_RATE)
-
-
-def simulate(
-    simulation_id,
-    coherence_time,
-    number_of_routers,
-    num_edges,
-    memory_capacity,
-    edge_length,
-    swapping_strategy,
-    target_fidelity,
-    config=None,
-):
-    """
-    Simulates the quantum network with delays to test parallel execution.
-
-    Returns:
-        dict: Simulated data.
-    """
-    if not config:
-        config_path = os.path.join(os.path.dirname(__file__), "..", "data", "configs", "common_parameters.ini")
-
-        config = configparser.ConfigParser()
-        config.read(config_path)
-
-    Reservation.swapping_order = None
-    Reservation.link_capacity = None
-    # Use context manager to encapsulate shared state changes
-    with override_reservation(memory_capacity, swapping_strategy):
-        topology_file = f"data/topology/topo_{simulation_id}.json"
-
-        create_random_quantum_network(
-            num_nodes=number_of_routers, num_edges=num_edges, edge_length=edge_length, output_file=topology_file
-        )
-        # simulation_result  = simulate(topology_file, config, swapping_order=swp_order, GUI = GUI)
-        network_topo = RouterNetTopo(topology_file)
-
-        config.set("Memory", "coherence_time", coherence_time)
-        set_parameters(network_topo, config)
-
-        tl = network_topo.get_timeline()
-        tl.stop_time = STOP_TIME
-        tl.show_progress = False
-        # get quantum routers
-        routers = network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
-        router_names = [r.name for r in routers]
-        for r in routers:
-            r.network_manager.network_routers = routers
-        # choose number of random S–D pairs (≈ 20% of nodes)
-        num_requests = max(2, int(len(router_names) / 10))
-        print(f"Generating {num_requests} random requests...")
-        # ensure no node participates in more than one request
-        available_nodes = router_names.copy()
-        random.shuffle(available_nodes)
-        # keep track of applications
-        apps = []
-        for _ in range(num_requests):
-            if len(available_nodes) < 2:
-                print("Not enough nodes left to create more unique src-dst pairs.")
-                break
-
-            # take two distinct unused nodes
-            src_name = available_nodes.pop()
-            dst_name = available_nodes.pop()
-
-            src_node = next(r for r in routers if r.name == src_name)
-            dst_node = next(r for r in routers if r.name == dst_name)
-
-            app_src = EnranglementRequestApp(src_node, dst_name)
-            app_dst = ResetApp(dst_node, src_name)
-
-            apps.append((app_src, app_dst))
-        for r in routers:
-            r.success_number = r.attempts_number = r.failed_attempts = 0
-            r.emit_number = r.succes_swapping = r.expired_memories_counter = 0
-        # start simulation
-        sim_start_time = datetime.now()
-        tl.init()
-
-        start_time = 0.1e12
-        end_time = STOP_TIME
-        memory_number = 1
-        # start all requests
-        for app_src, app_dst in apps:
-            app_src.start(app_dst.node.name, start_time, end_time, memory_number, target_fidelity)
-            app_dst.set(start_time, end_time)
-        stop_event = threading.Event()
-
-        def stop_timeline_after_timeout():
-            # Wait up to MAX_WALL_TIME or until stop_event is set
-            if not stop_event.wait(timeout=MAX_WALL_TIME):
-                print(f"Simulation exceeded {MAX_WALL_TIME} seconds — stopping timeline at {tl.time / 1e12}.")
-                tl.stop()
-            else:
-                # Simulation ended before timeout
-                print(f"Stopper thread exited early (simulation finished). stopping timeline at {tl.time / 1e12}.")
-
-        stopper = threading.Thread(target=stop_timeline_after_timeout, daemon=True)
-        stopper.start()
-        try:
-            # run the timeline
-            tl.run()
-        except Exception:
-            print("An error occurred during simulation:")
-            traceback.print_exc()
-        # Notify the stopper thread to exit immediately
-        stop_event.set()
-
-    sim_end_time = datetime.now()
-    simulation_duration = (sim_end_time - sim_start_time).total_seconds()
-    if os.path.exists(topology_file):
-        os.remove(topology_file)  # Deletes the file
-        print(f"File '{topology_file}' has been deleted.")
-    else:
-        print(f"File '{topology_file}' does not exist.")
-
-    return simulation_duration
