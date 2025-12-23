@@ -1,4 +1,3 @@
-import numpy as np
 from sequence.app.request_app import RequestApp
 from sequence.components.memory import Memory
 from sequence.entanglement_management.generation import EntanglementGenerationA
@@ -14,7 +13,7 @@ from sequence.topology.node import QuantumRouter
 from sequence.topology.router_net_topo import RouterNetTopo
 
 
-def _EntanglementGenerationA_entanglement_succeed(self):
+def _EntanglementGenerationA_entanglement_succeed(self: EntanglementGenerationA):
     self.memory.entangled_memory["node_id"] = self.remote_node_name
     self.memory.entangled_memory["memo_id"] = self.remote_memo_id
     self.memory.fidelity = self.memory.raw_fidelity
@@ -24,7 +23,7 @@ def _EntanglementGenerationA_entanglement_succeed(self):
     self.update_resource_manager(self.memory, "ENTANGLED")
 
 
-def _EntanglementGenerationA_entanglement_fail(self):
+def _EntanglementGenerationA_entanglement_fail(self: EntanglementGenerationA):
     for event in self.scheduled_events:
         self.owner.timeline.remove_event(event)
 
@@ -34,7 +33,7 @@ def _EntanglementGenerationA_entanglement_fail(self):
     self.update_resource_manager(self.memory, "RAW")
 
 
-def _EntanglementGenerationA_emit_event(self) -> None:
+def _EntanglementGenerationA_emit_event(self: EntanglementGenerationA) -> None:
     """Method to set up memory and emit photons.
 
     If the protocol is in round 1, the memory will be first set to the |+> state.
@@ -54,7 +53,7 @@ def _EntanglementGenerationA_emit_event(self) -> None:
     self.owner.emit_number += 1
 
 
-def _EntanglementSwappingA_start(self) -> None:
+def _EntanglementSwappingA_start(self: EntanglementSwappingA) -> None:
     """Method to start entanglement swapping protocol.
 
     Will run circuit and send measurement results to other protocols.
@@ -118,7 +117,7 @@ def _EntanglementSwappingA_start(self) -> None:
     self.update_resource_manager(self.right_memo, "RAW")
 
 
-def _QuantumRouter_memory_expire(self, memory: "Memory") -> None:
+def _QuantumRouter_memory_expire(self: QuantumRouter, memory: "Memory") -> None:
     """Method to receive expired memories.
 
     Args:
@@ -128,7 +127,7 @@ def _QuantumRouter_memory_expire(self, memory: "Memory") -> None:
     self.resource_manager.memory_expire(memory)
 
 
-def _EntanglementSwappingMessage_init(self, msg_type: SwappingMsgType, receiver: str, **kwargs):
+def _EntanglementSwappingMessage_init(self: EntanglementSwappingMessage, msg_type: SwappingMsgType, receiver: str, **kwargs):
     Message.__init__(self, msg_type, receiver)
     if self.msg_type is SwappingMsgType.SWAP_RES:
         self.fidelity = kwargs.get("fidelity")
@@ -139,10 +138,10 @@ def _EntanglementSwappingMessage_init(self, msg_type: SwappingMsgType, receiver:
         self.generation_time = kwargs.get("generation_time", 0)
         self.fidelity_time = kwargs.get("fidelity_time")
     else:
-        raise Exception("Entanglement swapping protocol create unkown type of message: %s" % str(msg_type))
+        raise Exception("Entanglement swapping protocol create unknown type of message: %s" % str(msg_type))
 
 
-def _EntanglementSwappingB_received_message(self, src: str, msg: "EntanglementSwappingMessage") -> None:
+def _EntanglementSwappingB_received_message(self: EntanglementSwappingB, src: str, msg: "EntanglementSwappingMessage") -> None:
     """Method to receive messages from EntanglementSwappingA.
 
     Args:
@@ -153,9 +152,8 @@ def _EntanglementSwappingB_received_message(self, src: str, msg: "EntanglementSw
         Will invoke `update_resource_manager` method.
     """
 
-    # log.logger.debug(self.owner.name + " protocol received_message from node {}, fidelity={}".format(src, msg.fidelity))
-
-    assert src == self.remote_node_name
+    if src != self.remote_node_name:
+        return
 
     if msg.fidelity > 0 and self.owner.timeline.now() < msg.expire_time:
         if msg.meas_res == [1, 0]:
@@ -188,67 +186,22 @@ EntanglementSwappingB.received_message = _EntanglementSwappingB_received_message
 class EntanglementRequestApp(RequestApp):
     def __init__(self, node: QuantumRouter, other_node: str):
         super().__init__(node)
-        self.accumulated_fidelity = 0
-        self.accumulated_age = []
-        self.accumulated_fidelity_time = []
         self.other_node = other_node
 
     def get_memory(self, info: "MemoryInfo"):
         if info.state == "ENTANGLED" and info.remote_node == self.other_node:
             self.memory_counter += 1
-            self.accumulated_fidelity += info.fidelity
-            self.accumulated_age.append(self.node.timeline.now() - info.memory.generation_time)
-            self.accumulated_fidelity_time.append(self.node.timeline.now() - info.memory.fidelity_time)
             self.node.resource_manager.update(None, info.memory, "RAW")
-
-    def get_fidelity(self) -> float:
-        if self.memory_counter == 0:
-            return 0
-        else:
-            return self.accumulated_fidelity / self.memory_counter
-
-    def get_age(self) -> float:
-        if len(self.accumulated_age) == 0:
-            return 0
-        else:
-            return sum(self.accumulated_age) / len(self.accumulated_age)
-
-    def get_age_std(self) -> float:
-        if len(self.accumulated_age) == 0:
-            return 0.0
-        return float(np.std(self.accumulated_age))
-
-    def get_fidelity_time(self) -> float:
-        if len(self.accumulated_fidelity_time) == 0:
-            return 0.0
-        return sum(self.accumulated_fidelity_time) / len(self.accumulated_fidelity_time)
-
-    def get_fidelity_time_std(self) -> float:
-        if len(self.accumulated_fidelity_time) == 0:
-            return 0.0
-        return float(np.std(self.accumulated_fidelity_time))
-
-    def get_eg_probability(self) -> float:
-        return self.node.success_number / self.node.attempts_number
-
-    def get_attempts_rate(self) -> float:
-        return self.node.attempts_number / (self.end_t - self.start_t) * 1e12
 
 
 class ResetApp:
-    def __init__(self, node, other_node_name, target_fidelity=0.1):
+    def __init__(self, node: QuantumRouter, other_node_name: str, target_fidelity=0.1):
         self.node = node
         self.node.set_app(self)
         self.other_node_name = other_node_name
         self.target_fidelity = target_fidelity
-        self.accumulated_fidelity = 0
-        self.accumulated_age = []
-        self.accumulated_fidelity_time = []
-        self.other_node = other_node_name
-        self.memory_counter = 0
         self.start_t: int = -1
         self.end_t: int = -1
-        self.memory_counter: int = 0
 
     def set(self, start_t: int, end_t: int):
         self.start_t = start_t
@@ -262,7 +215,7 @@ class ResetApp:
 
         pass
 
-    def get_memory(self, info):
+    def get_memory(self, info: "MemoryInfo"):
         """Similar to the get_memory method of the main application.
 
         We check if the memory info meets the request first,
@@ -270,47 +223,7 @@ class ResetApp:
         We then free the memory for future use.
         """
         if info.state == "ENTANGLED" and info.remote_node == self.other_node_name and info.fidelity > self.target_fidelity:
-            self.memory_counter += 1
-            self.accumulated_fidelity += info.fidelity
-            self.accumulated_age.append(self.node.timeline.now() - info.memory.generation_time)
-            self.accumulated_fidelity_time.append(self.node.timeline.now() - info.memory.fidelity_time)
             self.node.resource_manager.update(None, info.memory, "RAW")
-
-    def get_fidelity(self) -> float:
-        if self.memory_counter == 0:
-            return 0
-        else:
-            return self.accumulated_fidelity / self.memory_counter
-
-    def get_age(self) -> float:
-        if len(self.accumulated_age) == 0:
-            return 0
-        else:
-            return sum(self.accumulated_age) / len(self.accumulated_age)
-
-    def get_age_std(self) -> float:
-        if len(self.accumulated_age) == 0:
-            return 0.0
-        return float(np.std(self.accumulated_age))
-
-    def get_fidelity_time(self) -> float:
-        if len(self.accumulated_fidelity_time) == 0:
-            return 0.0
-        return sum(self.accumulated_fidelity_time) / len(self.accumulated_fidelity_time)
-
-    def get_fidelity_time_std(self) -> float:
-        if len(self.accumulated_fidelity_time) == 0:
-            return 0.0
-        return float(np.std(self.accumulated_fidelity_time))
-
-    def get_eg_probability(self) -> float:
-        return self.node.success_number / self.node.attempts_number
-
-    def get_attempts_rate(self) -> float:
-        return self.node.attempts_number / (self.end_t - self.start_t) * 1e12
-
-    def get_throughput(self) -> float:
-        return self.memory_counter / (self.end_t - self.start_t) * 1e12
 
 
 def set_parameters(topology: RouterNetTopo, config):
