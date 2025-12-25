@@ -94,7 +94,7 @@ def build_network() -> QuantumNetwork:
     return net
 
 
-def run_simulation():
+def run_simulation() -> dict:
     # Assign random seed.
     set_seed(args.seed)
     s = Simulator(0, args.sim_duration + 5e-06, accuracy=1000000)
@@ -118,16 +118,19 @@ def run_simulation():
     # Run the simulation.
     s.run()
 
-    # Collect per-request statistics and wall-clock duration.
-    stats = []
+    # Collect wall-clock duration and per-request statistics.
+    stats = dict[str, tuple[float, float]]()
     for req in net.requests:
         fw = req.src.get_app(ProactiveForwarder)
-        stats.append((fw.cnt.n_consumed / args.sim_duration, fw.cnt.consumed_avg_fidelity))
-    return stats, s.time_spend
+        stats[f"{req.src.name}-{req.dst.name}"] = fw.cnt.n_consumed / args.sim_duration, fw.cnt.consumed_avg_fidelity
+    return {
+        "time_spent": s.time_spend,
+        "requests": stats,
+    }
 
 
 if __name__ == "__main__":
-    path_stats, time_spent = run_simulation()
-    filename = f"{args.qchannel_capacity}-{args.nnodes}-{args.nedges}-{args.seed}.json"
-    with open(os.path.join(args.outdir, filename), "w") as file:
-        json.dump({"path_stats": path_stats, "time_spent": time_spent}, file)
+    basename = f"{args.qchannel_capacity}-{args.nnodes}-{args.nedges}-{args.seed}"
+    result = run_simulation()
+    with open(os.path.join(args.outdir, f"{basename}.json"), "w") as file:
+        json.dump(result, file)
