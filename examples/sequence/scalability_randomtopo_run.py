@@ -2,7 +2,7 @@ import configparser
 import itertools
 import json
 import os.path
-import threading
+import sys
 import time
 from typing import cast
 
@@ -10,11 +10,10 @@ from sequence.network_management.network_manager import ResourceReservationProto
 from sequence.network_management.reservation import Reservation
 from sequence.topology.node import QuantumRouter
 from sequence.topology.router_net_topo import RouterNetTopo
-from tap import Tap
 
 from mqns.network.network import QuantumNetwork, Request
 from mqns.network.topology import ClassicTopology, RandomTopology
-from mqns.utils import set_seed
+from mqns.utils import WallClockTimeout, set_seed
 
 from sequence_detail.resource_reservation import create_rules
 from sequence_detail.scalability_randomtopo import (
@@ -23,27 +22,16 @@ from sequence_detail.scalability_randomtopo import (
     set_parameters,
 )
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from examples_common.scalability_randomtopo import RunResult, parse_run_args
+
 """
 This script is part of scalability_randomtopo experiment for comparison with SeQUeNCe simulator.
 It can be invoked in the same way as mqns/examples/scalability_randomtopo_run.py .
-The topology and end-to-end entanglement requests are generated MQNS, and then converted to SeQUeNCe.
+The topology and end-to-end entanglement requests are generated in MQNS and then converted to SeQUeNCe.
 """
 
-
-# Command line arguments
-class Args(Tap):
-    seed: int = -1  # random seed number
-    nnodes: int = 16  # network size - number of nodes
-    nedges: int = 20  # network size - number of edges
-    sim_duration: float = 1.0  # simulation duration in seconds
-    qchannel_capacity: int = 10  # quantum channel capacity
-    time_limit: float = 10800.0  # wall-clock limit in seconds
-    outdir: str = "."  # output directory
-
-
-args = Args().parse_args()
-if args.seed < 0:
-    args.seed = int(time.time())
+args = parse_run_args()
 
 start_t = int(0.1e12)
 """Simulation start time in picoseconds."""
@@ -176,11 +164,11 @@ def start_requests(requests: list[tuple[EntanglementRequestApp, ResetApp]]) -> N
         app_dst.set(start_t, stop_t)
 
 
-def run_simulation(basename: str) -> dict:
-    # Assign random seed.
+def run_simulation(basename: str) -> RunResult:
+    # Assign random seed in MQNS.
     set_seed(args.seed)
 
-    # Generate random topology.
+    # Generate random topology in MQNS.
     net = QuantumNetwork(
         topo=RandomTopology(
             nodes_number=args.nnodes,
@@ -190,13 +178,14 @@ def run_simulation(basename: str) -> dict:
     )
     net.build_route()
 
-    # Generate random requests, proportional to network size.
+    # Generate random requests in MQNS, proportional to network size.
     num_requests = max(2, int(args.nnodes / 10))
     net.random_requests(num_requests, min_hops=2, max_hops=5)
 
     # Build the same topology and requests in SeQUeNCe.
     topo, routers = build_network(basename, net)
     requests = [convert_request(routers, req) for req in net.requests]
+    del net
 
     # Initialize timeline and initialize request applications.
     tl = topo.get_timeline()
@@ -204,34 +193,20 @@ def run_simulation(basename: str) -> dict:
     tl.init()
     start_requests(requests)
 
-    # Enforce maximum wall-clock time limit.
-    timeout_occurred = [False]
-    timeout_cancel = threading.Event()
-
-    def stop_timeline_after_timeout():
-        if not timeout_cancel.wait(timeout=args.time_limit):
-            tl.stop()
-            timeout_occurred[0] = True
-
-    timeout_thread = threading.Thread(target=stop_timeline_after_timeout, daemon=True)
-
     # Run the simulation timeline.
+    timeout = WallClockTimeout(args.time_limit, stop=tl.stop)
     trs = time.time()
-    timeout_thread.start()
-    tl.run()
-    timeout_cancel.set()
+    with timeout():
+        tl.run()
     tre = time.time()
 
-    # Collect wall-clock duration and per-router counters.
-    d: dict = {
-        "time_spent": tre - trs,
-        "sim_progress": (tl.time - start_t) / (stop_t - start_t) if timeout_occurred[0] else 1.0,
-        "requests": [f"{src_app.node.name}-{dst_app.node.name}" for src_app, dst_app in requests],
-    }
-    for router in routers:
-        rd = {CNT: getattr(router, CNT) for CNT in COUNTER_NAMES}
-        d[router.name] = rd
-    return d
+    # Collect results.
+    return RunResult(
+        time_spent=tre - trs,
+        sim_progress=(tl.time - start_t) / (stop_t - start_t) if timeout.occurred else 1.0,
+        requests=[f"{src_app.node.name}-{dst_app.node.name}" for src_app, dst_app in requests],
+        nodes={router.name: {CNT: getattr(router, CNT) for CNT in COUNTER_NAMES} for router in routers},
+    )
 
 
 if __name__ == "__main__":

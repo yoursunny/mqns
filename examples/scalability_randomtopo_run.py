@@ -1,8 +1,5 @@
 import json
 import os.path
-import time
-
-from tap import Tap
 
 from mqns.entity.node import Controller
 from mqns.network.network import QuantumNetwork
@@ -16,7 +13,9 @@ from mqns.network.proactive import (
 )
 from mqns.network.topology import ClassicTopology, RandomTopology
 from mqns.simulator import Simulator
-from mqns.utils import log, set_seed
+from mqns.utils import WallClockTimeout, log, set_seed
+
+from examples_common.scalability_randomtopo import RunResult, parse_run_args
 
 """
 This script is typically invoked as part of scalability_randomtopo experiment.
@@ -28,20 +27,7 @@ It prints the profiling statistics to the console, and does not generate any out
 
 log.set_default_level("CRITICAL")
 
-
-# Command line arguments
-class Args(Tap):
-    seed: int = -1  # random seed number
-    nnodes: int = 16  # network size - number of nodes
-    nedges: int = 20  # network size - number of edges
-    sim_duration: float = 1.0  # simulation duration in seconds
-    qchannel_capacity: int = 10  # quantum channel capacity
-    outdir: str = "."  # output directory
-
-
-args = Args().parse_args()
-if args.seed < 0:
-    args.seed = int(time.time())
+args = parse_run_args()
 
 # parameters
 fiber_alpha = 0.2
@@ -94,7 +80,7 @@ def build_network() -> QuantumNetwork:
     return net
 
 
-def run_simulation() -> dict:
+def run_simulation() -> RunResult:
     # Assign random seed.
     set_seed(args.seed)
     s = Simulator(0, args.sim_duration + 5e-06, accuracy=1000000)
@@ -116,17 +102,21 @@ def run_simulation() -> dict:
         )
 
     # Run the simulation.
-    s.run()
+    timeout = WallClockTimeout(args.time_limit, stop=s.stop)
+    with timeout():
+        s.run()
 
-    # Collect wall-clock duration and per-request statistics.
+    # Collect results.
     stats = dict[str, tuple[float, float]]()
     for req in net.requests:
         fw = req.src.get_app(ProactiveForwarder)
         stats[f"{req.src.name}-{req.dst.name}"] = fw.cnt.n_consumed / args.sim_duration, fw.cnt.consumed_avg_fidelity
-    return {
-        "time_spent": s.time_spend,
-        "requests": stats,
-    }
+    return RunResult(
+        time_spent=s.time_spend,
+        sim_progress=s.tc.sec / args.sim_duration if timeout.occurred else 1.0,
+        requests=stats,
+        nodes={},
+    )
 
 
 if __name__ == "__main__":

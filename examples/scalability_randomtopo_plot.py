@@ -6,6 +6,7 @@ import pandas as pd
 from tap import Tap
 
 from examples_common.plotting import plt, plt_save
+from examples_common.scalability_randomtopo import RunResult
 
 """
 See scalability_randomtopo.sh for how to run this script.
@@ -49,8 +50,8 @@ for indir, simulator_name in (args.indir, "MQNS"), (args.indir_sequence, "SeQUeN
             seed = SEED_BASE + j
             filename = f"{args.qchannel_capacity}-{nnodes}-{nedges}-{seed}.json"
             with open(os.path.join(indir, filename), "r") as file:
-                data1 = dict(json.load(file))
-                values[j] = data1["time_spent"] / data1.get("sim_progress", 1.0)
+                data1 = RunResult(json.load(file))
+                values[j] = data1["time_spent"] / data1["sim_progress"]
         rows.append(
             {
                 "simulator": simulator_name,
