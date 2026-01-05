@@ -110,7 +110,7 @@ def test_4_sync(t_ext: float, expected: tuple[int, int, int, int]):
 
 
 @pytest.mark.parametrize(
-    ("arrival_ms", "n_swapped_p"),
+    ("etg_ms", "n_swapped_p"),
     [
         ((1, 2, 1), 1),
         ((2, 1, 2), 1),
@@ -118,7 +118,7 @@ def test_4_sync(t_ext: float, expected: tuple[int, int, int, int]):
         ((3, 2, 1), 0),
     ],
 )
-def test_4_asap(arrival_ms: tuple[int, int, int], n_swapped_p: int):
+def test_4_asap(etg_ms: tuple[int, int, int], n_swapped_p: int):
     """Test SWAP-ASAP in 4-node topology with various entanglement arrival orders."""
     net, simulator = build_linear_network(4, ps=1.0, has_link_layer=False)
     f1 = net.get_node("n1").get_app(ProactiveForwarder)
@@ -128,9 +128,9 @@ def test_4_asap(arrival_ms: tuple[int, int, int], n_swapped_p: int):
 
     install_path(net, RoutingPathSingle("n1", "n4", swap=[1, 0, 0, 1]))
     provide_entanglements(
-        (1 + arrival_ms[0] / 1000, f1, f2),
-        (1 + arrival_ms[1] / 1000, f2, f3),
-        (1 + arrival_ms[2] / 1000, f3, f4),
+        (1 + etg_ms[0] / 1000, f1, f2),
+        (1 + etg_ms[1] / 1000, f2, f3),
+        (1 + etg_ms[2] / 1000, f3, f4),
     )
     simulator.run()
     print_fw_counters(net)
@@ -141,7 +141,7 @@ def test_4_asap(arrival_ms: tuple[int, int, int], n_swapped_p: int):
 
 
 @pytest.mark.parametrize(
-    ("ps3", "arrival_ms", "n_swapped_s", "n_swapped_p", "n_consumed"),
+    ("ps3", "etg_ms", "n_swapped_s", "n_swapped_p", "n_consumed"),
     [
         # 1. n2-n3-n4 swap succeeds.
         # 2. n2 and n4 are informed.
@@ -161,7 +161,7 @@ def test_4_asap(arrival_ms: tuple[int, int, int], n_swapped_p: int):
 )
 def test_5_asap(
     ps3: float,
-    arrival_ms: tuple[int, int, int, int],
+    etg_ms: tuple[int, int, int, int],
     n_swapped_s: tuple[int, int, int],
     n_swapped_p: tuple[int, int, int],
     n_consumed: int,
@@ -177,10 +177,10 @@ def test_5_asap(
 
     install_path(net, RoutingPathSingle("n1", "n5", swap=[1, 0, 0, 0, 1]))
     provide_entanglements(
-        (1 + arrival_ms[0] / 1000, f1, f2),
-        (1 + arrival_ms[1] / 1000, f2, f3),
-        (1 + arrival_ms[2] / 1000, f3, f4),
-        (1 + arrival_ms[3] / 1000, f4, f5),
+        (1 + etg_ms[0] / 1000, f1, f2),
+        (1 + etg_ms[1] / 1000, f2, f3),
+        (1 + etg_ms[2] / 1000, f3, f4),
+        (1 + etg_ms[3] / 1000, f4, f5),
     )
     simulator.run()
     print_fw_counters(net)
@@ -191,7 +191,7 @@ def test_5_asap(
 
 
 @pytest.mark.parametrize(
-    ("swap", "arrival_ms"),
+    ("swap", "etg_ms"),
     itertools.product(
         (
             [3, 0, 1, 2, 3],  # l2r
@@ -201,7 +201,7 @@ def test_5_asap(
         itertools.permutations(range(4), 4),
     ),
 )
-def test_5_sequential(swap: list[int], arrival_ms: tuple[int, int, int, int]):
+def test_5_sequential(swap: list[int], etg_ms: tuple[int, int, int, int]):
     """Test sequential swap orders with various entanglement arrival orders."""
     net, simulator = build_linear_network(5, ps=1.0, has_link_layer=False)
     f1 = net.get_node("n1").get_app(ProactiveForwarder)
@@ -212,10 +212,10 @@ def test_5_sequential(swap: list[int], arrival_ms: tuple[int, int, int, int]):
 
     install_path(net, RoutingPathSingle("n1", "n5", swap=swap))
     provide_entanglements(
-        (1 + arrival_ms[0] / 1000, f1, f2),
-        (1 + arrival_ms[1] / 1000, f2, f3),
-        (1 + arrival_ms[2] / 1000, f3, f4),
-        (1 + arrival_ms[3] / 1000, f4, f5),
+        (1 + etg_ms[0] / 1000, f1, f2),
+        (1 + etg_ms[1] / 1000, f2, f3),
+        (1 + etg_ms[2] / 1000, f3, f4),
+        (1 + etg_ms[3] / 1000, f4, f5),
     )
     simulator.run()
     print_fw_counters(net)
@@ -420,7 +420,7 @@ def test_tree2_statistical(
 
 
 @pytest.mark.parametrize(
-    ("arrival_sec", "n_cutoff"),
+    ("etg_sec", "n_cutoff"),
     [
         # n1-n2 arrives at t=1.005, n2-n3 arrives at t=1.006, swapped.
         ((1.004, 1.005), (0, 0)),
@@ -435,7 +435,7 @@ def test_tree2_statistical(
         ((1.005, 1.002), (1, 1)),
     ],
 )
-def test_3_waittime(arrival_sec: tuple[float, float], n_cutoff: tuple[int, int]):
+def test_3_waittime(etg_sec: tuple[float, float], n_cutoff: tuple[int, int]):
     """Test CutoffSchemeWaitTime in 3-node topology."""
     net, simulator = build_linear_network(3, ps=1.0, has_link_layer=False, end_time=1.010)
     f1 = net.get_node("n1").get_app(ProactiveForwarder)
@@ -444,8 +444,8 @@ def test_3_waittime(arrival_sec: tuple[float, float], n_cutoff: tuple[int, int])
 
     install_path(net, RoutingPathSingle("n1", "n3", swap=[1, 0, 1], swap_cutoff=[0, 0.002, 0]))
     provide_entanglements(
-        (arrival_sec[0], f1, f2),
-        (arrival_sec[1], f2, f3),
+        (etg_sec[0], f1, f2),
+        (etg_sec[1], f2, f3),
     )
     simulator.run()
     print_fw_counters(net)
