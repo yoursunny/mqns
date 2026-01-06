@@ -18,7 +18,7 @@ class Args(Tap):
     indir: str  # input directory for MQNS results
     indir_sequence: str = ""  # input directory for SeQUeNCe results
     runs: int = 1  # number of simulation runs per parameter set
-    qchannel_capacity: int = 100  # quantum channel capacity
+    qchannel_capacity: int = 10  # quantum channel capacity
     time_limit: float = 10800.0  # wall-clock limit in seconds
     csv: str = ""  # save results as CSV file
     plt: str = ""  # save plot as image file

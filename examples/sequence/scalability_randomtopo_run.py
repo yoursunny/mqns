@@ -12,8 +12,7 @@ from sequence.topology.node import QuantumRouter
 from sequence.topology.router_net_topo import RouterNetTopo
 
 from mqns.network.network import QuantumNetwork, Request
-from mqns.network.topology import ClassicTopology, RandomTopology
-from mqns.utils import WallClockTimeout, set_seed
+from mqns.utils import WallClockTimeout
 
 from sequence_detail.resource_reservation import create_rules
 from sequence_detail.scalability_randomtopo import (
@@ -23,7 +22,13 @@ from sequence_detail.scalability_randomtopo import (
 )
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from examples_common.scalability_randomtopo import RequestStats, RunResult, parse_run_args
+from examples_common.scalability_randomtopo import (
+    RequestStats,
+    RunArgs,
+    RunResult,
+    parse_run_args,
+)
+from examples_common.scalability_randomtopo import build_network as mqns_build_network
 
 """
 This script is part of scalability_randomtopo experiment for comparison with SeQUeNCe simulator.
@@ -31,12 +36,6 @@ It can be invoked in the same way as mqns/examples/scalability_randomtopo_run.py
 The topology and end-to-end entanglement requests are generated in MQNS and then converted to SeQUeNCe.
 """
 
-args = parse_run_args()
-
-start_t = int(0.1e12)
-"""Simulation start time in picoseconds."""
-stop_t = start_t + int(args.sim_duration * 1e12)
-"""Simulation stop time in picoseconds."""
 
 COUNTER_NAMES = (
     "success_number",
@@ -70,7 +69,17 @@ frequency = 50e6
 """)
 
 
-def convert_network(net: QuantumNetwork) -> dict:
+class TimelineBounds:
+    """Simulation time boundary."""
+
+    def __init__(self, sim_duration: float):
+        self.start_t = int(0.1e12)
+        """Simulation start time in picoseconds."""
+        self.stop_t = self.start_t + int(sim_duration * 1e12)
+        """Simulation stop time in picoseconds."""
+
+
+def convert_network(net: QuantumNetwork, tlb: TimelineBounds) -> dict:
     """
     Convert MQNS network topology into SeQUeNCe network topology.
     """
@@ -114,17 +123,17 @@ def convert_network(net: QuantumNetwork) -> dict:
         "qconnections": qconnections,
         "cchannels": cchannels,
         "is_parallel": False,
-        "stop_time": stop_t,
+        "stop_time": tlb.stop_t,
     }
 
 
-def build_network(basename: str, net: QuantumNetwork) -> tuple[RouterNetTopo, list[QuantumRouter]]:
+def build_network(basename: str, net: QuantumNetwork, tlb: TimelineBounds) -> tuple[RouterNetTopo, list[QuantumRouter]]:
     """
     Build SeQUeNCe network topology that matches MQNS network topology.
     """
 
     filename = os.path.join(args.outdir, f"{basename}.topo.json")
-    network_json = convert_network(net)
+    network_json = convert_network(net, tlb)
     with open(filename, "w") as f:
         json.dump(network_json, f)
 
@@ -158,42 +167,30 @@ def convert_request(routers: list[QuantumRouter], request: Request) -> RequestAp
     )
 
 
-def start_requests(requests: list[RequestApps]) -> None:
+def start_requests(requests: list[RequestApps], tlb: TimelineBounds) -> None:
     """
     Start a pair of applications for src-dst request.
     """
     for src, dst in requests:
-        src.start(dst.node.name, start_t, stop_t, memo_size=1, fidelity=0.1)
+        src.start(dst.node.name, tlb.start_t, tlb.stop_t, memo_size=1, fidelity=0.1)
 
 
-def run_simulation(basename: str) -> RunResult:
-    # Assign random seed in MQNS.
-    set_seed(args.seed)
-
-    # Generate random topology in MQNS.
-    net = QuantumNetwork(
-        topo=RandomTopology(
-            nodes_number=args.nnodes,
-            lines_number=args.nedges,
-        ),
-        classic_topo=ClassicTopology.Follow,
-    )
-    net.build_route()
-
-    # Generate random requests in MQNS, proportional to network size.
-    num_requests = max(2, int(args.nnodes / 10))
-    net.random_requests(num_requests, min_hops=2, max_hops=5)
+def run_simulation(args: RunArgs) -> RunResult:
+    # Generate random topology and requests in MQNS.
+    # MQNS random seed is set within.
+    net = mqns_build_network(args)
 
     # Build the same topology and requests in SeQUeNCe.
-    topo, routers = build_network(basename, net)
+    tlb = TimelineBounds(args.sim_duration)
+    topo, routers = build_network(args.basename, net, tlb)
     requests = [convert_request(routers, req) for req in net.requests]
     del net
 
-    # Initialize timeline and initialize request applications.
+    # Initialize timeline and start request applications.
     tl = topo.get_timeline()
-    tl.stop_time = stop_t
+    tl.stop_time = tlb.stop_t
     tl.init()
-    start_requests(requests)
+    start_requests(requests, tlb)
 
     # Run the simulation timeline.
     timeout = WallClockTimeout(args.time_limit, stop=tl.stop)
@@ -201,7 +198,7 @@ def run_simulation(basename: str) -> RunResult:
     with timeout():
         tl.run()
     tre = time.time()
-    sim_progress = (tl.time - start_t) / (stop_t - start_t) if timeout.occurred else 1.0
+    sim_progress = (tl.time - tlb.start_t) / (tlb.stop_t - tlb.start_t) if timeout.occurred else 1.0
     sim_duration = args.sim_duration * sim_progress
 
     # Collect results.
@@ -210,14 +207,14 @@ def run_simulation(basename: str) -> RunResult:
 
     return RunResult(
         time_spent=tre - trs,
-        sim_progress=(tl.time - start_t) / (stop_t - start_t) if timeout.occurred else 1.0,
+        sim_progress=sim_progress,
         requests={f"{src.node.name}-{dst.node.name}": gather_request_stats(src) for src, dst in requests},
         nodes={router.name: {CNT: getattr(router, CNT) for CNT in COUNTER_NAMES} for router in routers},
     )
 
 
 if __name__ == "__main__":
-    basename = f"{args.qchannel_capacity}-{args.nnodes}-{args.nedges}-{args.seed}"
-    result = run_simulation(basename)
-    with open(os.path.join(args.outdir, f"{basename}.json"), "w") as file:
+    args = parse_run_args()
+    result = run_simulation(args)
+    with open(os.path.join(args.outdir, f"{args.basename}.json"), "w") as file:
         json.dump(result, file)
