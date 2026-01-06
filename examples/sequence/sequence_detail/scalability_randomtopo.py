@@ -117,7 +117,7 @@ def _EntanglementSwappingA_start(self: EntanglementSwappingA) -> None:
     self.update_resource_manager(self.right_memo, "RAW")
 
 
-def _QuantumRouter_memory_expire(self: QuantumRouter, memory: "Memory") -> None:
+def _QuantumRouter_memory_expire(self: QuantumRouter, memory: Memory) -> None:
     """Method to receive expired memories.
 
     Args:
@@ -141,7 +141,7 @@ def _EntanglementSwappingMessage_init(self: EntanglementSwappingMessage, msg_typ
         raise Exception("Entanglement swapping protocol create unknown type of message: %s" % str(msg_type))
 
 
-def _EntanglementSwappingB_received_message(self: EntanglementSwappingB, src: str, msg: "EntanglementSwappingMessage") -> None:
+def _EntanglementSwappingB_received_message(self: EntanglementSwappingB, src: str, msg: EntanglementSwappingMessage) -> None:
     """Method to receive messages from EntanglementSwappingA.
 
     Args:
@@ -186,12 +186,20 @@ EntanglementSwappingB.received_message = _EntanglementSwappingB_received_message
 class EntanglementRequestApp(RequestApp):
     def __init__(self, node: QuantumRouter, other_node: str):
         super().__init__(node)
+        self.accumulated_fidelity = 0
         self.other_node = other_node
 
-    def get_memory(self, info: "MemoryInfo"):
+    def get_memory(self, info: MemoryInfo):
         if info.state == "ENTANGLED" and info.remote_node == self.other_node:
             self.memory_counter += 1
+            self.accumulated_fidelity += info.fidelity
             self.node.resource_manager.update(None, info.memory, "RAW")
+
+    def get_fidelity(self) -> float:
+        if self.memory_counter == 0:
+            return 0
+        else:
+            return self.accumulated_fidelity / self.memory_counter
 
 
 class ResetApp:
@@ -200,12 +208,6 @@ class ResetApp:
         self.node.set_app(self)
         self.other_node_name = other_node_name
         self.target_fidelity = target_fidelity
-        self.start_t: int = -1
-        self.end_t: int = -1
-
-    def set(self, start_t: int, end_t: int):
-        self.start_t = start_t
-        self.end_t = end_t
 
     def get_other_reservation(self, reservation):
         """called when receiving the request from the initiating node.
@@ -215,7 +217,7 @@ class ResetApp:
 
         pass
 
-    def get_memory(self, info: "MemoryInfo"):
+    def get_memory(self, info: MemoryInfo):
         """Similar to the get_memory method of the main application.
 
         We check if the memory info meets the request first,

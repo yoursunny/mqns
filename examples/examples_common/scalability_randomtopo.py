@@ -22,6 +22,10 @@ def parse_run_args() -> RunArgs:
     return args
 
 
+RequestStats = tuple[float, float]
+"""Per-request statistics: throughput, average fidelity."""
+
+
 class RunResult(TypedDict):
     """Result from a simulation run."""
 
@@ -29,7 +33,7 @@ class RunResult(TypedDict):
     """Total wall-clock time."""
     sim_progress: float
     """Finished timeline progress, 1.0 means all simulation finished."""
-    requests: Any
+    requests: dict[str, RequestStats]
     """Per-request statistics."""
     nodes: Any
     """Per-node statistics."""

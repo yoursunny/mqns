@@ -23,7 +23,7 @@ from sequence_detail.scalability_randomtopo import (
 )
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from examples_common.scalability_randomtopo import RunResult, parse_run_args
+from examples_common.scalability_randomtopo import RequestStats, RunResult, parse_run_args
 
 """
 This script is part of scalability_randomtopo experiment for comparison with SeQUeNCe simulator.
@@ -143,7 +143,10 @@ def build_network(basename: str, net: QuantumNetwork) -> tuple[RouterNetTopo, li
     return topo, routers
 
 
-def convert_request(routers: list[QuantumRouter], request: Request) -> tuple[EntanglementRequestApp, ResetApp]:
+RequestApps = tuple[EntanglementRequestApp, ResetApp]
+
+
+def convert_request(routers: list[QuantumRouter], request: Request) -> RequestApps:
     """
     Convert MQNS src-dst request into a pair of applications in SeQUeNCe.
     """
@@ -155,13 +158,12 @@ def convert_request(routers: list[QuantumRouter], request: Request) -> tuple[Ent
     )
 
 
-def start_requests(requests: list[tuple[EntanglementRequestApp, ResetApp]]) -> None:
+def start_requests(requests: list[RequestApps]) -> None:
     """
     Start a pair of applications for src-dst request.
     """
-    for app_src, app_dst in requests:
-        app_src.start(app_dst.node.name, start_t, stop_t, memo_size=1, fidelity=0.1)
-        app_dst.set(start_t, stop_t)
+    for src, dst in requests:
+        src.start(dst.node.name, start_t, stop_t, memo_size=1, fidelity=0.1)
 
 
 def run_simulation(basename: str) -> RunResult:
@@ -199,12 +201,17 @@ def run_simulation(basename: str) -> RunResult:
     with timeout():
         tl.run()
     tre = time.time()
+    sim_progress = (tl.time - start_t) / (stop_t - start_t) if timeout.occurred else 1.0
+    sim_duration = args.sim_duration * sim_progress
 
     # Collect results.
+    def gather_request_stats(src: EntanglementRequestApp) -> RequestStats:
+        return src.memory_counter / sim_duration, src.get_fidelity()
+
     return RunResult(
         time_spent=tre - trs,
         sim_progress=(tl.time - start_t) / (stop_t - start_t) if timeout.occurred else 1.0,
-        requests=[f"{src_app.node.name}-{dst_app.node.name}" for src_app, dst_app in requests],
+        requests={f"{src.node.name}-{dst.node.name}": gather_request_stats(src) for src, dst in requests},
         nodes={router.name: {CNT: getattr(router, CNT) for CNT in COUNTER_NAMES} for router in routers},
     )
 

@@ -2,7 +2,7 @@ import json
 import os.path
 
 from mqns.entity.node import Controller
-from mqns.network.network import QuantumNetwork
+from mqns.network.network import QuantumNetwork, Request
 from mqns.network.proactive import (
     LinkLayer,
     MuxSchemeStatistical,
@@ -15,7 +15,7 @@ from mqns.network.topology import ClassicTopology, RandomTopology
 from mqns.simulator import Simulator
 from mqns.utils import WallClockTimeout, log, set_seed
 
-from examples_common.scalability_randomtopo import RunResult, parse_run_args
+from examples_common.scalability_randomtopo import RequestStats, RunResult, parse_run_args
 
 """
 This script is typically invoked as part of scalability_randomtopo experiment.
@@ -105,16 +105,17 @@ def run_simulation() -> RunResult:
     timeout = WallClockTimeout(args.time_limit, stop=s.stop)
     with timeout():
         s.run()
+    sim_duration = s.tc.sec if timeout.occurred else args.sim_duration
 
     # Collect results.
-    stats = dict[str, tuple[float, float]]()
-    for req in net.requests:
+    def gather_request_stats(req: Request) -> RequestStats:
         fw = req.src.get_app(ProactiveForwarder)
-        stats[f"{req.src.name}-{req.dst.name}"] = fw.cnt.n_consumed / args.sim_duration, fw.cnt.consumed_avg_fidelity
+        return fw.cnt.n_consumed / sim_duration, fw.cnt.consumed_avg_fidelity
+
     return RunResult(
         time_spent=s.time_spend,
-        sim_progress=s.tc.sec / args.sim_duration if timeout.occurred else 1.0,
-        requests=stats,
+        sim_progress=sim_duration / args.sim_duration,
+        requests={f"{req.src.name}-{req.dst.name}": gather_request_stats(req) for req in net.requests},
         nodes={},
     )
 
