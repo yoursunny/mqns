@@ -41,9 +41,10 @@ from mqns.network.proactive.mux_buffer_space import MuxSchemeBufferSpace
 from mqns.network.proactive.select import SelectPurifQubit, call_select_purif_qubit
 from mqns.network.protocol.event import ManageActiveChannels, QubitEntangledEvent, QubitReleasedEvent
 from mqns.simulator import Simulator
-from mqns.utils import log
+from mqns.utils import json_encodable, log
 
 
+@json_encodable
 class ProactiveForwarderCounters:
     def __init__(self):
         self.n_entg = 0

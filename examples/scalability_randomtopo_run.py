@@ -1,15 +1,17 @@
 import json
 import os.path
 
+from mqns.entity.node import QNode
 from mqns.network.network import Request
 from mqns.network.proactive import (
+    LinkLayer,
     ProactiveForwarder,
     ProactiveRoutingController,
     QubitAllocationType,
     RoutingPathSingle,
 )
 from mqns.simulator import Simulator
-from mqns.utils import WallClockTimeout, log
+from mqns.utils import WallClockTimeout,  json_default, log
 
 from examples_common.scalability_randomtopo import RequestStats, RunArgs, RunResult, build_network, parse_run_args
 
@@ -49,11 +51,19 @@ def run_simulation(args: RunArgs) -> RunResult:
         fw = req.src.get_app(ProactiveForwarder)
         return fw.cnt.n_consumed / sim_duration, fw.cnt.consumed_avg_fidelity
 
+    def gather_node_stats(node: QNode):
+        fw = node.get_app(ProactiveForwarder)
+        ll = node.get_app(LinkLayer)
+        return [
+            ll.cnt,
+            fw.cnt,
+        ]
+
     return RunResult(
         time_spent=s.time_spend,
         sim_progress=sim_duration / args.sim_duration,
         requests={f"{req.src.name}-{req.dst.name}": gather_request_stats(req) for req in net.requests},
-        nodes={},
+        nodes={node.name: gather_node_stats(node) for node in net.nodes},
     )
 
 
@@ -61,4 +71,4 @@ if __name__ == "__main__":
     args = parse_run_args()
     result = run_simulation(args)
     with open(os.path.join(args.outdir, f"{args.basename}.json"), "w") as file:
-        json.dump(result, file)
+        json.dump(result, file, default=json_default)

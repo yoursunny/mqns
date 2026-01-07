@@ -36,7 +36,7 @@ from mqns.network.protocol.event import (
     QubitReleasedEvent,
 )
 from mqns.simulator import Simulator
-from mqns.utils import log
+from mqns.utils import json_encodable, log
 
 
 class ReserveMsg(TypedDict):
@@ -54,6 +54,7 @@ class ReservationRequest:
     qchannel: QuantumChannel
 
 
+@json_encodable
 class LinkLayerCounters:
     def __init__(self):
         self.n_etg = 0

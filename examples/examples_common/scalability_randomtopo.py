@@ -26,7 +26,7 @@ eta_s = 0.95
 frequency = 1e6  # memory frequency
 entg_attempt_rate = 50e6  # From fiber max frequency (50 MHz) AND detectors count rate (60 MHz)
 init_fidelity = 0.99
-t_cohere = 5e-3  # 10e-3
+t_cohere = 5e-3
 p_swap = 0.5
 swapping_policy = "asap"
 nqubits = 2000  # large enough to support qchannel capacity in random topology
@@ -112,5 +112,5 @@ class RunResult(TypedDict):
     """Finished timeline progress, 1.0 means all simulation finished."""
     requests: dict[str, RequestStats]
     """Per-request statistics."""
-    nodes: Any
+    nodes: dict[str, Any]
     """Per-node statistics."""
