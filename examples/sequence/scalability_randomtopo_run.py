@@ -132,7 +132,7 @@ def build_network(basename: str, net: QuantumNetwork, tlb: TimelineBounds) -> tu
     Build SeQUeNCe network topology that matches MQNS network topology.
     """
 
-    filename = os.path.join(args.outdir, f"{basename}.topo.json")
+    filename = os.path.join(args.outdir, f"{basename}.sequence-topo.json")
     network_json = convert_network(net, tlb)
     with open(filename, "w") as f:
         json.dump(network_json, f)
@@ -216,5 +216,5 @@ def run_simulation(args: RunArgs) -> RunResult:
 if __name__ == "__main__":
     args = parse_run_args()
     result = run_simulation(args)
-    with open(os.path.join(args.outdir, f"{args.basename}.json"), "w") as file:
+    with open(os.path.join(args.outdir, f"{args.basename}.sequence.json"), "w") as file:
         json.dump(result, file)

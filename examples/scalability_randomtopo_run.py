@@ -11,7 +11,7 @@ from mqns.network.proactive import (
     RoutingPathSingle,
 )
 from mqns.simulator import Simulator
-from mqns.utils import WallClockTimeout,  json_default, log
+from mqns.utils import WallClockTimeout, json_default, log
 
 from examples_common.scalability_randomtopo import RequestStats, RunArgs, RunResult, build_network, parse_run_args
 

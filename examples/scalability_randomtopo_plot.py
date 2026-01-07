@@ -15,8 +15,8 @@ See scalability_randomtopo.sh for how to run this script.
 
 # Command line arguments
 class Args(Tap):
-    indir: str  # input directory for MQNS results
-    indir_sequence: str = ""  # input directory for SeQUeNCe results
+    indir: str  # input directory
+    sequence: bool = False  # compare with SeQUeNCe
     runs: int = 1  # number of simulation runs per parameter set
     qchannel_capacity: int = 10  # quantum channel capacity
     time_limit: float = 10800.0  # wall-clock limit in seconds
@@ -40,16 +40,16 @@ SEED_BASE = 200
 # Load intermediate files saved by scalability_randomtopo_run.py.
 n_simulators = 0
 rows: list[dict] = []
-for indir, simulator_name in (args.indir, "MQNS"), (args.indir_sequence, "SeQUeNCe"):
-    if indir == "":
+for enabled, simulator_name, suffix in (True, "MQNS", ".json"), (args.sequence, "SeQUeNCe", ".sequence.json"):
+    if not enabled:
         continue
     n_simulators += 1
     for nnodes, nedges in network_sizes:
         values = np.zeros(args.runs, dtype=np.float64)
         for j in range(args.runs):
             seed = SEED_BASE + j
-            filename = f"{args.qchannel_capacity}-{nnodes}-{nedges}-{seed}.json"
-            with open(os.path.join(indir, filename), "r") as file:
+            filename = f"{args.qchannel_capacity}-{nnodes}-{nedges}-{seed}{suffix}"
+            with open(os.path.join(args.indir, filename)) as file:
                 data1 = RunResult(json.load(file))
                 values[j] = data1["time_spent"] / data1["sim_progress"]
         rows.append(

@@ -14,33 +14,40 @@ set -euo pipefail
 # with proper CPU isolation, and then run scalability_randomtopo_plot.py to plot the diagrams.
 
 OUTDIR=examples/scalability_randomtopo
-mkdir -p $OUTDIR/mqns $OUTDIR/sequence
+mkdir -p $OUTDIR
 echo '*' >$OUTDIR/.gitignore
 
 RUNS=5
 SD=3.0
 QC=10
 TL=10800
+ENABLE_SEQUENCE=1
 
 run_seeds() {
-  for SEED in $(seq 200 $((200+RUNS-1))); do
-    python $1 --seed $SEED --nnodes $3 --nedges $4 --sim_duration $SD --qchannel_capacity $QC --time_limit $TL --outdir $2
+  local SEED_BASE=200
+  for SEED in $(seq $SEED_BASE $((SEED_BASE+RUNS-1))); do
+    python $1 --seed $SEED --nnodes $2 --nedges $3 --sim_duration $SD --qchannel_capacity $QC --time_limit $TL --outdir $OUTDIR
   done
 }
 
 run_simulator() {
-  run_seeds $1 $2 16  20
-  run_seeds $1 $2 32  40
-  run_seeds $1 $2 64  80
-  run_seeds $1 $2 128 160
-  run_seeds $1 $2 256 320
-  run_seeds $1 $2 512 640
+  run_seeds $1 16  20
+  run_seeds $1 32  40
+  run_seeds $1 64  80
+  run_seeds $1 128 160
+  run_seeds $1 256 320
+  run_seeds $1 512 640
 }
 
-run_simulator examples/scalability_randomtopo_run.py          $OUTDIR/mqns
-run_simulator examples/sequence/scalability_randomtopo_run.py $OUTDIR/sequence
+run_simulator examples/scalability_randomtopo_run.py
+if [[ $ENABLE_SEQUENCE -ne 0 ]]; then
+  run_simulator examples/sequence/scalability_randomtopo_run.py
+  SEQUENCE_FLAG=--sequence
+else
+  SEQUENCE_FLAG=''
+fi
 
 python examples/scalability_randomtopo_plot.py \
-  --indir $OUTDIR/mqns --indir_sequence $OUTDIR/sequence \
+  --indir $OUTDIR $SEQUENCE_FLAG \
   --runs $RUNS --qchannel_capacity $QC --time_limit $TL \
   --csv $OUTDIR/$QC.csv --plt $OUTDIR/$QC.png
