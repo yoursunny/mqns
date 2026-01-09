@@ -1,8 +1,5 @@
-mqns package
-============
-
-Subpackages
------------
+Reference
+=========
 
 .. toctree::
    :maxdepth: 4
@@ -12,11 +9,3 @@ Subpackages
    mqns.network
    mqns.simulator
    mqns.utils
-
-Module contents
----------------
-
-.. automodule:: mqns
-   :members:
-   :show-inheritance:
-   :undoc-members:

@@ -4,18 +4,18 @@ mqns.simulator package
 Submodules
 ----------
 
-mqns.simulator.event module
----------------------------
+mqns.simulator.time module
+--------------------------
 
-.. automodule:: mqns.simulator.event
+.. automodule:: mqns.simulator.time
    :members:
    :show-inheritance:
    :undoc-members:
 
-mqns.simulator.pool module
---------------------------
+mqns.simulator.event module
+---------------------------
 
-.. automodule:: mqns.simulator.pool
+.. automodule:: mqns.simulator.event
    :members:
    :show-inheritance:
    :undoc-members:
@@ -28,18 +28,10 @@ mqns.simulator.simulator module
    :show-inheritance:
    :undoc-members:
 
-mqns.simulator.ts module
-------------------------
+mqns.simulator.pool module
+--------------------------
 
-.. automodule:: mqns.simulator.ts
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-Module contents
----------------
-
-.. automodule:: mqns.simulator
+.. automodule:: mqns.simulator.pool
    :members:
    :show-inheritance:
    :undoc-members:

@@ -20,10 +20,18 @@ mqns.utils.rnd module
    :show-inheritance:
    :undoc-members:
 
-Module contents
----------------
+mqns.utils.json module
+----------------------
 
-.. automodule:: mqns.utils
+.. automodule:: mqns.utils.json
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+mqns.utils.timeout module
+-------------------------
+
+.. automodule:: mqns.utils.timeout
    :members:
    :show-inheritance:
    :undoc-members:

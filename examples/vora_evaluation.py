@@ -1,7 +1,48 @@
+"""
+This script compares entanglement swapping orders on a linear path.
+The scenario is described in "Towards Optimal Orders for Entanglement Swapping in Path Graphs: A Greedy Approach"
+https://doi.org/10.48550/arXiv.2504.14040 , Section V-D.
+
+The path has an end-to-end distance of 150 km.
+There are 3, 4, or 5 repeaters along the path, with the distances among them allocated with different weights:
+
+* Uniform: all qchannels have the same length.
+* Increasing: first qchannel has length `d0`; link i has length `(2i+1)d0`.
+* Decreasing: reverse of Increasing.
+* Mid-bottleneck: middle qchannel(s) are 1.2 times longer than all other qchannels.
+
+There are 25 memory pairs for each link, and the memory coherence time is 10 ms.
+
+Entanglement swapping orders under comparison are:
+
+* asap: swap as soon as possible.
+* l2r: swap left-to-right.
+* baln: swap in balanced tree.
+* vora: swap order generated with vora algorithm based on training data.
+
+``vora_evaluation.voraswap.json`` contains precomputed vora swapping orders for the paths used in this script.
+It is only compatible with the total distance, number of memory pairs, and memory coherence time mentioned above.
+To alter these parameters, you must use ``--vora_train`` flag to re-generate the vora swapping orders,
+and then use ``--vora_load`` flag to load the new data file containing vora swapping orders::
+
+    # Start the training with --vora_train flag.
+    python vora_evaluation.py --vora_train \\
+        --runs 1000 --total_distance 150 --t_cohere 0.010 --qchannel_capacity 25
+    # This command prints a script that calls linear_attempts.py to generate training data,
+    # which is then fed back to vora_evaluation.py --vora_regen to compute the vora swapping orders.
+    # Review the script, set OUTDIR variable, and then run the script.
+
+    # Now you can load the new data file with --vora_load flag and matching parameters.
+    python vora_evaluation.py --vora_load voraswap.json \\
+        --total_distance 150 --t_cohere 0.010 --qchannel_capacity 25 \\
+        --csv result.csv --plt result.png
+"""
+
+import copy
 import itertools
-import sys
+import json
+import os.path
 from collections.abc import Callable
-from copy import deepcopy
 from multiprocessing import Pool, freeze_support
 from typing import cast
 
@@ -10,7 +51,7 @@ import pandas as pd
 from tap import Tap
 
 from mqns.network.network import QuantumNetwork
-from mqns.network.proactive import ProactiveForwarder
+from mqns.network.proactive import ProactiveForwarder, compute_vora_swap_sequence
 from mqns.network.topology.topo import Topology
 from mqns.simulator import Simulator
 from mqns.utils import log, set_seed
@@ -20,6 +61,11 @@ from examples_common.stats import gather_etg_decoh
 from examples_common.topo_linear import build_topology
 
 log.set_default_level("CRITICAL")
+
+
+NUM_ROUTERS_OPTIONS = [3, 4, 5]
+DIST_PROPORTIONS = ["decreasing", "increasing", "mid_bottleneck", "uniform"]
+SWAP_CONFIGS = ["asap", "baln", "vora", "l2r"]
 
 
 def distance_proportion_weights_mid_bottleneck(n: int) -> list[float]:
@@ -36,52 +82,34 @@ DISTANCE_PROPORTION_WEIGHTS: dict[str, Callable[[int], list[float]]] = {
 }
 """
 For each distance proportion, function to generate relative weights of qchannel lengths, given number of qchannel segments.
-
-Uniform: all qchannels have the same length.
-Increasing: first qchannel has length `d0`; link i has length `(2i+1)d0`.
-Decreasing: reverse of Increasing.
-Mid-bottleneck: middle qchannel(s) are 1.2 times longer than all other qchannels.
-"""
-
-VORA_SWAPPING_ORDER: dict[int, dict[str, list[int]]] = {
-    3: {
-        "uniform": [1, 3, 2],
-        "increasing": [1, 2, 3],
-        "decreasing": [3, 2, 1],
-        "mid_bottleneck": [1, 3, 2],
-    },
-    4: {
-        "uniform": [1, 4, 2, 3],
-        "increasing": [1, 2, 3, 4],
-        "decreasing": [4, 3, 2, 1],
-        "mid_bottleneck": [1, 3, 4, 2],
-    },
-    5: {
-        "uniform": [1, 4, 2, 5, 3],
-        "increasing": [1, 2, 3, 4, 5],
-        "decreasing": [5, 4, 3, 2, 1],
-        "mid_bottleneck": [1, 4, 3, 5, 2],
-    },
-}
-"""
-Pre-computed VoraSwap swapping orders.
 """
 
 
 class ParameterSet:
     def __init__(self):
         self.seed_base = 100
-        self.sim_duration = 5.0
-        self.channel_qubits = 25
-        self.t_cohere = 0.01  # sec
-
-        self.total_distance = 150  # km
-
         self.n_runs = 10
 
-        self.number_of_routers: int
-        self.distance_proportion: str
-        self.swapping_config: str
+        self.sim_duration = 5.0
+        self.total_distance = 150  # km
+        self.t_cohere = 0.01  # sec
+        self.qchannel_capacity = 25
+
+        self._precomputed_vora: dict = {}
+        self.number_of_routers: int = 0
+        self.distance_proportion: str = "invalid"
+        self.swapping_config: str = "invalid"
+
+    def clone_with(self, number_of_routers: int, distance_proportion: str, swapping_config: str) -> "ParameterSet":
+        p = copy.copy(self)
+        p.number_of_routers = number_of_routers
+        p.distance_proportion = distance_proportion
+        p.swapping_config = swapping_config
+        return p
+
+    @property
+    def t_cohere_ns(self) -> int:
+        return int(self.t_cohere * 1e9)
 
     def build_topology(self) -> Topology:
         distances = self.compute_distances()
@@ -92,7 +120,7 @@ class ParameterSet:
             nodes=2 + self.number_of_routers,
             t_cohere=self.t_cohere,
             channel_length=distances,
-            channel_capacity=self.channel_qubits,
+            channel_capacity=self.qchannel_capacity,
             swap=swap,
         )
 
@@ -102,30 +130,52 @@ class ParameterSet:
         sum_weight = sum(weights)
         return [self.total_distance * w / sum_weight for w in weights]
 
+    def to_linear_attempts_csv_filename(self, train_qchannel_capacity=1) -> str:
+        return f"{self.number_of_routers}-{self.distance_proportion}-{train_qchannel_capacity}.csv"
+
+    def load_vora(self, filename: str) -> None:
+        """
+        Load precomputed vora swapping orders and validate that they match the topology parameters.
+        """
+        with open(filename) as f:
+            d = json.load(f)
+        assert type(d) is dict, "invalid precomputed vora swapping orders"
+        for k in "total_distance", "t_cohere_ns", "qchannel_capacity":
+            assert d[k] == getattr(self, k), f"mismatched {k} in precomputed vora swapping orders"
+        for n, p in itertools.product(NUM_ROUTERS_OPTIONS, DIST_PROPORTIONS):
+            assert type(d.get(f"{n}-{p}", None)) is list, f"missing {n}-{p} in precomputed vora swapping orders"
+        self._precomputed_vora = d
+
     def get_swap_sequence(self) -> str | list[int]:
         if self.swapping_config != "vora":
             return f"swap_{self.number_of_routers}_{self.swapping_config}"
-
-        so = VORA_SWAPPING_ORDER[self.number_of_routers][self.distance_proportion]
-        sd_rank = max(so) + 1
-        return [sd_rank] + so + [sd_rank]
+        return self._precomputed_vora[f"{self.number_of_routers}-{self.distance_proportion}"]
 
 
-def train_attempts_row(p: ParameterSet, num_routers: int, dist_prop: str) -> str:
+def vora_train_row(p: ParameterSet, num_routers: int, dist_prop: str) -> str:
     """
     Generate linear_attempts.py command line for collecting training data for the given topology.
     """
-    p = deepcopy(p)
-    p.number_of_routers = num_routers
-    p.distance_proportion = dist_prop
-    p.swapping_config = "no_swap"
+    p = p.clone_with(num_routers, dist_prop, "no_swap")
 
     distances = p.compute_distances()
     L = " ".join([str(d) for d in distances])
-    filename = f"{num_routers}-{dist_prop}-{p.channel_qubits}"
-    return (
-        f"python linear_attempts.py --runs {p.n_runs} --L {L} --M {p.channel_qubits} "
-        f"--json $OUTDIR/{filename}.json --csv $OUTDIR/{filename}.csv\n"
+    filename = p.to_linear_attempts_csv_filename()
+    return f"python linear_attempts.py --runs {p.n_runs} --L {L} --M 1 --csv $OUTDIR/{filename}"
+
+
+def vora_regen_row(p: ParameterSet, num_routers: int, dist_prop: str, indir: str) -> list[int]:
+    """
+    Regenerate vora swapping order from the output of linear_attempts.py.
+    """
+    p = p.clone_with(num_routers, dist_prop, "no_swap")
+    data = pd.read_csv(os.path.join(indir, p.to_linear_attempts_csv_filename()))
+    return compute_vora_swap_sequence(
+        lengths=list(data["L"]),
+        attempts=list(data["Attempts rate"]),
+        success=list(data["Success rate"]),
+        t_cohere=p.t_cohere,
+        qchannel_capacity=p.qchannel_capacity,
     )
 
 
@@ -150,10 +200,7 @@ def run_row(p: ParameterSet, num_routers: int, dist_prop: str, swap_conf: str) -
     """
     Run simulations for one parameter set.
     """
-    p = deepcopy(p)
-    p.number_of_routers = num_routers
-    p.distance_proportion = dist_prop
-    p.swapping_config = swap_conf
+    p = p.clone_with(num_routers, dist_prop, swap_conf)
 
     entanglements: list[float] = []
     expired: list[float] = []
@@ -240,37 +287,61 @@ def save_results(results: list[dict], *, save_csv: str, save_plt: str) -> None:
     plt_save(save_plt)
 
 
-NUM_ROUTERS_OPTIONS = [3, 4, 5]
-DIST_PROPORTIONS = ["decreasing", "increasing", "mid_bottleneck", "uniform"]
-SWAP_CONFIGS = ["asap", "baln", "vora", "l2r"]
-
-
 if __name__ == "__main__":
     freeze_support()
     p = ParameterSet()
 
-    # Command line arguments
     class Args(Tap):
-        train_attempts: bool = False  # generate training script for linear_attempts.py
+        vora_train: bool = False  # generate training script for vora swapping sequences
+        vora_regen: str = ""  # regenerate vora swapping sequences from training data directory
+        vora_load: str = ""  # load vora swapping sequences from file
         workers: int = 1  # number of workers for parallel execution
         runs: int = p.n_runs  # number of trials per parameter set
         sim_duration: float = p.sim_duration  # simulation duration in seconds
-        channel_qubits: int = p.channel_qubits  # qchannel capacity
+        total_distance: int = p.total_distance  # total distance
+        t_cohere: float = p.t_cohere  # memory coherence time
+        qchannel_capacity: int = p.qchannel_capacity  # qchannel capacity
         csv: str = ""  # save results as CSV file
         plt: str = ""  # save plot as image file
 
     args = Args().parse_args()
     p.n_runs = args.runs
     p.sim_duration = args.sim_duration
-    p.channel_qubits = args.channel_qubits
+    p.total_distance = args.total_distance
+    p.t_cohere = args.t_cohere
+    p.qchannel_capacity = args.qchannel_capacity
 
-    if args.train_attempts:
-        script = (train_attempts_row(*a) for a in itertools.product([p], NUM_ROUTERS_OPTIONS, DIST_PROPORTIONS))
-        sys.stdout.writelines(script)
-        sys.exit()
+    if args.vora_train:
+        # Generate training script.
+        script = itertools.chain(
+            (vora_train_row(*a) for a in itertools.product([p], NUM_ROUTERS_OPTIONS, DIST_PROPORTIONS)),
+            [
+                f"python vora_evaluation.py --vora_regen $OUTDIR"
+                f" --total_distance {p.total_distance}"
+                f" --t_cohere {p.t_cohere}"
+                f" --qchannel_capacity {p.qchannel_capacity}"
+                f" >$OUTDIR/voraswap.json\n"
+            ],
+        )
+        print("\n".join(script))
 
-    # Simulator loop with process-based parallelism
-    with Pool(processes=args.workers) as pool:
-        results = pool.starmap(run_row, itertools.product([p], NUM_ROUTERS_OPTIONS, DIST_PROPORTIONS, SWAP_CONFIGS))
+    elif args.vora_regen:
+        # Generate vora swapping orders based on training data.
+        d: dict = {
+            f"{n}-{d}": vora_regen_row(p, n, d, indir=args.vora_regen)
+            for n, d in itertools.product(NUM_ROUTERS_OPTIONS, DIST_PROPORTIONS)
+        }
+        d["total_distance"] = p.total_distance
+        d["t_cohere_ns"] = p.t_cohere_ns
+        d["qchannel_capacity"] = p.qchannel_capacity
+        print(json.dumps(d))
 
-    save_results(results, save_csv=args.csv, save_plt=args.plt)
+    else:
+        # Load precomputed vora swapping orders.
+        p.load_vora(args.vora_load or os.path.join(os.path.dirname(__file__), "vora_evaluation.voraswap.json"))
+
+        # Run simulations.
+        with Pool(processes=args.workers) as pool:
+            results = pool.starmap(run_row, itertools.product([p], NUM_ROUTERS_OPTIONS, DIST_PROPORTIONS, SWAP_CONFIGS))
+
+        save_results(results, save_csv=args.csv, save_plt=args.plt)

@@ -12,11 +12,3 @@ Subpackages
    mqns.network.protocol
    mqns.network.route
    mqns.network.topology
-
-Module contents
----------------
-
-.. automodule:: mqns.network
-   :members:
-   :show-inheritance:
-   :undoc-members:
