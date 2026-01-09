@@ -18,14 +18,6 @@ Subpackages
 Submodules
 ----------
 
-mqns.entity.base\_channel module
---------------------------------
-
-.. automodule:: mqns.entity.base_channel
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
 mqns.entity.entity module
 -------------------------
 
@@ -34,10 +26,10 @@ mqns.entity.entity module
    :show-inheritance:
    :undoc-members:
 
-Module contents
----------------
+mqns.entity.base\_channel module
+--------------------------------
 
-.. automodule:: mqns.entity
+.. automodule:: mqns.entity.base_channel
    :members:
    :show-inheritance:
    :undoc-members:

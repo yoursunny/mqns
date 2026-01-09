@@ -11,11 +11,3 @@ Subpackages
    mqns.models.delay
    mqns.models.epr
    mqns.models.qubit
-
-Module contents
----------------
-
-.. automodule:: mqns.models
-   :members:
-   :show-inheritance:
-   :undoc-members:

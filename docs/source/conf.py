@@ -1,9 +1,10 @@
 # Configuration file for the Sphinx documentation builder.
 
-import os
+import os.path
 import sys
 
-sys.path.insert(0, os.path.abspath("../../mqns/"))
+mqns_root = os.path.join(os.path.dirname(__file__), "../..")
+sys.path.insert(0, mqns_root)
 
 # -- Project information
 

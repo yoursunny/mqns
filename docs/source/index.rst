@@ -1,7 +1,7 @@
 Multiverse Quantum Network Simulator
 ====================================
 
-**Multiverse** is a flexible and extensible simulator for evaluating **entanglement routing in quantum networks**.  
+**Multiverse** is a flexible and extensible simulator for evaluating **entanglement routing in quantum networks**.
 It is designed as an **architecture-agnostic, modular platform** that allows researchers and developers to:
 
 - Prototype and evaluate entanglement distribution strategies
@@ -10,7 +10,7 @@ It is designed as an **architecture-agnostic, modular platform** that allows res
 - Model heterogeneous quantum hardware and link architectures
 - Investigate performance trade-offs under dynamic conditions
 
-Unlike prior simulators, Multiverse avoids assuming a single protocol stack or rigid architecture.  
+Unlike prior simulators, Multiverse avoids assuming a single protocol stack or rigid architecture.
 It provides conceptual building blocks—qubit lifecycle, memory management, time scheduling, and link architectures—so you can **define, test, and refine network functions** in an open-ended environment.
 
 .. note::
@@ -25,5 +25,4 @@ Contents
    :maxdepth: 2
 
    intro
-   reference/modules
-
+   reference/mqns
