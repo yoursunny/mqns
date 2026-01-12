@@ -35,7 +35,7 @@ from mqns.models.qubit.const import (
 )
 from mqns.models.qubit.errors import QGateOperatorNotMatchError, QGateQubitNotInStateError
 from mqns.models.qubit.typing import Operator1
-from mqns.models.qubit.utils import joint, kron
+from mqns.models.qubit.utils import joint
 
 if TYPE_CHECKING:
     from mqns.models.qubit.qubit import Qubit
@@ -190,14 +190,14 @@ class DoubleQubitsControlledGate(Gate):
 
         for i in range(state.num):
             if i == idx1:
-                full_operator_part_0 = kron(full_operator_part_0, np.array([[1, 0], [0, 0]]))
-                full_operator_part_1 = kron(full_operator_part_1, np.array([[0, 0], [0, 1]]))
+                full_operator_part_0 = np.kron(full_operator_part_0, np.array([[1, 0], [0, 0]]))
+                full_operator_part_1 = np.kron(full_operator_part_1, np.array([[0, 0], [0, 1]]))
             elif i == idx2:
-                full_operator_part_0 = kron(full_operator_part_0, OPERATOR_PAULI_I)
-                full_operator_part_1 = kron(full_operator_part_1, operator)
+                full_operator_part_0 = np.kron(full_operator_part_0, OPERATOR_PAULI_I)
+                full_operator_part_1 = np.kron(full_operator_part_1, operator)
             else:
-                full_operator_part_0 = kron(full_operator_part_0, OPERATOR_PAULI_I)
-                full_operator_part_1 = kron(full_operator_part_1, OPERATOR_PAULI_I)
+                full_operator_part_0 = np.kron(full_operator_part_0, OPERATOR_PAULI_I)
+                full_operator_part_1 = np.kron(full_operator_part_1, OPERATOR_PAULI_I)
         full_operator = full_operator_part_0 + full_operator_part_1
         qubit1.state.operate(full_operator)
 
@@ -305,25 +305,25 @@ class ThreeQubitsGate(Gate):
 
         for i in range(state.num):
             if i == idx1:
-                full_operator_part_00 = kron(full_operator_part_00, np.array([[1, 0], [0, 0]]))
-                full_operator_part_01 = kron(full_operator_part_01, np.array([[1, 0], [0, 0]]))
-                full_operator_part_10 = kron(full_operator_part_10, np.array([[0, 0], [0, 1]]))
-                full_operator_part_11 = kron(full_operator_part_11, np.array([[0, 0], [0, 1]]))
+                full_operator_part_00 = np.kron(full_operator_part_00, np.array([[1, 0], [0, 0]]))
+                full_operator_part_01 = np.kron(full_operator_part_01, np.array([[1, 0], [0, 0]]))
+                full_operator_part_10 = np.kron(full_operator_part_10, np.array([[0, 0], [0, 1]]))
+                full_operator_part_11 = np.kron(full_operator_part_11, np.array([[0, 0], [0, 1]]))
             elif i == idx2:
-                full_operator_part_00 = kron(full_operator_part_00, np.array([[1, 0], [0, 0]]))
-                full_operator_part_10 = kron(full_operator_part_10, np.array([[1, 0], [0, 0]]))
-                full_operator_part_01 = kron(full_operator_part_01, np.array([[0, 0], [0, 1]]))
-                full_operator_part_11 = kron(full_operator_part_11, np.array([[0, 0], [0, 1]]))
+                full_operator_part_00 = np.kron(full_operator_part_00, np.array([[1, 0], [0, 0]]))
+                full_operator_part_10 = np.kron(full_operator_part_10, np.array([[1, 0], [0, 0]]))
+                full_operator_part_01 = np.kron(full_operator_part_01, np.array([[0, 0], [0, 1]]))
+                full_operator_part_11 = np.kron(full_operator_part_11, np.array([[0, 0], [0, 1]]))
             elif i == idx3:
-                full_operator_part_00 = kron(full_operator_part_00, OPERATOR_PAULI_I)
-                full_operator_part_01 = kron(full_operator_part_01, OPERATOR_PAULI_I)
-                full_operator_part_10 = kron(full_operator_part_10, OPERATOR_PAULI_I)
-                full_operator_part_11 = kron(full_operator_part_11, operator)
+                full_operator_part_00 = np.kron(full_operator_part_00, OPERATOR_PAULI_I)
+                full_operator_part_01 = np.kron(full_operator_part_01, OPERATOR_PAULI_I)
+                full_operator_part_10 = np.kron(full_operator_part_10, OPERATOR_PAULI_I)
+                full_operator_part_11 = np.kron(full_operator_part_11, operator)
             else:
-                full_operator_part_00 = kron(full_operator_part_00, OPERATOR_PAULI_I)
-                full_operator_part_01 = kron(full_operator_part_01, OPERATOR_PAULI_I)
-                full_operator_part_10 = kron(full_operator_part_10, OPERATOR_PAULI_I)
-                full_operator_part_11 = kron(full_operator_part_11, OPERATOR_PAULI_I)
+                full_operator_part_00 = np.kron(full_operator_part_00, OPERATOR_PAULI_I)
+                full_operator_part_01 = np.kron(full_operator_part_01, OPERATOR_PAULI_I)
+                full_operator_part_10 = np.kron(full_operator_part_10, OPERATOR_PAULI_I)
+                full_operator_part_11 = np.kron(full_operator_part_11, OPERATOR_PAULI_I)
         full_operator = full_operator_part_00 + full_operator_part_01 + full_operator_part_10 + full_operator_part_11
         qubit1.state.operate(full_operator)
 

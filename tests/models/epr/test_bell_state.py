@@ -1,6 +1,6 @@
 from mqns.models.epr import BellStateEntanglement
+from mqns.models.qubit import Qubit
 from mqns.models.qubit.const import QUBIT_STATE_1
-from mqns.models.qubit.qubit import Qubit
 
 
 def test_bell_state_epr():

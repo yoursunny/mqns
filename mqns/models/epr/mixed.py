@@ -19,15 +19,10 @@ from typing import Unpack, final, override
 
 import numpy as np
 
+from mqns.models.epr.const import RHO_PHI_N, RHO_PHI_P, RHO_PSI_N, RHO_PSI_P
 from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
-from mqns.models.qubit.const import QUBIT_STATE_0, QUBIT_STATE_P
-from mqns.models.qubit.qubit import QState, Qubit
+from mqns.models.qubit.typing import MultiQubitRho
 from mqns.utils import get_rand
-
-phi_p: np.ndarray = 1 / np.sqrt(2) * np.array([[1], [0], [0], [1]])
-phi_n: np.ndarray = 1 / np.sqrt(2) * np.array([[1], [0], [0], [-1]])
-psi_p: np.ndarray = 1 / np.sqrt(2) * np.array([[0], [1], [1], [0]])
-psi_n: np.ndarray = 1 / np.sqrt(2) * np.array([[0], [1], [-1], [0]])
 
 
 @final
@@ -58,11 +53,10 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
             d (float): probability of Phi^-
         """
         super().__init__(**kwargs)
-        self.a = fidelity
-        self.b = b if b is not None else (1 - fidelity) / 3
-        self.c = c if c is not None else (1 - fidelity) / 3
-        self.d = d if d is not None else (1 - fidelity) / 3
-        self._normalize()
+        dflt_bcd = (1 - fidelity) / 3
+        self._set_probabilities(
+            fidelity, dflt_bcd if b is None else b, dflt_bcd if c is None else c, dflt_bcd if d is None else d
+        )
 
     @property
     @override
@@ -75,13 +69,16 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
         assert 0 <= value <= 1
         self.a = value
 
-    def _normalize(self):
-        total = self.a + self.b + self.c + self.d
-        # Normalized: a + b + c + d = 1
-        self.a = self.a / total
-        self.b = self.b / total
-        self.c = self.c / total
-        self.d = self.d / total
+    def _set_probabilities(self, a: float, b: float, c: float, d: float) -> None:
+        total = a + b + c + d
+        self.a = a / total
+        """Probability of ``Phi^+``."""
+        self.b = b / total
+        """Probability of ``Phi^-``."""
+        self.c = c / total
+        """Probability of ``Psi^+``."""
+        self.d = d / total
+        """Probability of ``Psi^-``."""
 
     @staticmethod
     @override
@@ -103,13 +100,12 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
         if get_rand() > p_succ:
             return False
 
-        self.a, self.b, self.c, self.d = (
+        self._set_probabilities(
             (self.a * epr1.a + self.d * epr1.d) / p_succ,
             (self.b * epr1.b + self.c * epr1.c) / p_succ,
             (self.b * epr1.c + self.c * epr1.b) / p_succ,
             (self.a * epr1.d + self.d * epr1.a) / p_succ,
         )
-        self._normalize()
         return True
 
     @override
@@ -129,11 +125,12 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
             kwargs: other parameters
 
         """
-        self.a = 0.25 + (self.a - 0.25) * np.exp(-decoherence_rate * t)
-        self.b = 0.25 + (self.b - 0.25) * np.exp(-decoherence_rate * t)
-        self.c = 0.25 + (self.c - 0.25) * np.exp(-decoherence_rate * t)
-        self.d = 0.25 + (self.d - 0.25) * np.exp(-decoherence_rate * t)
-        self._normalize()
+        self._set_probabilities(
+            0.25 + (self.a - 0.25) * np.exp(-decoherence_rate * t),
+            0.25 + (self.b - 0.25) * np.exp(-decoherence_rate * t),
+            0.25 + (self.c - 0.25) * np.exp(-decoherence_rate * t),
+            0.25 + (self.d - 0.25) * np.exp(-decoherence_rate * t),
+        )
 
     @override
     def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
@@ -152,31 +149,13 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
             kwargs: other parameters
 
         """
-        self.a = 0.25 + (self.a - 0.25) * np.exp(-decoherence_rate * length)
-        self.b = 0.25 + (self.b - 0.25) * np.exp(-decoherence_rate * length)
-        self.c = 0.25 + (self.c - 0.25) * np.exp(-decoherence_rate * length)
-        self.d = 0.25 + (self.d - 0.25) * np.exp(-decoherence_rate * length)
-        self._normalize()
-
-    @override
-    def to_qubits(self) -> list[Qubit]:
-        if self.is_decoherenced:
-            q0 = Qubit(state=QUBIT_STATE_P, name="q0")
-            q1 = Qubit(state=QUBIT_STATE_P, name="q1")
-            return [q0, q1]
-
-        q0 = Qubit(state=QUBIT_STATE_0, name="q0")
-        q1 = Qubit(state=QUBIT_STATE_0, name="q1")
-
-        rho = (
-            self.a * np.dot(phi_p, phi_p.T.conjugate())
-            + self.b * np.dot(psi_p, psi_p.T.conjugate())
-            + self.c * np.dot(psi_n, psi_n.T.conjugate())
-            + self.d * np.dot(phi_n, phi_n.T.conjugate())
+        self._set_probabilities(
+            0.25 + (self.a - 0.25) * np.exp(-decoherence_rate * length),
+            0.25 + (self.b - 0.25) * np.exp(-decoherence_rate * length),
+            0.25 + (self.c - 0.25) * np.exp(-decoherence_rate * length),
+            0.25 + (self.d - 0.25) * np.exp(-decoherence_rate * length),
         )
 
-        qs = QState([q0, q1], rho=rho)
-        q0.state = qs
-        q1.state = qs
-        self.is_decoherenced = True
-        return [q0, q1]
+    @override
+    def _to_qubits_rho(self) -> MultiQubitRho:
+        return self.a * RHO_PHI_P + self.b * RHO_PSI_P + self.c * RHO_PSI_N + self.d * RHO_PHI_N

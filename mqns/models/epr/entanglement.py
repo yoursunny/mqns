@@ -33,9 +33,10 @@ from typing import TYPE_CHECKING, Generic, TypedDict, TypeVar, Unpack, cast
 import numpy as np
 
 from mqns.models.core import QuantumModel
+from mqns.models.qubit import QState, Qubit, state_to_rho
 from mqns.models.qubit.const import OPERATOR_PAULI_I, QUBIT_STATE_0, QUBIT_STATE_P
 from mqns.models.qubit.gate import CNOT, H, U, X, Y, Z
-from mqns.models.qubit.qubit import QState, Qubit
+from mqns.models.qubit.typing import MultiQubitRho
 from mqns.simulator import Time
 from mqns.utils import get_rand
 
@@ -236,25 +237,30 @@ class Entanglement(ABC, Generic[EntanglementT], QuantumModel):
     def to_qubits(self) -> list[Qubit]:
         """
         Transport the entanglement into a pair of qubits based on the fidelity.
-        Suppose the first qubit is [1/sqrt(2), 1/sqrt(2)].H
+        Suppose the first qubit is the Plus state.
 
         Returns:
-            A list of two qubits
-
+            A list of two qubits.
         """
         if self.is_decoherenced:
             q0 = Qubit(state=QUBIT_STATE_P, name="q0")
             q1 = Qubit(state=QUBIT_STATE_P, name="q1")
             return [q0, q1]
+
         q0 = Qubit(state=QUBIT_STATE_0, name="q0")
         q1 = Qubit(state=QUBIT_STATE_0, name="q1")
-        a = np.sqrt(self.fidelity / 2)
-        b = np.sqrt((1 - self.fidelity) / 2)
-        qs = QState([q0, q1], state=np.array([[a], [b], [b], [a]], dtype=np.complex128))
+        qs = QState([q0, q1], rho=self._to_qubits_rho())
         q0.state = qs
         q1.state = qs
+
         self.is_decoherenced = True
         return [q0, q1]
+
+    def _to_qubits_rho(self) -> MultiQubitRho:
+        a = np.sqrt(self.fidelity / 2)
+        b = np.sqrt((1 - self.fidelity) / 2)
+        state = np.array([[a], [b], [b], [a]], dtype=np.complex128)
+        return state_to_rho(state)
 
     def teleportion(self, qubit: Qubit) -> Qubit:
         """

@@ -31,12 +31,12 @@ from mqns.models.qubit.const import (
 from mqns.models.qubit.errors import OperatorNotMatchError, QStateBaseError, QStateQubitNotInStateError, QStateSizeNotMatchError
 from mqns.models.qubit.gate import SingleQubitGate
 from mqns.models.qubit.typing import MultiQubitRho, MultiQubitState, Operator, Operator1, QubitRho, QubitState
-from mqns.models.qubit.utils import kron, partial_trace, single_gate_expand
-from mqns.utils.rnd import get_rand
+from mqns.models.qubit.utils import partial_trace, single_gate_expand, state_to_rho
+from mqns.utils import get_rand
 
 
 class QState:
-    """QState is the state of one (or multiple) qubits"""
+    """QState represents the state of one or multiple qubits."""
 
     def __init__(
         self,
@@ -61,7 +61,7 @@ class QState:
         if rho is None:
             if len(state) != 2**self.num:
                 raise QStateSizeNotMatchError
-            self.rho = np.dot(state, state.T.conjugate())
+            self.rho = state_to_rho(state)
         else:
             if self.num != np.log2(rho.shape[0]) or self.num != np.log2(rho.shape[1]):
                 raise QStateSizeNotMatchError
@@ -114,11 +114,11 @@ class QState:
         Full_M_1 = np.array([[1]])
         for i in range(self.num):
             if i == idx:
-                Full_M_0 = kron(Full_M_0, M_0)
-                Full_M_1 = kron(Full_M_1, M_1)
+                Full_M_0 = np.kron(Full_M_0, M_0)
+                Full_M_1 = np.kron(Full_M_1, M_1)
             else:
-                Full_M_0 = kron(Full_M_0, np.array([[1, 0], [0, 1]]))
-                Full_M_1 = kron(Full_M_1, np.array([[1, 0], [0, 1]]))
+                Full_M_0 = np.kron(Full_M_0, np.array([[1, 0], [0, 1]]))
+                Full_M_1 = np.kron(Full_M_1, np.array([[1, 0], [0, 1]]))
 
         poss_0 = np.trace(np.dot(Full_M_0.T.conjugate(), np.dot(Full_M_0, self.rho)))
         rn = get_rand()

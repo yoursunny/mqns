@@ -15,27 +15,23 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
 from mqns.models.qubit.const import OPERATOR_PAULI_I
 from mqns.models.qubit.errors import OperatorError, QGateStateJointError
-from mqns.models.qubit.typing import Operator1
+from mqns.models.qubit.typing import MultiQubitRho, MultiQubitState, Operator, Operator1
 
 if TYPE_CHECKING:
     from mqns.models.qubit.qubit import Qubit
 
 
-def kron(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    if a.shape == (1,):
-        a = a.reshape((1, 1))
-    if b.shape == (1,):
-        b = b.reshape((1, 1))
-    return (a[:, None, :, None] * b[None, :, None, :]).reshape(a.shape[0] * b.shape[0], a.shape[1] * b.shape[1])
+def state_to_rho(state: MultiQubitState) -> MultiQubitRho:
+    return np.dot(state, state.T.conjugate())
 
 
-def single_gate_expand(qubit: "Qubit", operator: Operator1) -> Operator1:
+def single_gate_expand(qubit: "Qubit", operator: Operator1) -> Operator:
     state = qubit.state
     if operator.shape != (2, 2):
         raise OperatorError
@@ -48,10 +44,10 @@ def single_gate_expand(qubit: "Qubit", operator: Operator1) -> Operator1:
     full_operator = np.array([1])
     for i in range(state.num):
         if i == idx:
-            full_operator = kron(full_operator, operator)
+            full_operator = np.kron(full_operator, operator)
         else:
-            full_operator = kron(full_operator, OPERATOR_PAULI_I)
-    return full_operator
+            full_operator = np.kron(full_operator, OPERATOR_PAULI_I)
+    return cast(Operator, full_operator)
 
 
 def joint(qubit1: "Qubit", qubit2: "Qubit") -> None:
@@ -62,12 +58,12 @@ def joint(qubit1: "Qubit", qubit2: "Qubit") -> None:
 
     from mqns.models.qubit.qubit import QState  # noqa: PLC0415
 
-    nq = QState(qubit1.state.qubits + qubit2.state.qubits, rho=kron(qubit1.state.rho, qubit2.state.rho))
+    nq = QState(qubit1.state.qubits + qubit2.state.qubits, rho=cast(MultiQubitRho, np.kron(qubit1.state.rho, qubit2.state.rho)))
     for q in nq.qubits:
         q.state = nq
 
 
-def partial_trace(rho: np.ndarray, idx: int) -> np.ndarray:
+def partial_trace(rho: MultiQubitRho, idx: int) -> MultiQubitRho:
     """Calculate the partial trace
 
     Args:

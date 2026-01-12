@@ -30,12 +30,10 @@ from typing import Unpack, overload, override
 
 import numpy as np
 
+from mqns.models.epr.const import RHO_PHI_P
 from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
-from mqns.models.qubit.const import QUBIT_STATE_0, QUBIT_STATE_P
-from mqns.models.qubit.qubit import QState, Qubit
+from mqns.models.qubit.typing import MultiQubitRho
 from mqns.utils import get_rand
-
-phi_p: np.ndarray = 1 / np.sqrt(2) * np.array([[1], [0], [0], [1]])
 
 
 def _fidelity_from_w(w: float) -> float:
@@ -135,21 +133,8 @@ class WernerStateEntanglement(Entanglement["WernerStateEntanglement"]):
         self.w *= np.exp(-decoherence_rate * length)
 
     @override
-    def to_qubits(self) -> list[Qubit]:
-        if self.is_decoherenced:
-            q0 = Qubit(state=QUBIT_STATE_P, name="q0")
-            q1 = Qubit(state=QUBIT_STATE_P, name="q1")
-            return [q0, q1]
-
-        q0 = Qubit(state=QUBIT_STATE_0, name="q0")
-        q1 = Qubit(state=QUBIT_STATE_0, name="q1")
-
-        rho = self.w * np.dot(phi_p, phi_p.T.conjugate()) + (1 - self.w) / 4 * np.identity(4)
-        qs = QState([q0, q1], rho=rho)
-        q0.state = qs
-        q1.state = qs
-        self.is_decoherenced = True
-        return [q0, q1]
+    def _to_qubits_rho(self) -> MultiQubitRho:
+        return self.w * RHO_PHI_P + (1 - self.w) / 4 * np.identity(4)
 
     @override
     def __repr__(self):

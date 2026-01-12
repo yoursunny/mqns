@@ -1,6 +1,7 @@
 from mqns.entity.node import Application, QNode
 from mqns.entity.operator import OperateRequestEvent, OperateResponseEvent, QuantumOperator
-from mqns.models.qubit import H, Qubit
+from mqns.models.qubit import Qubit
+from mqns.models.qubit.gate import H
 from mqns.simulator import Simulator
 
 
