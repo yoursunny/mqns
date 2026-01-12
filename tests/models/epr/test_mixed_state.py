@@ -1,10 +1,12 @@
+import pytest
+
 from mqns.models.epr import MixedStateEntanglement
 from mqns.models.qubit.const import QUBIT_STATE_0
 from mqns.models.qubit.qubit import Qubit
 from mqns.simulator import Time
 
 
-def test_mixed_state():
+def test_mixed_state(monkeypatch: pytest.MonkeyPatch):
     now = Time(0, accuracy=1000000)
     decohere = now + 5.0
 
@@ -12,31 +14,27 @@ def test_mixed_state():
     e2 = MixedStateEntanglement(fidelity=0.95, name="e2", creation_time=now, decoherence_time=decohere)
     e3 = MixedStateEntanglement.swap(e1, e2, now=now)
     assert e3 is not None
-    print(e3.fidelity)
+    assert e3.fidelity == pytest.approx(0.903333, abs=1e-6)
 
     e4 = MixedStateEntanglement(fidelity=0.95, name="e4", creation_time=now, decoherence_time=decohere)
     e5 = MixedStateEntanglement(fidelity=0.95, name="e5", creation_time=now, decoherence_time=decohere)
     e6 = MixedStateEntanglement.swap(e4, e5, now=now)
     assert e6 is not None
-    print(e6.fidelity)
+    assert e6.fidelity == pytest.approx(0.903333, abs=1e-6)
+
+    monkeypatch.setattr("mqns.models.epr.mixed.get_rand", lambda: 0.0)
 
     e7 = e3.distillation(e6)
-    if e7 is None:
-        print("distillation failed")
-        return
-    print(e7.fidelity)
+    assert e7 is not None
+    assert e7.fidelity == pytest.approx(0.929080, abs=1e-6)
 
     e8 = MixedStateEntanglement(fidelity=0.95, name="e8")
     e9 = e7.distillation(e8)
-    if e9 is None:
-        print("distillation failed")
-        return
-    print(e9.fidelity, e9.b, e9.c, e9.d)
+    assert e9 is not None
+    assert (e9.a, e9.b, e9.c, e9.d) == pytest.approx((9.183907e-1, 8.179613e-5, 8.179613e-5, 8.144570e-2), rel=1e-6)
 
     q_in = Qubit(QUBIT_STATE_0)
     q_out = e9.teleportion(q_in)
-    print(q_out.state.rho)
-
-
-if __name__ == "__main__":
-    test_mixed_state()
+    assert q_out.state.rho.shape == (2, 2)
+    assert q_out.state.rho[0] == pytest.approx([9.998364e-1, 0], rel=1e-6)
+    assert q_out.state.rho[1] == pytest.approx([0, 1.635922e-4], rel=1e-6)
