@@ -17,11 +17,11 @@
 
 from typing import Unpack, final, override
 
-from mqns.models.epr.entanglement import BaseEntanglement, BaseEntanglementInitKwargs
+from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
 
 
 @final
-class BellStateEntanglement(BaseEntanglement["BellStateEntanglement"]):
+class BellStateEntanglement(Entanglement["BellStateEntanglement"]):
     """`BellStateEntanglement` is the ideal max entangled qubits. Its fidelity is always 1."""
 
     @property
@@ -36,9 +36,7 @@ class BellStateEntanglement(BaseEntanglement["BellStateEntanglement"]):
 
     @staticmethod
     @override
-    def _make_swapped(
-        epr0: "BellStateEntanglement", epr1: "BellStateEntanglement", **kwargs: Unpack[BaseEntanglementInitKwargs]
-    ):
+    def _make_swapped(epr0: "BellStateEntanglement", epr1: "BellStateEntanglement", **kwargs: Unpack[EntanglementInitKwargs]):
         _ = epr0, epr1
         return BellStateEntanglement(**kwargs)
 

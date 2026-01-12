@@ -47,10 +47,10 @@ def _name_hash(s1: str) -> str:
     return hashlib.sha256(s1.encode()).hexdigest()
 
 
-EntanglementT = TypeVar("EntanglementT", bound="BaseEntanglement")
+EntanglementT = TypeVar("EntanglementT", bound="Entanglement")
 
 
-class BaseEntanglementInitKwargs(TypedDict, total=False):
+class EntanglementInitKwargs(TypedDict, total=False):
     name: str | None
     creation_time: Time
     decoherence_time: Time
@@ -59,10 +59,10 @@ class BaseEntanglementInitKwargs(TypedDict, total=False):
     mem_decohere_rate: tuple[float, float]
 
 
-class BaseEntanglement(ABC, Generic[EntanglementT], QuantumModel):
+class Entanglement(ABC, Generic[EntanglementT], QuantumModel):
     """Base entanglement model."""
 
-    def __init__(self, **kwargs: Unpack[BaseEntanglementInitKwargs]):
+    def __init__(self, **kwargs: Unpack[EntanglementInitKwargs]):
         """
         Constructor.
 
@@ -185,7 +185,7 @@ class BaseEntanglement(ABC, Generic[EntanglementT], QuantumModel):
 
     @staticmethod
     @abstractmethod
-    def _make_swapped(epr0: EntanglementT, epr1: EntanglementT, **kwargs: Unpack[BaseEntanglementInitKwargs]) -> EntanglementT:
+    def _make_swapped(epr0: EntanglementT, epr1: EntanglementT, **kwargs: Unpack[EntanglementInitKwargs]) -> EntanglementT:
         """
         Create a new entanglement that is the result of successful swapping between epr0 and epr1.
         Most properties are provided in kwargs or assigned subsequently.

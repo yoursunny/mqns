@@ -30,7 +30,7 @@ from typing import Unpack, overload, override
 
 import numpy as np
 
-from mqns.models.epr.entanglement import BaseEntanglement, BaseEntanglementInitKwargs
+from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
 from mqns.models.qubit.const import QUBIT_STATE_0, QUBIT_STATE_P
 from mqns.models.qubit.qubit import QState, Qubit
 from mqns.utils import get_rand
@@ -50,20 +50,20 @@ _w_0 = _fidelity_to_w(0.0)
 _w_1 = _fidelity_to_w(1.0)
 
 
-class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"]):
+class WernerStateEntanglement(Entanglement["WernerStateEntanglement"]):
     """A pair of entangled qubits in Werner State with a hidden-variable."""
 
     @overload
-    def __init__(self, *, fidelity: float = 1.0, **kwargs: Unpack[BaseEntanglementInitKwargs]):
+    def __init__(self, *, fidelity: float = 1.0, **kwargs: Unpack[EntanglementInitKwargs]):
         """Construct with fidelity."""
         pass
 
     @overload
-    def __init__(self, *, w: float, **kwargs: Unpack[BaseEntanglementInitKwargs]):
+    def __init__(self, *, w: float, **kwargs: Unpack[EntanglementInitKwargs]):
         """Construct with Werner parameter."""
         pass
 
-    def __init__(self, *, fidelity: float | None = None, w: float = _w_1, **kwargs: Unpack[BaseEntanglementInitKwargs]):
+    def __init__(self, *, fidelity: float | None = None, w: float = _w_1, **kwargs: Unpack[EntanglementInitKwargs]):
         super().__init__(**kwargs)
         self.w = _fidelity_to_w(fidelity) if fidelity is not None else w
         """Werner parameter."""
@@ -81,7 +81,7 @@ class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"]):
     @staticmethod
     @override
     def _make_swapped(
-        epr0: "WernerStateEntanglement", epr1: "WernerStateEntanglement", **kwargs: Unpack[BaseEntanglementInitKwargs]
+        epr0: "WernerStateEntanglement", epr1: "WernerStateEntanglement", **kwargs: Unpack[EntanglementInitKwargs]
     ):
         return WernerStateEntanglement(w=epr0.w * epr1.w, **kwargs)
 

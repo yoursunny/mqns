@@ -34,7 +34,7 @@ from mqns.entity.qchannel.link_arch import (
     LinkArchDimBkSeq,
 )
 from mqns.models.core import QuantumModel
-from mqns.models.epr import BaseEntanglement
+from mqns.models.epr import Entanglement
 from mqns.simulator import Event, Time
 
 
@@ -95,7 +95,7 @@ class QuantumChannel(BaseChannel[QNode]):
 
         if drop:
             # photon is lost -> flag this pair as decoherenced to inform receiver node
-            if isinstance(qubit, BaseEntanglement):
+            if isinstance(qubit, Entanglement):
                 qubit.is_decoherenced = True
             return
 

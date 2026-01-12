@@ -19,7 +19,7 @@ from typing import Unpack, final, override
 
 import numpy as np
 
-from mqns.models.epr.entanglement import BaseEntanglement, BaseEntanglementInitKwargs
+from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
 from mqns.models.qubit.const import QUBIT_STATE_0, QUBIT_STATE_P
 from mqns.models.qubit.qubit import QState, Qubit
 from mqns.utils import get_rand
@@ -31,7 +31,7 @@ psi_n: np.ndarray = 1 / np.sqrt(2) * np.array([[0], [1], [-1], [0]])
 
 
 @final
-class MixedStateEntanglement(BaseEntanglement["MixedStateEntanglement"]):
+class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
     """
     `MixedStateEntanglement` is a pair of entangled qubits in mixed State with a hidden-variable.
 
@@ -47,7 +47,7 @@ class MixedStateEntanglement(BaseEntanglement["MixedStateEntanglement"]):
         b: float | None = None,
         c: float | None = None,
         d: float | None = None,
-        **kwargs: Unpack[BaseEntanglementInitKwargs],
+        **kwargs: Unpack[EntanglementInitKwargs],
     ):
         """Generate an entanglement with certain fidelity
 
@@ -85,9 +85,7 @@ class MixedStateEntanglement(BaseEntanglement["MixedStateEntanglement"]):
 
     @staticmethod
     @override
-    def _make_swapped(
-        epr0: "MixedStateEntanglement", epr1: "MixedStateEntanglement", **kwargs: Unpack[BaseEntanglementInitKwargs]
-    ):
+    def _make_swapped(epr0: "MixedStateEntanglement", epr1: "MixedStateEntanglement", **kwargs: Unpack[EntanglementInitKwargs]):
         return MixedStateEntanglement(
             fidelity=epr0.a * epr1.a + epr0.b * epr1.b + epr0.c * epr1.c + epr0.d * epr1.d,
             b=epr0.a * epr1.b + epr0.b * epr1.a + epr0.c * epr1.d + epr0.d * epr1.c,
@@ -102,7 +100,7 @@ class MixedStateEntanglement(BaseEntanglement["MixedStateEntanglement"]):
         Using BBPSSW protocol.
 
         Args:
-            epr (BaseEntanglement): another entanglement
+            epr (Entanglement): another entanglement
             name (str): the name of the new entanglement
         Returns:
             the new distributed entanglement

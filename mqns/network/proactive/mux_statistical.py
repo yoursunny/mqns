@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, override
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
-from mqns.models.epr import BaseEntanglement, WernerStateEntanglement
+from mqns.models.epr import Entanglement, WernerStateEntanglement
 from mqns.network.proactive.fib import FibEntry
 from mqns.network.proactive.message import PathInstructions, validate_path_instructions
 from mqns.network.proactive.mux import MuxScheme
@@ -24,7 +24,7 @@ def has_intersect_tmp_path_ids(epr0: Set[int] | None, epr1: Iterable[int] | None
     return epr0 is not None and epr1 is not None and not epr0.isdisjoint(epr1)
 
 
-def intersect_tmp_path_ids(epr0: BaseEntanglement, epr1: BaseEntanglement) -> frozenset[int]:
+def intersect_tmp_path_ids(epr0: Entanglement, epr1: Entanglement) -> frozenset[int]:
     """
     Find overlapping path_ids between tmp_path_ids sets in two EPRs.
     """
