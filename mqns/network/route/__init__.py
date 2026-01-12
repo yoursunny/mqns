@@ -16,7 +16,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from mqns.network.route.dijkstra import DijkstraRouteAlgorithm
-from mqns.network.route.route import NetworkRouteError, RouteImpl
+from mqns.network.route.route import RouteAlgorithm
 from mqns.network.route.yen import YenRouteAlgorithm
 
-__all__ = ["RouteImpl", "NetworkRouteError", "DijkstraRouteAlgorithm", "YenRouteAlgorithm"]
+__all__ = ["RouteAlgorithm", "DijkstraRouteAlgorithm", "YenRouteAlgorithm"]

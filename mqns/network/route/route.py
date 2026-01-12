@@ -15,8 +15,9 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Generic
+from typing import Generic, NamedTuple
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -46,54 +47,63 @@ def make_csr(
     n = len(nodes)
     node_index = {nd: i for i, nd in enumerate(nodes)}
 
-    rows, cols, data = [], [], []
-    for ch in channels:
-        if len(ch.node_list) != 2:
-            raise NetworkRouteError("broken link")
+    rows = np.zeros((2 * len(channels),), dtype=np.int32)
+    cols = np.zeros((2 * len(channels),), dtype=np.int32)
+    data = np.zeros((2 * len(channels),), dtype=np.float64)
+    for i, ch in enumerate(channels):
+        assert len(ch.node_list) == 2
         a, b = ch.node_list
         ai, bi = node_index[a], node_index[b]
         w = float(metric_func(ch))
         # undirected: add both directions
-        rows.extend([ai, bi])
-        cols.extend([bi, ai])
-        data.extend([w, w])
+        rows[2 * i + 0], cols[2 * i + 0], data[2 * i + 0] = ai, bi, w
+        rows[2 * i + 1], cols[2 * i + 1], data[2 * i + 1] = bi, ai, w
 
-    return csr_matrix(
-        (np.asarray(data, np.float64), (np.asarray(rows, np.int32), np.asarray(cols, np.int32))),
-        shape=(n, n),
-    )
+    return csr_matrix((data, (rows, cols)), shape=(n, n))
 
 
-class NetworkRouteError(Exception):
-    pass
+class RouteQueryResult(NamedTuple, Generic[NodeT]):
+    metric: float
+    next_hop: NodeT
+    route: list[NodeT]
 
 
-class RouteImpl(Generic[NodeT, ChannelT]):
-    """This is the route protocol interface"""
+class RouteAlgorithm(ABC, Generic[NodeT, ChannelT]):
+    """
+    Represents a routing algorithm that computes routes between two nodes in a network.
+    """
 
-    def __init__(self, name: str = "route") -> None:
+    def __init__(self, name: str, metric_func: MetricFunc | None = None) -> None:
         self.name = name
 
+        if metric_func is None:
+            self.metric_func = lambda _: 1  # hop count
+            self.unweighted = True
+        else:
+            self.metric_func = metric_func
+            self.unweighted = False
+
+    @abstractmethod
     def build(self, nodes: list[NodeT], channels: list[ChannelT]) -> None:
-        """Build static route tables for each nodes
-
-        Args:
-            nodes: a list of quantum nodes or classic nodes
-            channels: a list of quantum channels or classic channels
-
         """
-        raise NotImplementedError
-
-    def query(self, src: NodeT, dest: NodeT) -> list[tuple[float, NodeT, list[NodeT]]]:
-        """Query the metric, nexthop and the path
+        Build static route tables.
 
         Args:
-            src: the source node
-            dest: the destination node
+            nodes: a list of quantum nodes or classic nodes.
+            channels: a list of quantum channels or classic channels.
+        """
+        pass
+
+    @abstractmethod
+    def query(self, src: NodeT, dst: NodeT) -> list[RouteQueryResult[NodeT]]:
+        """
+        Query the metric, next-hop and the path.
+
+        Args:
+            src: the source node.
+            dst: the destination node.
 
         Returns:
             A list of route paths. The result should be sorted by priority.
-            The element is a tuple containing: metric, the next-hop and the whole path.
-
         """
-        raise NotImplementedError
+        pass
