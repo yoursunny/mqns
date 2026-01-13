@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any, Protocol, overload
 
 from mqns.simulator.event import Event
 from mqns.simulator.pool import DefaultEventPool
-from mqns.simulator.time import Time, default_accuracy, set_default_accuracy
+from mqns.simulator.time import Time
 from mqns.utils import log
 
 try:
@@ -35,9 +35,6 @@ except ImportError:
 
 if TYPE_CHECKING:
     from mqns.entity.monitor import Monitor
-
-default_start_second = 0.0
-default_end_second = 60.0
 
 
 class SimulatorInstallable(Protocol):
@@ -51,21 +48,20 @@ class Simulator:
 
     def __init__(
         self,
-        start_second: float = default_start_second,
-        end_second: float = default_end_second,
+        start_second: float = 0.0,
+        end_second: float = 60.0,
         *,
-        accuracy: int = default_accuracy,
+        accuracy: int = 1000000,
         install_to: Iterable[SimulatorInstallable] = [],
     ):
         """
         Args:
-            start_second: simulation start time in seconds.
-            end_second: simulator end time in seconds; infinite means continuous simulation.
-            accuracy: the number of time slots per second.
+            start_second: simulation start time in seconds, defaults to 0.0.
+            end_second: simulator end time in seconds, defaults to 60.0; infinite means continuous simulation.
+            accuracy: the number of time slots per second, defaults to 1000000 i.e. 1us time slot.
             install_to: install this simulator by invoking `.install(self)` on each target.
         """
         self.accuracy = accuracy
-        set_default_accuracy(accuracy)
 
         assert start_second >= 0.0
         self.ts = self.time(sec=start_second)

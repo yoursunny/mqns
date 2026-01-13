@@ -1,27 +1,13 @@
 import pytest
 
-from mqns.simulator import Simulator, Time, func_to_event, set_default_accuracy
-
-
-class ChangeDefaultAccuracy:
-    def __init__(self, accuracy: int):
-        self.new_accuracy = accuracy
-        self.old_accuracy: int
-
-    def __enter__(self):
-        self.old_accuracy = Time().accuracy
-        set_default_accuracy(self.new_accuracy)
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        set_default_accuracy(self.old_accuracy)
+from mqns.simulator import Time
 
 
 def test_time_compare():
-    with ChangeDefaultAccuracy(1000000):
-        t1 = Time(1)
-        t2 = Time.from_sec(1.1)
-        t3 = Time()
-        t4 = Time(1100000)
+    t1 = Time(1, accuracy=1000000)
+    t2 = Time.from_sec(1.1, accuracy=1000000)
+    t3 = Time(0, accuracy=1000000)
+    t4 = Time(1100000, accuracy=1000000)
 
     assert t1 == t1  # noqa: PLR0124
     assert t2 >= t1
@@ -40,13 +26,10 @@ def test_time_compare():
 
 
 def test_time_accuracy():
-    t0 = Time.from_sec(1.0)
-
-    with ChangeDefaultAccuracy(2000):
-        t1 = Time.from_sec(1.0)
-        t2 = Time.from_sec(1.0, accuracy=3000)
-
-    t3 = Time.from_sec(1.0)
+    t0 = Time.from_sec(1.0, accuracy=1000000)
+    t1 = Time.from_sec(1.0, accuracy=2000)
+    t2 = Time.from_sec(1.0, accuracy=3000)
+    t3 = Time.from_sec(1.0, accuracy=1000000)
     t4 = Time.from_sec(1.0, accuracy=4000)
 
     assert t0.sec == pytest.approx(1.0)
@@ -81,20 +64,3 @@ def test_time_add_sub():
     assert t3c.sec == pytest.approx(3.0)
 
     assert pytest.raises(AssertionError, lambda: t5 - Time.from_sec(2.0, accuracy=2000))
-
-
-def print_msg(msg):
-    print(msg)
-
-
-def test_simulator_time():
-    """
-    If we modify the default_accuracy of the simulator,
-    check whether the accuracy of subsequent events will be automatically synchronized with the simulator
-    without special modification.
-    """
-    s = Simulator(1, 10, accuracy=1000)
-    s.run()
-    print_event = func_to_event(Time.from_sec(1), print_msg, "hello world")
-    assert print_event.t is not None
-    assert print_event.t.accuracy == 1000

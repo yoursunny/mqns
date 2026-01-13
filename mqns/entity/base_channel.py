@@ -76,7 +76,7 @@ class BaseChannel(Entity, Generic[NodeT]):
             if self.max_buffer_size != 0 and send_time > now + self.max_buffer_size / self.bandwidth:
                 # buffer is overflow
                 log.debug(f"{self}: drop {packet_repr} due to overflow")
-                return True, Time()
+                return True, Time.SENTINEL
 
             self._next_send_time = send_time + packet_len / self.bandwidth
         else:
@@ -85,7 +85,7 @@ class BaseChannel(Entity, Generic[NodeT]):
         # random drop
         if self.drop_rate > 0 and get_rand() < self.drop_rate:
             log.debug(f"{self}: drop {packet_repr} due to drop rate")
-            return True, Time()
+            return True, Time.SENTINEL
 
         # add delay
         recv_time = send_time + self.delay_model.calculate()

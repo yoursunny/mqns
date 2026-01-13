@@ -115,12 +115,13 @@ class TimingModeSync(TimingMode):
         )
         self.phase = self.sequence[-1][0]
         """Current phase."""
-        self.end_time = Time()
+        self.end_time = Time.SENTINEL
         """Current phase end time (exclusive)."""
 
     @override
     def install(self, network: "QuantumNetwork"):
         super().install(network)
+        self.end_time = self.simulator.ts
         self.simulator.add_event(func_to_event(self.simulator.ts, self.signal_phase, by=self))
 
     def signal_phase(self):
