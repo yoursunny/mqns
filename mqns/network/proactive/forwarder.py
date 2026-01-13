@@ -24,7 +24,7 @@ import numpy as np
 from mqns.entity.cchannel import ClassicPacket, RecvClassicPacket
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import Application, Node, QNode
-from mqns.models.epr import Entanglement, WernerStateEntanglement
+from mqns.models.epr import Entanglement
 from mqns.network.network import TimingPhase, TimingPhaseEvent
 from mqns.network.proactive.cutoff import CutoffScheme, CutoffSchemeWaitTime
 from mqns.network.proactive.fib import Fib, FibEntry
@@ -176,15 +176,13 @@ class ProactiveForwarder(Application):
         Value: SwapUpdateMsg and FibEntry.
         """
 
-        self.parallel_swappings: dict[
-            str, tuple[WernerStateEntanglement, WernerStateEntanglement, WernerStateEntanglement]
-        ] = {}
+        self.parallel_swappings: dict[str, tuple[Entanglement, Entanglement, Entanglement]] = {}
         """
         Records for potential parallel swappings.
         See `_su_parallel` method.
         """
 
-        self.remote_swapped_eprs: dict[str, WernerStateEntanglement] = {}
+        self.remote_swapped_eprs: dict[str, Entanglement] = {}
         """
         EPRs that have been swapped remotely but the SwapUpdateMsg have not arrived.
         Each key is an EPR name; each value is the EPR.
@@ -205,8 +203,13 @@ class ProactiveForwarder(Application):
     def install(self, node: Node, simulator: Simulator):
         super().install(node, simulator)
         self.own = self.get_node(node_type=QNode)
+        """Quantum node that owns this forwarder."""
         self.memory = self.own.memory
+        """Quantum memory of the node."""
         self.net = self.own.network
+        """Quantum network that contains the node."""
+        self.epr_type = self.net.epr_type
+        """Network-wide entanglement type."""
         self.cutoff.fw = self
         self.mux.fw = self
 
@@ -490,7 +493,7 @@ class ProactiveForwarder(Application):
             and q.purif_rounds == qubit.purif_rounds  # with same number of purif rounds
             and partner in (v.src, v.dst)  # with the same partner
             and q.path_id == fib_entry.path_id,  # on the same path_id
-            has=WernerStateEntanglement,
+            has=self.epr_type,
         )
         found = call_select_purif_qubit(self._select_purif_qubit, qubit, fib_entry, partner, candidates)
         if not found:
@@ -510,8 +513,8 @@ class ProactiveForwarder(Application):
             partner: quantum node with which entanglements are shared.
         """
         # read qubits to set fidelity at this time
-        _, epr0 = self.memory.read(mq0.addr, has=WernerStateEntanglement, set_fidelity=True)
-        _, epr1 = self.memory.read(mq1.addr, has=WernerStateEntanglement, set_fidelity=True, remove=True)
+        _, epr0 = self.memory.read(mq0.addr, has=self.epr_type, set_fidelity=True)
+        _, epr1 = self.memory.read(mq1.addr, has=self.epr_type, set_fidelity=True, remove=True)
 
         log.debug(
             f"{self.own}: request purif qubit {mq0.addr} (F={epr0.fidelity}) and "
@@ -555,8 +558,8 @@ class ProactiveForwarder(Application):
 
         # mq0 is the "kept" memory whose fidelity would be increased if purification succeeds
         # mq1 is the "measured" memory that is consumed during purification
-        mq0, epr0 = self.memory.read(msg["epr"], has=WernerStateEntanglement, set_fidelity=True)
-        mq1, epr1 = self.memory.read(msg["measure_epr"], has=WernerStateEntanglement, set_fidelity=True, remove=True)
+        mq0, epr0 = self.memory.read(msg["epr"], has=self.epr_type, set_fidelity=True)
+        mq1, epr1 = self.memory.read(msg["measure_epr"], has=self.epr_type, set_fidelity=True, remove=True)
         # TODO: handle the exception case when an EPR is decohered and not found in memory
 
         for mq in (mq0, mq1):
@@ -619,7 +622,7 @@ class ProactiveForwarder(Application):
             fib_entry: FIB entry associated with path_id in the message.
 
         """
-        qubit, epr = self.memory.read(msg["epr"], has=WernerStateEntanglement)
+        qubit, epr = self.memory.read(msg["epr"], has=self.epr_type)
         # TODO: handle the exception case when an EPR is decohered and not found in memory
 
         result = msg["result"]
@@ -662,7 +665,7 @@ class ProactiveForwarder(Application):
             log.debug(f"{self.own}: INT phase is over -> stop swaps")
             return
 
-        _, epr = self.memory.read(qubit.addr, has=WernerStateEntanglement)
+        _, epr = self.memory.read(qubit.addr, has=self.epr_type)
         if self.can_consume(fib_entry, epr):
             self.consume_and_release(qubit)
             return
@@ -673,7 +676,7 @@ class ProactiveForwarder(Application):
             lambda q, _: q.state == QubitState.ELIGIBLE  # in ELIGIBLE state
             and q.qchannel != qubit.qchannel  # assigned to a different channel
             and self.cutoff.filter_swap_candidate(q),
-            has=WernerStateEntanglement,
+            has=self.epr_type,
         )
         swap_candidate_tuple = self.mux.find_swap_candidate(qubit, epr, fib_entry, swap_candidates)
         mq1: MemoryQubit | None = None
@@ -706,10 +709,10 @@ class ProactiveForwarder(Application):
         # This qubit and related objects are assigned to prev_* variables.
         #
         # Likewise, the other qubit entangled with a partner node to the right is assigned to next_*.
-        prev_tuple: tuple[QNode, MemoryQubit, WernerStateEntanglement] | None = None
-        next_tuple: tuple[QNode, MemoryQubit, WernerStateEntanglement] | None = None
+        prev_tuple: tuple[QNode, MemoryQubit, Entanglement] | None = None
+        next_tuple: tuple[QNode, MemoryQubit, Entanglement] | None = None
         for addr in (mq0.addr, mq1.addr):
-            qubit, epr = self.memory.read(addr, has=WernerStateEntanglement, remove=True)
+            qubit, epr = self.memory.read(addr, has=self.epr_type, remove=True)
             if epr.dst == self.own:
                 assert epr.src is not None
                 prev_tuple = epr.src, qubit, epr
@@ -813,7 +816,7 @@ class ProactiveForwarder(Application):
         msg: SwapUpdateMsg,
         fib_entry: FibEntry,
         qubit: MemoryQubit,
-        new_epr: WernerStateEntanglement | None,
+        new_epr: Entanglement | None,
         maybe_purif: bool,
     ):
         """
@@ -846,7 +849,7 @@ class ProactiveForwarder(Application):
             partner = self.own.network.get_node(msg["partner"])
             self.qubit_is_purif(qubit, fib_entry, partner)
 
-    def _su_parallel(self, msg: SwapUpdateMsg, fib_entry: FibEntry, new_epr: WernerStateEntanglement | None):
+    def _su_parallel(self, msg: SwapUpdateMsg, fib_entry: FibEntry, new_epr: Entanglement | None):
         """
         Process SWAP_UPDATE message during parallel swapping.
         """
@@ -930,7 +933,7 @@ class ProactiveForwarder(Application):
         if fib_entry.own_swap_rank == p_rank and merged_epr is not None:
             self.parallel_swappings[new_epr.name] = (new_epr, other_epr, merged_epr)
 
-    def can_consume(self, fib_entry: FibEntry | None, epr: WernerStateEntanglement) -> bool:
+    def can_consume(self, fib_entry: FibEntry | None, epr: Entanglement) -> bool:
         if fib_entry is None:
             assert epr.src is not None
             assert epr.dst is not None
@@ -943,7 +946,7 @@ class ProactiveForwarder(Application):
         """
         Consume an entangled qubit.
         """
-        _, qm = self.memory.read(qubit.addr, has=WernerStateEntanglement, set_fidelity=True, remove=True)
+        _, qm = self.memory.read(qubit.addr, has=self.epr_type, set_fidelity=True, remove=True)
         assert qm.src is not None
         assert qm.dst is not None
 

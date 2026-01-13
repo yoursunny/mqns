@@ -4,20 +4,20 @@ from typing import override
 
 from mqns.entity.memory import MemoryQubit, QubitState
 from mqns.entity.node import QNode
-from mqns.models.epr import WernerStateEntanglement
+from mqns.models.epr import Entanglement
 from mqns.network.proactive.fib import Fib, FibEntry
 from mqns.network.proactive.mux_buffer_space import MuxSchemeFibBase
 from mqns.network.proactive.mux_statistical import MuxSchemeDynamicBase, has_intersect_tmp_path_ids
-from mqns.network.proactive.select import MemoryWernerIterator
+from mqns.network.proactive.select import MemoryEprIterator
 from mqns.utils import log
 
 
-def _select_path_random(epr: WernerStateEntanglement, fib: Fib, path_ids: list[int]) -> int:
+def _select_path_random(epr: Entanglement, fib: Fib, path_ids: list[int]) -> int:
     _ = epr, fib
     return random.choice(path_ids)
 
 
-def _select_path_swap_weighted(epr: WernerStateEntanglement, fib: Fib, path_ids: list[int]) -> FibEntry:
+def _select_path_swap_weighted(epr: Entanglement, fib: Fib, path_ids: list[int]) -> FibEntry:
     _ = epr
     entries = [fib.get(pid) for pid in path_ids]
     # fewer swaps (shorter route) means higher weight
@@ -30,7 +30,7 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
     Dynamic EPR Affection multiplexing scheme.
     """
 
-    SelectPath = Callable[[WernerStateEntanglement, Fib, list[int]], int | FibEntry]
+    SelectPath = Callable[[Entanglement, Fib, list[int]], int | FibEntry]
     """
     Path selection strategy.
     Function to select a path for an elementary entanglement.
@@ -77,7 +77,7 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
 
         # TODO: if paths have different swap policies
         #       -> consider only paths for which this qubit may be eligible ??
-        _, epr = self.memory.read(qubit.addr, has=WernerStateEntanglement)
+        _, epr = self.memory.read(qubit.addr, has=self.fw.epr_type)
 
         if epr.tmp_path_ids is None:
             # In principle, a random path_id is chosen for each elementary EPR during EPR generation.
@@ -97,7 +97,7 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
         self.fw.qubit_is_purif(qubit, fib_entry, neighbor)
 
     @override
-    def list_swap_candidates(self, mq0: MemoryQubit, fib_entry: FibEntry, input: MemoryWernerIterator):
+    def list_swap_candidates(self, mq0: MemoryQubit, fib_entry: FibEntry, input: MemoryEprIterator):
         assert mq0.path_id is None
         possible_path_ids = [fib_entry.path_id]
         return (
@@ -107,28 +107,21 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
         )
 
     @override
-    def swapping_succeeded(
-        self,
-        prev_epr: WernerStateEntanglement,
-        next_epr: WernerStateEntanglement,
-        new_epr: WernerStateEntanglement,
-    ) -> None:
+    def swapping_succeeded(self, prev_epr: Entanglement, next_epr: Entanglement, new_epr: Entanglement) -> None:
         assert prev_epr.tmp_path_ids is not None
         assert next_epr.tmp_path_ids is not None
         assert prev_epr.tmp_path_ids == next_epr.tmp_path_ids
         new_epr.tmp_path_ids = prev_epr.tmp_path_ids
 
     @override
-    def su_parallel_has_conflict(self, my_new_epr: WernerStateEntanglement, su_path_id: int) -> bool:
+    def su_parallel_has_conflict(self, my_new_epr: Entanglement, su_path_id: int) -> bool:
         assert my_new_epr.tmp_path_ids is not None
         if su_path_id not in my_new_epr.tmp_path_ids:
             raise Exception(f"{self.own}: Unexpected conflictual parallel swapping")
         return False
 
     @override
-    def su_parallel_succeeded(
-        self, merged_epr: WernerStateEntanglement, new_epr: WernerStateEntanglement, other_epr: WernerStateEntanglement
-    ) -> None:
+    def su_parallel_succeeded(self, merged_epr: Entanglement, new_epr: Entanglement, other_epr: Entanglement) -> None:
         assert new_epr.tmp_path_ids is not None
         assert other_epr.tmp_path_ids is not None
         assert new_epr.tmp_path_ids == other_epr.tmp_path_ids

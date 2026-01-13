@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING, override
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
-from mqns.models.epr import WernerStateEntanglement
+from mqns.models.epr import Entanglement
 from mqns.network.proactive.fib import FibEntry
 from mqns.network.proactive.message import PathInstructions, validate_path_instructions
 from mqns.network.proactive.mux import MuxScheme
-from mqns.network.proactive.select import MemoryWernerIterator, MemoryWernerTuple
+from mqns.network.proactive.select import MemoryEprIterator, MemoryEprTuple
 from mqns.utils import log
 
 if TYPE_CHECKING:
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 class MuxSchemeFibBase(MuxScheme):
-    SelectSwapQubit = Callable[["ProactiveForwarder", MemoryWernerTuple, FibEntry, list[MemoryWernerTuple]], MemoryWernerTuple]
+    SelectSwapQubit = Callable[["ProactiveForwarder", MemoryEprTuple, FibEntry, list[MemoryEprTuple]], MemoryEprTuple]
 
     SelectSwapQubit_random: SelectSwapQubit = lambda _fw, _mt, _fe, candidates: random.choice(candidates)
 
@@ -28,7 +28,7 @@ class MuxSchemeFibBase(MuxScheme):
 
     @override
     def find_swap_candidate(
-        self, qubit: MemoryQubit, epr: WernerStateEntanglement, fib_entry: FibEntry | None, input: MemoryWernerIterator
+        self, qubit: MemoryQubit, epr: Entanglement, fib_entry: FibEntry | None, input: MemoryEprIterator
     ) -> tuple[MemoryQubit, FibEntry] | None:
         _ = epr
         assert fib_entry is not None
@@ -45,7 +45,7 @@ class MuxSchemeFibBase(MuxScheme):
         return mt1[0], fib_entry
 
     @abstractmethod
-    def list_swap_candidates(self, mq0: MemoryQubit, fib_entry: FibEntry, input: MemoryWernerIterator) -> MemoryWernerIterator:
+    def list_swap_candidates(self, mq0: MemoryQubit, fib_entry: FibEntry, input: MemoryEprIterator) -> MemoryEprIterator:
         pass
 
 
@@ -96,11 +96,7 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
 
     @override
     def uninstall_path_neighbor(
-        self,
-        fib_entry: FibEntry,
-        direction: PathDirection,
-        neighbor: QNode,
-        qchannel: QuantumChannel,
+        self, fib_entry: FibEntry, direction: PathDirection, neighbor: QNode, qchannel: QuantumChannel
     ) -> None:
         _ = neighbor
         qubits = self.memory.find(lambda q, _: q.path_id == fib_entry.path_id, qchannel=qchannel)
@@ -126,7 +122,7 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
         self.fw.qubit_is_purif(qubit, fib_entry, neighbor)
 
     @override
-    def list_swap_candidates(self, mq0: MemoryQubit, fib_entry: FibEntry, input: MemoryWernerIterator):
+    def list_swap_candidates(self, mq0: MemoryQubit, fib_entry: FibEntry, input: MemoryEprIterator):
         assert mq0.path_id is not None
         possible_path_ids = {fib_entry.path_id}
 
@@ -138,26 +134,19 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
         )
 
     @override
-    def swapping_succeeded(
-        self,
-        prev_epr: WernerStateEntanglement,
-        next_epr: WernerStateEntanglement,
-        new_epr: WernerStateEntanglement,
-    ) -> None:
+    def swapping_succeeded(self, prev_epr: Entanglement, next_epr: Entanglement, new_epr: Entanglement) -> None:
         assert prev_epr.tmp_path_ids is None
         assert next_epr.tmp_path_ids is None
         _ = new_epr
 
     @override
-    def su_parallel_has_conflict(self, my_new_epr: WernerStateEntanglement, su_path_id: int) -> bool:
+    def su_parallel_has_conflict(self, my_new_epr: Entanglement, su_path_id: int) -> bool:
         assert my_new_epr.tmp_path_ids is None
         _ = su_path_id
         return False
 
     @override
-    def su_parallel_succeeded(
-        self, merged_epr: WernerStateEntanglement, new_epr: WernerStateEntanglement, other_epr: WernerStateEntanglement
-    ) -> None:
+    def su_parallel_succeeded(self, merged_epr: Entanglement, new_epr: Entanglement, other_epr: Entanglement) -> None:
         assert new_epr.tmp_path_ids is None
         assert other_epr.tmp_path_ids is None
         _ = merged_epr

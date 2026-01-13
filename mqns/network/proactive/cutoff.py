@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, override
 
 from mqns.entity.memory import MemoryQubit
 from mqns.entity.node import QNode
-from mqns.models.epr import WernerStateEntanglement
 from mqns.network.proactive.fib import FibEntry
 from mqns.network.proactive.message import CutoffDiscardMsg
 from mqns.simulator import Simulator, func_to_event
@@ -60,7 +59,7 @@ class CutoffScheme(ABC):
         fw = self.fw
 
         # find EPR partner
-        _, epr = fw.memory.read(qubit.addr, has=WernerStateEntanglement, set_fidelity=True, remove=True)
+        _, epr = fw.memory.read(qubit.addr, has=self.fw.epr_type, set_fidelity=True, remove=True)
         partner = epr.dst if epr.src == self.own else epr.src
         assert partner is not None
 

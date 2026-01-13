@@ -4,7 +4,7 @@ from mqns.entity.cchannel import ClassicChannelInitKwargs
 from mqns.entity.memory import QubitState
 from mqns.entity.node import Application, Controller
 from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk, QuantumChannelInitKwargs
-from mqns.models.epr import WernerStateEntanglement
+from mqns.models.epr import Entanglement, WernerStateEntanglement
 from mqns.network.network import QuantumNetwork, TimingMode, TimingModeAsync
 from mqns.network.proactive import (
     LinkLayer,
@@ -39,6 +39,7 @@ class BuildNetworkArgs(TypedDict, total=False):
     mux: MuxScheme  # multiplexing scheme, defaults to buffer-space
     end_time: float  # simulation end time, defaults to 10.0 seconds
     timing: TimingMode  # network timing mode, defaults to ASYNC
+    epr_type: type[Entanglement]  # entanglement type, defaults to werner state
     has_link_layer: bool  # whether to include full LinkLayer application, defaults to False
     init_fidelity: float  # initial fidelity, defaults to 0.99
 
@@ -71,7 +72,13 @@ def _build_network_finish(
 
     topo.controller = Controller("ctrl", apps=[ProactiveRoutingController()])
 
-    net = QuantumNetwork(topo=topo, classic_topo=ClassicTopology.Follow, route=route, timing=d.get("timing", TimingModeAsync()))
+    net = QuantumNetwork(
+        topo=topo,
+        classic_topo=ClassicTopology.Follow,
+        route=route,
+        timing=d.get("timing", TimingModeAsync()),
+        epr_type=d.get("epr_type", WernerStateEntanglement),
+    )
     for qchannel in net.qchannels:
         qchannel.assign_memory_qubits(capacity=qchannel_capacity)
     topo.connect_controller(net.nodes)

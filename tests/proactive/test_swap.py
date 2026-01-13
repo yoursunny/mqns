@@ -6,11 +6,11 @@ import itertools
 
 import pytest
 
-from mqns.models.epr import WernerStateEntanglement
+from mqns.models.epr import Entanglement
 from mqns.network.network import TimingModeSync
 from mqns.network.proactive import (
     Fib,
-    MemoryWernerTuple,
+    MemoryEprTuple,
     MuxSchemeDynamicEpr,
     MuxSchemeStatistical,
     ProactiveForwarder,
@@ -285,7 +285,7 @@ def test_rect_multipath(has_etg: tuple[int, int, int, int], n_swapped: tuple[int
 def test_tree2_dynepr(t_edge_etg: float, selected_path: tuple[int, int], n_consumed: tuple[int, int]):
     """Test MuxSchemeDynamicEpr in tree (height=2) topology."""
 
-    def select_path(epr: WernerStateEntanglement, fib: Fib, path_ids: list[int]) -> int:
+    def select_path(epr: Entanglement, fib: Fib, path_ids: list[int]) -> int:
         _ = fib
         if len(path_ids) != 2:
             chosen = path_ids[0]
@@ -366,7 +366,7 @@ def test_tree2_statistical(
 ):
     """Test MuxSchemeStatistical in tree (height=2) topology."""
 
-    def select_qubit(fw: ProactiveForwarder, mt0: MemoryWernerTuple, candidates: list[MemoryWernerTuple]) -> MemoryWernerTuple:
+    def select_qubit(fw: ProactiveForwarder, mt0: MemoryEprTuple, candidates: list[MemoryEprTuple]) -> MemoryEprTuple:
         _ = mt0
         if len(candidates) != 2:
             chosen = candidates[0]
@@ -380,9 +380,7 @@ def test_tree2_statistical(
             raise RuntimeError()
         return chosen
 
-    def select_path(
-        fw: ProactiveForwarder, epr0: WernerStateEntanglement, epr1: WernerStateEntanglement, path_ids: list[int]
-    ) -> int:
+    def select_path(fw: ProactiveForwarder, epr0: Entanglement, epr1: Entanglement, path_ids: list[int]) -> int:
         _ = epr0, epr1
         if len(path_ids) != 2:
             chosen = path_ids[0]

@@ -4,10 +4,10 @@ from typing import TYPE_CHECKING
 from mqns.entity.memory import MemoryQubit, PathDirection, QuantumMemory
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
-from mqns.models.epr import WernerStateEntanglement
+from mqns.models.epr import Entanglement
 from mqns.network.proactive.fib import Fib, FibEntry
 from mqns.network.proactive.message import PathInstructions
-from mqns.network.proactive.select import MemoryWernerIterator
+from mqns.network.proactive.select import MemoryEprIterator
 
 if TYPE_CHECKING:
     from mqns.network.proactive.forwarder import ProactiveForwarder
@@ -105,9 +105,9 @@ class MuxScheme(ABC):
     def find_swap_candidate(
         self,
         qubit: MemoryQubit,
-        epr: WernerStateEntanglement,
+        epr: Entanglement,
         fib_entry: FibEntry | None,
-        input: MemoryWernerIterator,
+        input: MemoryEprIterator,
     ) -> tuple[MemoryQubit, FibEntry] | None:
         """
         Find another qubit to swap with an ELIGIBLE qubit.
@@ -126,12 +126,7 @@ class MuxScheme(ABC):
         pass
 
     @abstractmethod
-    def swapping_succeeded(
-        self,
-        prev_epr: WernerStateEntanglement,
-        next_epr: WernerStateEntanglement,
-        new_epr: WernerStateEntanglement,
-    ) -> None:
+    def swapping_succeeded(self, prev_epr: Entanglement, next_epr: Entanglement, new_epr: Entanglement) -> None:
         """
         Handle a successful swap at the swapping node.
 
@@ -143,7 +138,7 @@ class MuxScheme(ABC):
         pass
 
     @abstractmethod
-    def su_parallel_has_conflict(self, my_new_epr: WernerStateEntanglement, su_path_id: int) -> bool:
+    def su_parallel_has_conflict(self, my_new_epr: Entanglement, su_path_id: int) -> bool:
         """
         Determine whether a parallel SWAP_UPDATE has a conflict.
 
@@ -158,9 +153,7 @@ class MuxScheme(ABC):
         pass
 
     @abstractmethod
-    def su_parallel_succeeded(
-        self, merged_epr: WernerStateEntanglement, new_epr: WernerStateEntanglement, other_epr: WernerStateEntanglement
-    ) -> None:
+    def su_parallel_succeeded(self, merged_epr: Entanglement, new_epr: Entanglement, other_epr: Entanglement) -> None:
         """
         Handle a successful parallel swap at the recipient of SWAP_UPDATE message.
 

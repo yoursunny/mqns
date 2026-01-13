@@ -7,6 +7,7 @@ import itertools
 import pytest
 
 from mqns.entity.timer import Timer
+from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
 from mqns.network.network import TimingModeAsync, TimingModeSync
 from mqns.network.proactive import (
     LinkLayer,
@@ -19,16 +20,17 @@ from .proactive_common import build_linear_network, build_rect_network, install_
 
 
 @pytest.mark.parametrize(
-    ("timing_mode", "swap_order"),
+    ("epr_type", "timing_mode", "swap_order"),
     itertools.product(
+        (WernerStateEntanglement, MixedStateEntanglement),
         ("ASYNC", "SYNC"),
         ("asap", "l2r", "r2l"),
     ),
 )
-def test_4_swap(timing_mode: str, swap_order: str):
+def test_4_swap(epr_type: type[Entanglement], timing_mode: str, swap_order: str):
     """Test swapping in 4-node topology."""
     timing = TimingModeAsync() if timing_mode == "ASYNC" else TimingModeSync(t_ext=0.006, t_int=0.004)
-    net, simulator = build_linear_network(4, end_time=3.0, timing=timing, has_link_layer=True)
+    net, simulator = build_linear_network(4, end_time=3.0, timing=timing, epr_type=epr_type, has_link_layer=True)
     f1 = net.get_node("n1").get_app(ProactiveForwarder)
     f2 = net.get_node("n2").get_app(ProactiveForwarder)
     f3 = net.get_node("n3").get_app(ProactiveForwarder)

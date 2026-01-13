@@ -273,7 +273,7 @@ class QuantumMemory(Entity):
             Qubit and associated data (possibly empty), or None if qubit is not found by EPR name.
 
         Raises:
-            Index - qubit address out of range.
+            IndexError - qubit address out of range.
         """
         pass
 
