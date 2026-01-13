@@ -4,7 +4,7 @@ from mqns.entity.cchannel import ClassicChannelInitKwargs
 from mqns.entity.memory import QubitState
 from mqns.entity.node import Application, Controller
 from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk, QuantumChannelInitKwargs
-from mqns.models.epr import WernerStateEntanglement
+from mqns.models.epr import Entanglement, WernerStateEntanglement
 from mqns.network.network import QuantumNetwork, TimingMode, TimingModeAsync
 from mqns.network.proactive import (
     LinkLayer,
@@ -39,6 +39,7 @@ class BuildNetworkArgs(TypedDict, total=False):
     mux: MuxScheme  # multiplexing scheme, defaults to buffer-space
     end_time: float  # simulation end time, defaults to 10.0 seconds
     timing: TimingMode  # network timing mode, defaults to ASYNC
+    epr_type: type[Entanglement]  # entanglement type, defaults to werner state
     has_link_layer: bool  # whether to include full LinkLayer application, defaults to False
     init_fidelity: float  # initial fidelity, defaults to 0.99
 
@@ -71,14 +72,18 @@ def _build_network_finish(
 
     topo.controller = Controller("ctrl", apps=[ProactiveRoutingController()])
 
-    net = QuantumNetwork(topo=topo, classic_topo=ClassicTopology.Follow, route=route, timing=d.get("timing", TimingModeAsync()))
+    net = QuantumNetwork(
+        topo=topo,
+        classic_topo=ClassicTopology.Follow,
+        route=route,
+        timing=d.get("timing", TimingModeAsync()),
+        epr_type=d.get("epr_type", WernerStateEntanglement),
+    )
     for qchannel in net.qchannels:
         qchannel.assign_memory_qubits(capacity=qchannel_capacity)
     topo.connect_controller(net.nodes)
 
-    simulator = Simulator(0.0, d.get("end_time", 10.0))
-    log.install(simulator)
-    net.install(simulator)
+    simulator = Simulator(0.0, d.get("end_time", 10.0), install_to=(log, net))
 
     return net, simulator
 
@@ -195,7 +200,7 @@ def provide_entanglements(
         if t < 0:
             continue
         simulator = src.simulator
-        ch = src.own.get_qchannel(dst.own)
+        ch = src.node.get_qchannel(dst.node)
         _, d_notify_a, d_notify_b = ch.link_arch.delays(
             1,
             reset_time=0.0,
@@ -207,12 +212,12 @@ def provide_entanglements(
             fidelity=fidelity,
             creation_time=t_creation,
             decoherence_time=t_creation + min(src.memory.decoherence_delay, dst.memory.decoherence_delay),
-            src=src.own,
-            dst=dst.own,
+            src=src.node,
+            dst=dst.node,
             mem_decohere_rate=(src.memory.decoherence_rate, dst.memory.decoherence_rate),
         )
         for node, neighbor, d_notify in (src, dst, d_notify_a), (dst, src, d_notify_b):
             q, _ = next(node.memory.find(lambda _, v: v is None, qchannel=ch))
             node.memory.write(q.addr, epr)
             q._state = QubitState.ENTANGLED0
-            simulator.add_event(QubitEntangledEvent(node.own, neighbor.own, q, t=t_creation + d_notify))
+            simulator.add_event(QubitEntangledEvent(node.node, neighbor.node, q, t=t_creation + d_notify))

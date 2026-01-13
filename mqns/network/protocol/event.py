@@ -20,7 +20,7 @@ from typing import Any, final, override
 from mqns.entity.memory import MemoryQubit, QuantumMemory, QubitState
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
-from mqns.models.epr import BaseEntanglement
+from mqns.models.epr import Entanglement
 from mqns.simulator import Event, Time
 
 
@@ -63,7 +63,7 @@ class LinkArchSuccessEvent(Event):
     def __init__(
         self,
         node: QNode,
-        epr: BaseEntanglement,
+        epr: Entanglement,
         *,
         t: Time,
         name: str | None = None,
@@ -118,7 +118,7 @@ class QubitDecoheredEvent(Event):
         self,
         memory: QuantumMemory,
         qubit: MemoryQubit,
-        epr: BaseEntanglement,
+        epr: Entanglement,
         *,
         t: Time,
         name: str | None = None,

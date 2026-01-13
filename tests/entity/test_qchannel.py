@@ -1,10 +1,12 @@
+from typing import override
+
 from mqns.entity.node import Application, QNode
 from mqns.entity.qchannel import QuantumChannel, RecvQubitPacket
 from mqns.models.qubit import Qubit
 from mqns.simulator import Event, Simulator, func_to_event
 
 
-class SendApp(Application):
+class SendApp(Application[QNode]):
     def __init__(self, dest: QNode, qchannel: QuantumChannel, send_interval: float = 1):
         super().__init__()
         self.dest = dest
@@ -12,8 +14,9 @@ class SendApp(Application):
         self.send_interval = send_interval
         self.count = 0
 
-    def install(self, node, simulator: Simulator):
-        super().install(node=node, simulator=simulator)
+    @override
+    def install(self, node):
+        self._application_install(node, QNode)
         self.simulator.add_event(func_to_event(self.simulator.ts, self.send, by=self))
 
     def send(self):
@@ -22,7 +25,7 @@ class SendApp(Application):
         self.simulator.add_event(func_to_event(self.simulator.tc + self.send_interval, self.send, by=self))
 
 
-class RecvApp(Application):
+class RecvApp(Application[QNode]):
     def __init__(self):
         super().__init__()
         self.add_handler(self.RecvQubitHandler, RecvQubitPacket)
@@ -43,9 +46,7 @@ def setup_and_run(l1: QuantumChannel) -> tuple[SendApp, RecvApp]:
     a2 = RecvApp()
     n2.add_apps(a2)
 
-    s = Simulator(1.000, 4.999, accuracy=1000)
-    n1.install(s)
-    n2.install(s)
+    s = Simulator(1.000, 4.999, accuracy=1000, install_to=(n1, n2))
     s.run()
 
     return (a1, a2)

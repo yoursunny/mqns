@@ -22,13 +22,13 @@ from mqns.models.qubit.typing import Basis, Operator1, Operator2, QubitState
 QUBIT_STATE_0: QubitState = np.array([[1], [0]], dtype=np.complex128)
 QUBIT_STATE_1: QubitState = np.array([[0], [1]], dtype=np.complex128)
 
-QUBIT_STATE_P: QubitState = 1 / np.sqrt(2) * np.array([[1], [1]], dtype=np.complex128)
-QUBIT_STATE_N: QubitState = 1 / np.sqrt(2) * np.array([[1], [-1]], dtype=np.complex128)
+QUBIT_STATE_P: QubitState = np.array([[1], [1]], dtype=np.complex128) / np.sqrt(2)
+QUBIT_STATE_N: QubitState = np.array([[1], [-1]], dtype=np.complex128) / np.sqrt(2)
 
-QUBIT_STATE_R: QubitState = 1 / np.sqrt(2) * np.array([[-1j], [1]], dtype=np.complex128)
-QUBIT_STATE_L: QubitState = 1 / np.sqrt(2) * np.array([[1], [-1j]], dtype=np.complex128)
+QUBIT_STATE_R: QubitState = np.array([[-1j], [1]], dtype=np.complex128) / np.sqrt(2)
+QUBIT_STATE_L: QubitState = np.array([[1], [-1j]], dtype=np.complex128) / np.sqrt(2)
 
-OPERATOR_HADAMARD: Operator1 = 1 / np.sqrt(2) * np.array([[1, 1], [1, -1]], dtype=np.complex128)
+OPERATOR_HADAMARD: Operator1 = np.array([[1, 1], [1, -1]], dtype=np.complex128) / np.sqrt(2)
 OPERATOR_T: Operator1 = np.array([[1, 0], [0, np.e ** (1j * np.pi / 4)]], dtype=np.complex128)
 OPERATOR_S: Operator1 = np.array([[1, 0], [0, 1j]], dtype=np.complex128)
 

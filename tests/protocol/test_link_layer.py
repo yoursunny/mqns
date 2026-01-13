@@ -1,9 +1,15 @@
+from typing import override
+
 import pytest
 
 from mqns.entity.memory import QubitState
-from mqns.entity.node import Application, Node, QNode
+from mqns.entity.node import Application, QNode
 from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk
-from mqns.models.epr import WernerStateEntanglement
+from mqns.models.epr import (
+    Entanglement,
+    MixedStateEntanglement,
+    WernerStateEntanglement,
+)
 from mqns.network.network import QuantumNetwork, TimingModeSync
 from mqns.network.protocol.event import (
     ManageActiveChannels,
@@ -17,7 +23,7 @@ from mqns.simulator import Simulator
 from mqns.utils import log
 
 
-class NetworkLayer(Application):
+class NetworkLayer(Application[QNode]):
     def __init__(self):
         super().__init__()
         self.release_after: float | None = None
@@ -27,21 +33,22 @@ class NetworkLayer(Application):
         self.add_handler(self.handle_entangle, QubitEntangledEvent)
         self.add_handler(self.handle_decohere, QubitDecoheredEvent)
 
-    def install(self, node: Node, simulator: Simulator):
-        super().install(node, simulator)
-        self.own = self.get_node(node_type=QNode)
-        self.memory = self.own.memory
+    @override
+    def install(self, node):
+        self._application_install(node, QNode)
+        self.memory = self.node.memory
+        self.epr_type = self.node.network.epr_type
 
     def handle_entangle(self, event: QubitEntangledEvent):
-        qubit, epr = self.memory.read(event.qubit.addr, has=WernerStateEntanglement, set_fidelity=True)
-        assert qubit == event.qubit
+        qubit, epr = self.memory.read(event.qubit.addr, has=self.epr_type)
+        assert qubit is event.qubit
         self.entangle.append((event.t.sec, epr.creation_time.sec))
 
         if not isinstance(self.release_after, float):
             return
         self.memory.read(event.qubit.addr, remove=True)
         event.qubit.state = QubitState.RELEASE
-        self.simulator.add_event(QubitReleasedEvent(self.own, event.qubit, t=event.t + self.release_after, by=self))
+        self.simulator.add_event(QubitReleasedEvent(self.node, event.qubit, t=event.t + self.release_after, by=self))
         self.release_after = None
 
     def handle_decohere(self, event: QubitDecoheredEvent):
@@ -51,9 +58,9 @@ class NetworkLayer(Application):
 def manage_active_channel(simulator: Simulator, t: float, src: NetworkLayer, dst: NetworkLayer, *, stop=False):
     simulator.add_event(
         ManageActiveChannels(
-            src.own,
-            dst.own,
-            src.own.get_qchannel(dst.own),
+            src.node,
+            dst.node,
+            src.node.get_qchannel(dst.node),
             start=not stop,
             t=simulator.time(sec=t),
             by=src,
@@ -61,7 +68,14 @@ def manage_active_channel(simulator: Simulator, t: float, src: NetworkLayer, dst
     )
 
 
-def test_basic():
+@pytest.mark.parametrize(
+    "epr_type",
+    [
+        WernerStateEntanglement,
+        MixedStateEntanglement,
+    ],
+)
+def test_basic(epr_type: type[Entanglement]):
     topo = LinearTopology(
         nodes_number=2,
         nodes_apps=[NetworkLayer(), LinkLayer()],
@@ -69,25 +83,23 @@ def test_basic():
         cchannel_args={"delay": 0.1},
         memory_args={"t_cohere": 4.1},
     )
-    net = QuantumNetwork(topo, classic_topo=ClassicTopology.Follow)
+    net = QuantumNetwork(topo, classic_topo=ClassicTopology.Follow, epr_type=epr_type)
     net.build_route()
     net.get_qchannel("n1", "n2").assign_memory_qubits(capacity=1)
 
-    simulator = Simulator(0.0, 20.0)
-    log.install(simulator)
-    net.install(simulator)
+    s = Simulator(0.0, 20.0, install_to=(log, net))
 
     a1 = net.get_node("n1").get_app(NetworkLayer)
     a2 = net.get_node("n2").get_app(NetworkLayer)
-    manage_active_channel(simulator, 0.5, a1, a2)
-    manage_active_channel(simulator, 8.4, a1, a2, stop=True)
+    manage_active_channel(s, 0.5, a1, a2)
+    manage_active_channel(s, 8.4, a1, a2, stop=True)
     a1.release_after = 2.9
     a2.release_after = 3.2
 
-    simulator.run()
+    s.run()
 
     for app in (a1, a2):
-        print(app.own.name, app.entangle, app.decohere)
+        print(app.node.name, app.entangle, app.decohere)
         assert len(app.entangle) == 3
         assert len(app.decohere) == 2
         # t=0.5, n1 installs path
@@ -141,7 +153,7 @@ def test_skip_ahead():
     simulator.run()
 
     for app in (a1, a2):
-        print(app.own.name, app.entangle, app.decohere)
+        print(app.node.name, app.entangle, app.decohere)
 
     assert len(a1.entangle) == len(a2.entangle) > 0
     for t1, t2 in zip(a1.entangle, a2.entangle):
@@ -185,7 +197,7 @@ def test_timing_mode_sync():
     simulator.run()
 
     for app in (a0, a1):
-        print(app.own.name, app.entangle, app.decohere)
+        print(app.node.name, app.entangle, app.decohere)
         # τ=0.2 for the channel between n0 and n1.
         # Entanglement (including reservation) requires 4τ i.e. 0.8 seconds but the EXTERNAL phase
         # has only 0.6 seconds, so that no entanglement could complete on this channel.
@@ -193,7 +205,7 @@ def test_timing_mode_sync():
         assert len(app.decohere) == 0
 
     for app in (a2, a3):
-        print(app.own.name, app.entangle, app.decohere)
+        print(app.node.name, app.entangle, app.decohere)
         # τ=0.1 for the channel between n2 and n3.
         # Entanglement (including reservation) requires 4τ i.e. 0.4 seconds.
         # No entanglement occurs in the first EXTERNAL phase window, because reservations are only initiated

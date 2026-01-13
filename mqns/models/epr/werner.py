@@ -26,16 +26,14 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from typing import Unpack, overload, override
+from typing import Unpack, final, overload, override
 
 import numpy as np
 
-from mqns.models.epr.entanglement import BaseEntanglement, BaseEntanglementInitKwargs
-from mqns.models.qubit.const import QUBIT_STATE_0, QUBIT_STATE_P
-from mqns.models.qubit.qubit import QState, Qubit
+from mqns.models.epr.const import RHO_PHI_P
+from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
+from mqns.models.qubit.typing import MultiQubitRho
 from mqns.utils import get_rand
-
-phi_p: np.ndarray = 1 / np.sqrt(2) * np.array([[1], [0], [0], [1]])
 
 
 def _fidelity_from_w(w: float) -> float:
@@ -50,20 +48,21 @@ _w_0 = _fidelity_to_w(0.0)
 _w_1 = _fidelity_to_w(1.0)
 
 
-class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"]):
+@final
+class WernerStateEntanglement(Entanglement["WernerStateEntanglement"]):
     """A pair of entangled qubits in Werner State with a hidden-variable."""
 
     @overload
-    def __init__(self, *, fidelity: float = 1.0, **kwargs: Unpack[BaseEntanglementInitKwargs]):
+    def __init__(self, *, fidelity: float = 1.0, **kwargs: Unpack[EntanglementInitKwargs]):
         """Construct with fidelity."""
         pass
 
     @overload
-    def __init__(self, *, w: float, **kwargs: Unpack[BaseEntanglementInitKwargs]):
+    def __init__(self, *, w: float, **kwargs: Unpack[EntanglementInitKwargs]):
         """Construct with Werner parameter."""
         pass
 
-    def __init__(self, *, fidelity: float | None = None, w: float = _w_1, **kwargs: Unpack[BaseEntanglementInitKwargs]):
+    def __init__(self, *, fidelity: float | None = None, w: float = _w_1, **kwargs: Unpack[EntanglementInitKwargs]):
         super().__init__(**kwargs)
         self.w = _fidelity_to_w(fidelity) if fidelity is not None else w
         """Werner parameter."""
@@ -78,41 +77,27 @@ class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"]):
         assert 0.0 <= value <= 1.0
         self.w = _fidelity_to_w(value)
 
+    @override
+    def _mark_decoherenced(self) -> None:
+        self.is_decoherenced = True
+        self.w = _w_0
+
     @staticmethod
     @override
     def _make_swapped(
-        epr0: "WernerStateEntanglement", epr1: "WernerStateEntanglement", **kwargs: Unpack[BaseEntanglementInitKwargs]
+        epr0: "WernerStateEntanglement", epr1: "WernerStateEntanglement", **kwargs: Unpack[EntanglementInitKwargs]
     ):
         return WernerStateEntanglement(w=epr0.w * epr1.w, **kwargs)
 
     @override
-    def distillation(self, epr: "WernerStateEntanglement") -> "WernerStateEntanglement|None":
-        _ = epr
-        raise NotImplementedError()
-
-    def purify(self, epr: "WernerStateEntanglement") -> bool:
+    def _do_purify(self, epr1: "WernerStateEntanglement") -> bool:
         """
-        Use `self` and `epr` to perform distillation and update this entanglement.
-        Using Bennett 96 protocol and estimate lower bound.
-
-        Args:
-            epr: another entanglement.
-
-        Returns:
-            Whether purification succeeded.
+        Perform distillation using Bennett 96 protocol and estimate lower bound.
         """
-        if self.is_decoherenced or epr.is_decoherenced:
-            self.is_decoherenced = True
-            self.w = _w_0
-            return False
-
-        epr.is_decoherenced = True
-        fmin = min(self.fidelity, epr.fidelity)
+        fmin = min(self.fidelity, epr1.fidelity)
         expr1 = fmin**2 + 5 / 9 * (1 - fmin) ** 2 + 2 / 3 * fmin * (1 - fmin)
 
         if get_rand() > expr1:
-            self.is_decoherenced = True
-            self.w = _w_0
             return False
 
         self.fidelity = (fmin**2 + (1 - fmin) ** 2 / 9) / expr1
@@ -149,21 +134,8 @@ class WernerStateEntanglement(BaseEntanglement["WernerStateEntanglement"]):
         self.w *= np.exp(-decoherence_rate * length)
 
     @override
-    def to_qubits(self) -> list[Qubit]:
-        if self.is_decoherenced:
-            q0 = Qubit(state=QUBIT_STATE_P, name="q0")
-            q1 = Qubit(state=QUBIT_STATE_P, name="q1")
-            return [q0, q1]
-
-        q0 = Qubit(state=QUBIT_STATE_0, name="q0")
-        q1 = Qubit(state=QUBIT_STATE_0, name="q1")
-
-        rho = self.w * np.dot(phi_p, phi_p.T.conjugate()) + (1 - self.w) / 4 * np.identity(4)
-        qs = QState([q0, q1], rho=rho)
-        q0.state = qs
-        q1.state = qs
-        self.is_decoherenced = True
-        return [q0, q1]
+    def _to_qubits_rho(self) -> MultiQubitRho:
+        return self.w * RHO_PHI_P + (1 - self.w) / 4 * np.identity(4)
 
     @override
     def __repr__(self):

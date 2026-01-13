@@ -6,11 +6,11 @@ import itertools
 
 import pytest
 
-from mqns.models.epr import WernerStateEntanglement
+from mqns.models.epr import Entanglement
 from mqns.network.network import TimingModeSync
 from mqns.network.proactive import (
     Fib,
-    MemoryWernerTuple,
+    MemoryEprTuple,
     MuxSchemeDynamicEpr,
     MuxSchemeStatistical,
     ProactiveForwarder,
@@ -285,14 +285,14 @@ def test_rect_multipath(has_etg: tuple[int, int, int, int], n_swapped: tuple[int
 def test_tree2_dynepr(t_edge_etg: float, selected_path: tuple[int, int], n_consumed: tuple[int, int]):
     """Test MuxSchemeDynamicEpr in tree (height=2) topology."""
 
-    def select_path(epr: WernerStateEntanglement, fib: Fib, path_ids: list[int]) -> int:
+    def select_path(epr: Entanglement, fib: Fib, path_ids: list[int]) -> int:
         _ = fib
         if len(path_ids) != 2:
             chosen = path_ids[0]
-        elif epr.src is f2.own:  # n2-n1
+        elif epr.src is f2.node:  # n2-n1
             chosen = (rp0.path_id, rp1.path_id)[selected_path[0]]
         else:  # n1-n3
-            assert epr.src is f1.own
+            assert epr.src is f1.node
             chosen = (rp0.path_id, rp1.path_id)[selected_path[1]]
         return chosen
 
@@ -366,23 +366,21 @@ def test_tree2_statistical(
 ):
     """Test MuxSchemeStatistical in tree (height=2) topology."""
 
-    def select_qubit(fw: ProactiveForwarder, mt0: MemoryWernerTuple, candidates: list[MemoryWernerTuple]) -> MemoryWernerTuple:
+    def select_qubit(fw: ProactiveForwarder, mt0: MemoryEprTuple, candidates: list[MemoryEprTuple]) -> MemoryEprTuple:
         _ = mt0
         if len(candidates) != 2:
             chosen = candidates[0]
         elif fw is f2:  # n2-n1 choosing between n4-n2 and n5-n2
             partner = (f4, f5)[selected_qubit[0]]
-            chosen = next((mt1 for mt1 in candidates if mt1[1].src is partner.own))
+            chosen = next((mt1 for mt1 in candidates if mt1[1].src is partner.node))
         elif fw is f3:  # n1-n3 choosing between n3-n6 and n3-n7
             partner = (f6, f7)[selected_qubit[1]]
-            chosen = next((mt1 for mt1 in candidates if mt1[1].dst is partner.own))
+            chosen = next((mt1 for mt1 in candidates if mt1[1].dst is partner.node))
         else:
             raise RuntimeError()
         return chosen
 
-    def select_path(
-        fw: ProactiveForwarder, epr0: WernerStateEntanglement, epr1: WernerStateEntanglement, path_ids: list[int]
-    ) -> int:
+    def select_path(fw: ProactiveForwarder, epr0: Entanglement, epr1: Entanglement, path_ids: list[int]) -> int:
         _ = epr0, epr1
         if len(path_ids) != 2:
             chosen = path_ids[0]

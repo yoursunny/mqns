@@ -1,10 +1,10 @@
-from mqns.entity.node import Application, Controller
+from mqns.entity.node import Application, Controller, Node
 from mqns.network.network import QuantumNetwork, TimingModeSync, TimingPhase, TimingPhaseEvent
 from mqns.network.topology import BasicTopology
 from mqns.simulator import Simulator
 
 
-class SyncCheckApp(Application):
+class SyncCheckApp(Application[Node]):
     def __init__(self):
         super().__init__()
         self.changes = 0
@@ -21,9 +21,8 @@ def test_timing_mode_sync():
     topo.controller = Controller("ctrl", apps=[SyncCheckApp()])
     net = QuantumNetwork(topo, timing=TimingModeSync(t_ext=4, t_int=1))
 
-    simulator = Simulator(0.0, 29.9)
-    net.install(simulator)
-    simulator.run()
+    s = Simulator(0.0, 29.9, install_to=(net,))
+    s.run()
 
     for node in net.nodes + [net.get_controller()]:
         app = node.get_app(SyncCheckApp)

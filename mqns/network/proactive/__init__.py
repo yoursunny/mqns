@@ -21,8 +21,8 @@ from mqns.network.proactive.routing import (
     RoutingPathStatic,
 )
 from mqns.network.proactive.select import (
-    MemoryWernerIterator,
-    MemoryWernerTuple,
+    MemoryEprIterator,
+    MemoryEprTuple,
     SelectPurifQubit,
     select_purif_qubit_random,
 )
@@ -38,8 +38,8 @@ __all__ = [
     "Fib",
     "FibEntry",
     "LinkLayer",  # re-export for convenience
-    "MemoryWernerIterator",
-    "MemoryWernerTuple",
+    "MemoryEprIterator",
+    "MemoryEprTuple",
     "MuxScheme",
     "MuxSchemeBufferSpace",
     "MuxSchemeDynamicEpr",

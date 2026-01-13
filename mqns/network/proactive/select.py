@@ -3,16 +3,16 @@ from collections.abc import Callable, Iterator
 
 from mqns.entity.memory import MemoryQubit
 from mqns.entity.node import QNode
-from mqns.models.epr import WernerStateEntanglement
+from mqns.models.epr import Entanglement
 from mqns.network.proactive.fib import FibEntry
 
-MemoryWernerTuple = tuple[MemoryQubit, WernerStateEntanglement]
-MemoryWernerIterator = Iterator[MemoryWernerTuple]
+MemoryEprTuple = tuple[MemoryQubit, Entanglement]
+MemoryEprIterator = Iterator[MemoryEprTuple]
 
 SelectPurifQubit = (
     Callable[
-        [MemoryQubit, FibEntry, QNode, list[MemoryWernerTuple]],
-        MemoryWernerTuple,
+        [MemoryQubit, FibEntry, QNode, list[MemoryEprTuple]],
+        MemoryEprTuple,
     ]
     | None
 )
@@ -27,8 +27,8 @@ def call_select_purif_qubit(
     qubit: MemoryQubit,
     fib_entry: FibEntry,
     partner: QNode,
-    candidates: MemoryWernerIterator,
-) -> MemoryWernerTuple | None:
+    candidates: MemoryEprIterator,
+) -> MemoryEprTuple | None:
     if fn is None:
         return next(candidates, None)
     l = list(candidates)
@@ -41,7 +41,7 @@ def select_purif_qubit_random(
     qubit: MemoryQubit,
     fib_entry: FibEntry,
     partner: QNode,
-    candidates: list[MemoryWernerTuple],
-) -> MemoryWernerTuple:
+    candidates: list[MemoryEprTuple],
+) -> MemoryEprTuple:
     _ = qubit, fib_entry, partner
     return random.choice(candidates)

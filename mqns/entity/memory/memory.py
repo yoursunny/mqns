@@ -42,7 +42,7 @@ from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.core import QuantumModel, QuantumModelT
 from mqns.models.delay import DelayInput, parseDelay
-from mqns.models.epr import BaseEntanglement
+from mqns.models.epr import Entanglement
 from mqns.simulator import Event, Simulator
 
 
@@ -112,18 +112,14 @@ class QuantumMemory(Entity):
 
     @override
     def handle(self, event: Event) -> None:
-        simulator = self.simulator
-
         if isinstance(event, MemoryReadRequestEvent):
             result = self.read(event.key)  # will not update fidelity
-            simulator.add_event(
-                MemoryReadResponseEvent(self.node, result, request=event, t=simulator.tc + self.delay.calculate(), by=self)
-            )
+            t = self.simulator.tc + self.delay.calculate()
+            self.simulator.add_event(MemoryReadResponseEvent(self.node, result, request=event, t=t, by=self))
         elif isinstance(event, MemoryWriteRequestEvent):
             result = self.write(None, event.qubit)
-            simulator.add_event(
-                MemoryWriteResponseEvent(self.node, result, request=event, t=simulator.tc + self.delay.calculate(), by=self)
-            )
+            t = self.simulator.tc + self.delay.calculate()
+            self.simulator.add_event(MemoryWriteResponseEvent(self.node, result, request=event, t=t, by=self))
 
     @property
     def count(self) -> int:
@@ -273,7 +269,7 @@ class QuantumMemory(Entity):
             Qubit and associated data (possibly empty), or None if qubit is not found by EPR name.
 
         Raises:
-            Index - qubit address out of range.
+            IndexError - qubit address out of range.
         """
         pass
 
@@ -351,7 +347,7 @@ class QuantumMemory(Entity):
         if has and type(data) is not has:
             raise ValueError(f"{self}: data at {qubit.addr} is not {has}")
 
-        if set_fidelity and isinstance(data, BaseEntanglement) and not data.read:
+        if set_fidelity and isinstance(data, Entanglement) and not data.read:
             data.read = True
             now = self.simulator.tc
             data.store_error_model((now - data.creation_time).sec, self.decoherence_rate)
@@ -397,7 +393,7 @@ class QuantumMemory(Entity):
         if old is None:
             self._usage += 1
 
-        if isinstance(data, BaseEntanglement):
+        if isinstance(data, Entanglement):
             self._schedule_decohere(qubit, data)
         elif old is not None:
             qubit.set_event(QuantumMemory, None)  # cancel old decoherence event
@@ -411,17 +407,16 @@ class QuantumMemory(Entity):
             self._storage[qubit.addr] = (qubit, None)
         self._usage = 0
 
-    def _schedule_decohere(self, qubit: MemoryQubit, epr: BaseEntanglement):
+    def _schedule_decohere(self, qubit: MemoryQubit, epr: Entanglement):
         from mqns.network.protocol.event import QubitDecoheredEvent  # noqa: PLC0415
 
-        simulator = self.simulator
-        assert epr.decoherence_time >= simulator.tc
+        assert epr.decoherence_time >= self.simulator.tc
 
         event = QubitDecoheredEvent(self, qubit, epr, t=epr.decoherence_time)
         qubit.set_event(QuantumMemory, event)
-        simulator.add_event(event)
+        self.simulator.add_event(event)
 
-    def handle_decohere_qubit(self, qubit: MemoryQubit, epr: BaseEntanglement) -> bool:
+    def handle_decohere_qubit(self, qubit: MemoryQubit, epr: Entanglement) -> bool:
         """
         Part of `QubitDecoheredEvent` logic.
 

@@ -17,22 +17,6 @@
 
 from typing import final
 
-default_accuracy = 1000000
-"""
-Default time accuracy, how many time slots per second.
-"""
-
-
-def set_default_accuracy(time_slots: int):
-    """
-    Set the default time accuracy.
-
-    Args:
-        time_slots: how many time slots per second.
-    """
-    global default_accuracy
-    default_accuracy = time_slots
-
 
 def _to_time_slot(sec: int | float, accuracy: int) -> int:
     return round(sec * accuracy)
@@ -46,7 +30,7 @@ class Time:
 
     SENTINEL: "Time"
 
-    def __init__(self, time_slot: int = 0, *, accuracy: int | None = None):
+    def __init__(self, time_slot: int, *, accuracy: int):
         """
         Construct Time from time slot.
 
@@ -55,10 +39,10 @@ class Time:
             accuracy: how many time slots per second.
         """
         self.time_slot = time_slot
-        self.accuracy = default_accuracy if accuracy is None else accuracy
+        self.accuracy = accuracy
 
     @staticmethod
-    def from_sec(sec: float, *, accuracy: int | None = None) -> "Time":
+    def from_sec(sec: float, *, accuracy: int) -> "Time":
         """
         Construct Time from seconds.
 
@@ -66,7 +50,6 @@ class Time:
             sec: seconds.
             accuracy: how many time slots per second.
         """
-        accuracy = default_accuracy if accuracy is None else accuracy
         return Time(_to_time_slot(sec, accuracy), accuracy=accuracy)
 
     @property

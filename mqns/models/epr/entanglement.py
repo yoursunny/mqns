@@ -33,9 +33,10 @@ from typing import TYPE_CHECKING, Generic, TypedDict, TypeVar, Unpack, cast
 import numpy as np
 
 from mqns.models.core import QuantumModel
+from mqns.models.qubit import QState, Qubit, state_to_rho
 from mqns.models.qubit.const import OPERATOR_PAULI_I, QUBIT_STATE_0, QUBIT_STATE_P
 from mqns.models.qubit.gate import CNOT, H, U, X, Y, Z
-from mqns.models.qubit.qubit import QState, Qubit
+from mqns.models.qubit.typing import MultiQubitRho
 from mqns.simulator import Time
 from mqns.utils import get_rand
 
@@ -47,10 +48,10 @@ def _name_hash(s1: str) -> str:
     return hashlib.sha256(s1.encode()).hexdigest()
 
 
-EntanglementT = TypeVar("EntanglementT", bound="BaseEntanglement")
+EntanglementT = TypeVar("EntanglementT", bound="Entanglement")
 
 
-class BaseEntanglementInitKwargs(TypedDict, total=False):
+class EntanglementInitKwargs(TypedDict, total=False):
     name: str | None
     creation_time: Time
     decoherence_time: Time
@@ -59,10 +60,10 @@ class BaseEntanglementInitKwargs(TypedDict, total=False):
     mem_decohere_rate: tuple[float, float]
 
 
-class BaseEntanglement(ABC, Generic[EntanglementT], QuantumModel):
+class Entanglement(ABC, Generic[EntanglementT], QuantumModel):
     """Base entanglement model."""
 
-    def __init__(self, **kwargs: Unpack[BaseEntanglementInitKwargs]):
+    def __init__(self, **kwargs: Unpack[EntanglementInitKwargs]):
         """
         Constructor.
 
@@ -127,9 +128,12 @@ class BaseEntanglement(ABC, Generic[EntanglementT], QuantumModel):
         """Pair decoherence rate in Hz"""
         return sum(self.mem_decohere_rate)
 
-    @classmethod
+    def _mark_decoherenced(self) -> None:
+        """Mark the EPR as decoherenced."""
+        self.is_decoherenced = True
+
+    @staticmethod
     def swap(
-        cls,
         epr0: EntanglementT,
         epr1: EntanglementT,
         *,
@@ -149,14 +153,17 @@ class BaseEntanglement(ABC, Generic[EntanglementT], QuantumModel):
             New entanglement, or None if swap failed.
         """
 
-        assert epr0.dst == epr1.src  # src and dst can be None
+        assert type(epr0) is type(epr1)
+        assert epr0.dst == epr1.src  # it's okay for src and dst to be None
 
         if epr0.is_decoherenced or epr1.is_decoherenced:
+            epr0._mark_decoherenced()
+            epr1._mark_decoherenced()
             return None
 
         if ps < 1.0 and get_rand() >= ps:  # swap failed
-            epr0.is_decoherenced = True
-            epr1.is_decoherenced = True
+            epr0._mark_decoherenced()
+            epr1._mark_decoherenced()
             return None
 
         orig_eprs: list[EntanglementT] = []
@@ -170,7 +177,7 @@ class BaseEntanglement(ABC, Generic[EntanglementT], QuantumModel):
             else:
                 orig_eprs.extend(cast(list[EntanglementT], epr.orig_eprs))
 
-        ne = cls._make_swapped(
+        ne = type(epr0)._make_swapped(
             epr0,
             epr1,
             name=_name_hash("-".join((e.name for e in orig_eprs))),
@@ -185,7 +192,7 @@ class BaseEntanglement(ABC, Generic[EntanglementT], QuantumModel):
 
     @staticmethod
     @abstractmethod
-    def _make_swapped(epr0: EntanglementT, epr1: EntanglementT, **kwargs: Unpack[BaseEntanglementInitKwargs]) -> EntanglementT:
+    def _make_swapped(epr0: EntanglementT, epr1: EntanglementT, **kwargs: Unpack[EntanglementInitKwargs]) -> EntanglementT:
         """
         Create a new entanglement that is the result of successful swapping between epr0 and epr1.
         Most properties are provided in kwargs or assigned subsequently.
@@ -193,41 +200,67 @@ class BaseEntanglement(ABC, Generic[EntanglementT], QuantumModel):
         """
         pass
 
-    @abstractmethod
-    def distillation(self, epr: EntanglementT) -> EntanglementT | None:
+    def purify(self, epr1: EntanglementT, *, now: Time) -> bool:
         """
-        Use `self` and `epr` to perform distillation/purification and distribute a new entanglement.
+        Perform purification on `self` consuming `epr1`.
 
         Args:
-            epr: another entanglement.
+            self: kept entanglement.
+            epr1: consumed entanglement.
+            now: current timestamp.
 
         Returns:
-            New entanglement.
+            Whether successful.
         """
+
+        assert type(self) is type(epr1)
+        assert (self.src, self.dst) == (epr1.src, epr1.dst)  # it's okay for src and dst to be None
+
+        if self.is_decoherenced or epr1.is_decoherenced:
+            self._mark_decoherenced()
+            epr1._mark_decoherenced()
+            return False
+
+        _ = now
+        ok = self._do_purify(epr1)
+
+        if not ok:
+            self._mark_decoherenced()
+        epr1._mark_decoherenced()
+
+        return ok
+
+    @abstractmethod
+    def _do_purify(self, epr1: EntanglementT) -> bool:
         pass
 
     def to_qubits(self) -> list[Qubit]:
         """
         Transport the entanglement into a pair of qubits based on the fidelity.
-        Suppose the first qubit is [1/sqrt(2), 1/sqrt(2)].H
+        Suppose the first qubit is the Plus state.
 
         Returns:
-            A list of two qubits
-
+            A list of two qubits.
         """
         if self.is_decoherenced:
             q0 = Qubit(state=QUBIT_STATE_P, name="q0")
             q1 = Qubit(state=QUBIT_STATE_P, name="q1")
             return [q0, q1]
+
         q0 = Qubit(state=QUBIT_STATE_0, name="q0")
         q1 = Qubit(state=QUBIT_STATE_0, name="q1")
-        a = np.sqrt(self.fidelity / 2)
-        b = np.sqrt((1 - self.fidelity) / 2)
-        qs = QState([q0, q1], state=np.array([[a], [b], [b], [a]], dtype=np.complex128))
+        qs = QState([q0, q1], rho=self._to_qubits_rho())
         q0.state = qs
         q1.state = qs
+
         self.is_decoherenced = True
         return [q0, q1]
+
+    def _to_qubits_rho(self) -> MultiQubitRho:
+        a = np.sqrt(self.fidelity / 2)
+        b = np.sqrt((1 - self.fidelity) / 2)
+        state = np.array([[a], [b], [b], [a]], dtype=np.complex128)
+        return state_to_rho(state)
 
     def teleportion(self, qubit: Qubit) -> Qubit:
         """
