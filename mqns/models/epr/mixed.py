@@ -16,7 +16,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from collections.abc import Iterable
-from typing import Unpack, final, override
+from typing import Unpack, final, overload, override
 
 import numpy as np
 
@@ -36,28 +36,33 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
         rho = A * Phi^+ + B * Psi^+ + C * Psi^- + D * Phi^-
     """
 
-    def __init__(
-        self,
-        *,
-        fidelity: float = 1,
-        b: float | None = None,
-        c: float | None = None,
-        d: float | None = None,
-        **kwargs: Unpack[EntanglementInitKwargs],
-    ):
-        """Generate an entanglement with certain fidelity
+    @overload
+    def __init__(self, *, fidelity=1.0, **kwargs: Unpack[EntanglementInitKwargs]):
+        """
+        Construct with fidelity, used as the probability of ``Phi^+``.
+        """
+        pass
+
+    @overload
+    def __init__(self, *, a: float, b: float, c: float, d: float, **kwargs: Unpack[EntanglementInitKwargs]):
+        """
+        Construct with four probability values.
 
         Args:
-            fidelity (float): the fidelity, equals to the probability of Phi^+
-            b (float): probability of Psi^+
-            c (float): probability of Psi^-
-            d (float): probability of Phi^-
+            a: Probability of ``Phi^+``.
+            b: Probability of ``Psi^+``.
+            c: Probability of ``Psi^-``.
+            d: Probability of ``Phi^-``.
         """
+        pass
+
+    def __init__(self, *, fidelity: float | None = None, a=1.0, b=0.0, c=0.0, d=0.0, **kwargs: Unpack[EntanglementInitKwargs]):
         super().__init__(**kwargs)
-        dflt_bcd = (1 - fidelity) / 3
-        self._set_probabilities(
-            fidelity, dflt_bcd if b is None else b, dflt_bcd if c is None else c, dflt_bcd if d is None else d
-        )
+        if fidelity is None:
+            self._set_probabilities(a, b, c, d)
+        else:
+            bcd = (1 - fidelity) / 3
+            self._set_probabilities(fidelity, bcd, bcd, bcd)
 
     @property
     @override
@@ -85,7 +90,7 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
     @override
     def _make_swapped(epr0: "MixedStateEntanglement", epr1: "MixedStateEntanglement", **kwargs: Unpack[EntanglementInitKwargs]):
         return MixedStateEntanglement(
-            fidelity=epr0.a * epr1.a + epr0.b * epr1.b + epr0.c * epr1.c + epr0.d * epr1.d,
+            a=epr0.a * epr1.a + epr0.b * epr1.b + epr0.c * epr1.c + epr0.d * epr1.d,
             b=epr0.a * epr1.b + epr0.b * epr1.a + epr0.c * epr1.d + epr0.d * epr1.c,
             c=epr0.a * epr1.c + epr0.b * epr1.d + epr0.c * epr1.a + epr0.d * epr1.b,
             d=epr0.a * epr1.d + epr0.b * epr1.c + epr0.c * epr1.d + epr0.d * epr1.a,
