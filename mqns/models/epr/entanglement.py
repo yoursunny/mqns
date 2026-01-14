@@ -262,7 +262,7 @@ class Entanglement(ABC, Generic[EntanglementT], QuantumModel):
         state = np.array([[a], [b], [b], [a]], dtype=np.complex128)
         return state_to_rho(state)
 
-    def teleportion(self, qubit: Qubit) -> Qubit:
+    def teleportation(self, qubit: Qubit) -> Qubit:
         """
         Use `self` and `qubit` to perform teleportation.
         """

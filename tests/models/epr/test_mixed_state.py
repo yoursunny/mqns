@@ -32,7 +32,7 @@ def test_mixed_state(monkeypatch: pytest.MonkeyPatch):
     assert (e3.a, e3.b, e3.c, e3.d) == pytest.approx((9.183907e-1, 8.179613e-5, 8.179613e-5, 8.144570e-2), rel=1e-6)
 
     q_in = Qubit(QUBIT_STATE_0)
-    q_out = e3.teleportion(q_in)
+    q_out = e3.teleportation(q_in)
     assert q_out.state.rho.shape == (2, 2)
     assert q_out.state.rho[0] == pytest.approx([9.998364e-1, 0], rel=1e-6)
     assert q_out.state.rho[1] == pytest.approx([0, 1.635922e-4], rel=1e-6)
