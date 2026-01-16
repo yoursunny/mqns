@@ -3,13 +3,14 @@ Definitions and constants for qubit state vector and density matrix.
 """
 
 from collections.abc import Iterable
+from typing import Literal
 
 import numpy as np
 
 ATOL = 1e-9
 """Absolute numerical tolerance for floating-point calculations."""
 
-QubitState = np.ndarray[tuple[int, int], np.dtype[np.complex128]]
+QubitState = np.ndarray[tuple[int, Literal[1]], np.dtype[np.complex128]]
 """Qubit state vector for N qubits, shape is (2**N, 1)."""
 
 

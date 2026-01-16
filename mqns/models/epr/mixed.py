@@ -1,28 +1,21 @@
-#    SimQN: a discrete-event simulator for the quantum networks
-#    Copyright (C) 2021-2022 Lutong Chen, Jian Li, Kaiping Xue
-#    University of Science and Technology of China, USTC.
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 from collections.abc import Iterable
-from typing import Unpack, final, overload, override
+from typing import Literal, Unpack, cast, final, overload, override
 
 import numpy as np
 
 from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
-from mqns.models.qubit.state import BELL_RHO_PHI_N, BELL_RHO_PHI_P, BELL_RHO_PSI_N, BELL_RHO_PSI_P, QubitRho, check_qubit_rho
+from mqns.models.qubit.state import (
+    ATOL,
+    BELL_RHO_PHI_N,
+    BELL_RHO_PHI_P,
+    BELL_RHO_PSI_N,
+    BELL_RHO_PSI_P,
+    QubitRho,
+    check_qubit_rho,
+)
 from mqns.utils import get_rand
+
+ProbabilityVector = np.ndarray[tuple[Literal[4]], np.dtype[np.float64]]
 
 
 @final
@@ -34,7 +27,7 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
         """
         Construct with fidelity.
 
-        This creates a Werner state where the error probabilities are distributed equals among the three bad states.
+        This creates a Werner state where the error probabilities are distributed equally among the three bad states.
         """
         pass
 
@@ -54,62 +47,85 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
     def __init__(self, *, fidelity: float | None = None, i=1.0, z=0.0, x=0.0, y=0.0, **kwargs: Unpack[EntanglementInitKwargs]):
         super().__init__(**kwargs)
         if fidelity is None:
-            self._set_probabilities(i, z, x, y)
+            self.set_prob(i, z, x, y)
         else:
-            bcd = (1 - fidelity) / 3
-            self._set_probabilities(fidelity, bcd, bcd, bcd)
+            self.fidelity = fidelity
 
     @property
     @override
     def fidelity(self) -> float:
-        return self.i
+        return self._prob[0].item()
 
     @fidelity.setter
     @override
     def fidelity(self, value: float):
-        assert 0 <= value <= 1
-        self.i = value
+        """Reset fidelity, turning into a Werner state."""
+        bcd = (1 - value) / 3
+        self.set_prob(value, bcd, bcd, bcd)
 
-    def _set_probabilities(self, i: float, z: float, x: float, y: float) -> None:
-        total = i + z + x + y
-        if total <= 0:  # avoid divide-by-zero
-            inv_total = 0
-        else:
-            inv_total = 1 / total
-        self.i = i * inv_total
+    @property
+    def i(self) -> float:
         """Probability of desired state."""
-        self.z = z * inv_total
+        return self._prob[0]
+
+    @property
+    def z(self) -> float:
         """Probability of Z-flip."""
-        self.x = x * inv_total
+        return self._prob[1]
+
+    @property
+    def x(self) -> float:
         """Probability of X-flip."""
-        self.y = y * inv_total
+        return self._prob[2]
+
+    @property
+    def y(self) -> float:
         """Probability of Y-flip."""
+        return self._prob[3]
+
+    def set_prob(self, i: float, z: float, x: float, y: float) -> None:
+        """Update probability values."""
+        self._set_prob(np.array((i, z, x, y), dtype=np.float64))
+
+    def _set_prob(self, prob: ProbabilityVector) -> None:
+        total = np.sum(prob)
+        if total <= ATOL:  # avoid divide-by-zero
+            self._prob = cast(ProbabilityVector, np.zeros(4, dtype=np.float64))
+        else:
+            self._prob = cast(ProbabilityVector, prob / total)
 
     @staticmethod
     @override
     def _make_swapped(epr0: "MixedStateEntanglement", epr1: "MixedStateEntanglement", **kwargs: Unpack[EntanglementInitKwargs]):
-        return MixedStateEntanglement(
-            i=epr0.i * epr1.i + epr0.z * epr1.z + epr0.x * epr1.x + epr0.y * epr1.y,
-            z=epr0.i * epr1.z + epr0.z * epr1.i + epr0.x * epr1.y + epr0.y * epr1.x,
-            x=epr0.i * epr1.x + epr0.z * epr1.y + epr0.x * epr1.i + epr0.y * epr1.z,
-            y=epr0.i * epr1.y + epr0.z * epr1.x + epr0.x * epr1.z + epr0.y * epr1.i,
-            **kwargs,
+        i0, z0, x0, y0 = epr0._prob
+        m_swap = np.array(
+            [
+                [i0, z0, x0, y0],  # i row: (i0*i1, z0*z1, x0*x1, y0*y1)
+                [z0, i0, y0, x0],  # z row: (i0*z1, z0*i1, x0*y1, y0*x1)
+                [x0, y0, i0, z0],  # x row: (i0*x1, z0*y1, x0*i1, y0*z1)
+                [y0, x0, z0, i0],  # y row: (i0*y1, z0*x1, x0*z1, y0*i1)
+            ],
+            dtype=np.float64,
         )
+        i2, z2, x2, y2 = m_swap @ epr1._prob
+        return MixedStateEntanglement(i=i2, z=z2, x=x2, y=y2, **kwargs)
 
     @override
     def _do_purify(self, epr1: "MixedStateEntanglement") -> bool:
         """
         Perform distillation using BBPSSW protocol.
         """
-        p_succ = (self.i + self.y) * (epr1.i + epr1.y) + (self.z + self.x) * (epr1.x + epr1.z)
-        if get_rand() > p_succ:
+        i0, z0, x0, y0 = self._prob
+        i1, z1, x1, y1 = epr1._prob
+        p_succ = (i0 + y0) * (i1 + y1) + (z0 + x0) * (x1 + z1)
+        if p_succ <= ATOL or get_rand() > p_succ:
             return False
 
-        self._set_probabilities(
-            self.i * epr1.i + self.y * epr1.y,
-            self.z * epr1.z + self.x * epr1.x,
-            self.z * epr1.x + self.x * epr1.z,
-            self.i * epr1.y + self.y * epr1.i,
+        self.set_prob(
+            i0 * i1 + y0 * y1,
+            z0 * z1 + x0 * x1,
+            z0 * x1 + x0 * z1,
+            i0 * y1 + y0 * i1,
         )
         return True
 
@@ -121,12 +137,13 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
             t: time in seconds, distance in km, etc.
             rate: dephasing rate, unit is inverse of ``t``.
         """
+        i, z, x, y = self._prob
         multiplier = np.exp(-rate * t)
-        self._set_probabilities(
-            0.5 + (self.i - 0.5) * multiplier,
-            0.5 + (self.z - 0.5) * multiplier,
-            self.x,
-            self.y,
+        self.set_prob(
+            0.5 + (i - 0.5) * multiplier,
+            0.5 + (z - 0.5) * multiplier,
+            x,
+            y,
         )
 
     def depolarize(self, t: float, rate: float):
@@ -138,29 +155,16 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
             rate: depolarizing rate, unit is inverse of ``t``.
         """
         multiplier = np.exp(-rate * t)
-        self._set_probabilities(
-            0.25 + (self.i - 0.25) * multiplier,
-            0.25 + (self.z - 0.25) * multiplier,
-            0.25 + (self.x - 0.25) * multiplier,
-            0.25 + (self.y - 0.25) * multiplier,
-        )
+        self._set_prob(0.25 + (self._prob - 0.25) * multiplier)
 
     @override
     def store_error_model(self, t: float = 0, decoherence_rate: float = 0, **kwargs):
         """
-        The default error model for storing this entangled pair in a quantum memory.
-        The default behavior is::
-
-            a = 0.25 + (a-0.25)*e^{decoherence_rate*t}
-            b = 0.25 + (b-0.25)*e^{decoherence_rate*t}
-            c = 0.25 + (c-0.25)*e^{decoherence_rate*t}
-            d = 0.25 + (d-0.25)*e^{decoherence_rate*t}
+        Apply an error model for storing this entangled pair in a quantum memory.
 
         Args:
-            t: the time stored in a quantum memory. The unit it second.
-            decoherence_rate: the decoherence rate, equals to 1/T_coh, where T_coh is the coherence time.
-            kwargs: other parameters
-
+            t: duration since last update in seconds.
+            decoherence_rate: memory decoherence rate in Hz.
         """
         _ = kwargs
         self.depolarize(t, decoherence_rate)
@@ -168,32 +172,24 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
     @override
     def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
         """
-        The default error model for transmitting this entanglement.
-        The success possibility of transmitting is::
-
-            a = 0.25 + (a-0.25)*e^{decoherence_rate*length}
-            b = 0.25 + (b-0.25)*e^{decoherence_rate*length}
-            c = 0.25 + (c-0.25)*e^{decoherence_rate*length}
-            d = 0.25 + (d-0.25)*e^{decoherence_rate*length}
+        Apply an error model for transmitting this entanglement.
 
         Args:
-            length (float): the length of the channel
-            decoherence_rate (float): the decoherency rate
-            kwargs: other parameters
-
+            length: channel length in km.
+            decoherence_rate: channel decoherence rate in km^-1.
         """
         _ = kwargs
         self.depolarize(length, decoherence_rate)
 
     @override
     def _to_qubits_rho(self) -> QubitRho:
-        return check_qubit_rho(
-            self.i * BELL_RHO_PHI_P + self.z * BELL_RHO_PHI_N + self.x * BELL_RHO_PSI_P + self.y * BELL_RHO_PSI_N, n=2
-        )
+        i, z, x, y = self._prob
+        return check_qubit_rho(i * BELL_RHO_PHI_P + z * BELL_RHO_PHI_N + x * BELL_RHO_PSI_P + y * BELL_RHO_PSI_N, n=2)
 
     @override
     def _describe_fidelity(self) -> Iterable[str]:
-        yield f"i={self.i:.4f}"
-        yield f"z={self.z:.4f}"
-        yield f"x={self.x:.4f}"
-        yield f"y={self.y:.4f}"
+        i, z, x, y = self._prob
+        yield f"i={i:.4f}"
+        yield f"z={z:.4f}"
+        yield f"x={x:.4f}"
+        yield f"y={y:.4f}"
