@@ -236,7 +236,7 @@ class Entanglement(ABC, Generic[EntanglementT], QuantumModel):
     def to_qubits(self) -> list[Qubit]:
         """
         Transport the entanglement into a pair of qubits based on the fidelity.
-        Suppose the first qubit is the Plus state.
+        Maximally entanglement returns ``|Φ+>`` state.
 
         Returns:
             A list of two qubits.

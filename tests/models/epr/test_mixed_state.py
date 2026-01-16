@@ -7,9 +7,15 @@ from mqns.models.qubit.state import (
     BELL_RHO_PHI_P,
     BELL_RHO_PSI_N,
     BELL_RHO_PSI_P,
+    BELL_STATE_PHI_N,
+    BELL_STATE_PHI_P,
+    BELL_STATE_PSI_N,
+    BELL_STATE_PSI_P,
     QUBIT_STATE_0,
     QubitRho,
+    QubitState,
     qubit_rho_classify_noise,
+    qubit_state_are_equal,
 )
 from mqns.simulator import Time
 
@@ -85,15 +91,15 @@ def test_teleportion():
 
 
 @pytest.mark.parametrize(
-    ("i", "z", "x", "y", "rho", "measured_same"),
+    ("i", "z", "x", "y", "state", "rho", "measured_same"),
     [
-        (1, 0, 0, 0, BELL_RHO_PHI_P, True),
-        (0, 1, 0, 0, BELL_RHO_PHI_N, True),
-        (0, 0, 1, 0, BELL_RHO_PSI_P, False),
-        (0, 0, 0, 1, BELL_RHO_PSI_N, False),
+        (1, 0, 0, 0, BELL_STATE_PHI_P, BELL_RHO_PHI_P, True),
+        (0, 1, 0, 0, BELL_STATE_PHI_N, BELL_RHO_PHI_N, True),
+        (0, 0, 1, 0, BELL_STATE_PSI_P, BELL_RHO_PSI_P, False),
+        (0, 0, 0, 1, BELL_STATE_PSI_N, BELL_RHO_PSI_N, False),
     ],
 )
-def test_to_qubits_maximal(i: float, z: float, x: float, y: float, rho: QubitRho, measured_same: bool):
+def test_to_qubits_maximal(i: float, z: float, x: float, y: float, state: QubitState, rho: QubitRho, measured_same: bool):
     e = MixedStateEntanglement(i=i, z=z, x=x, y=y)
 
     qlist = e.to_qubits()
@@ -103,7 +109,10 @@ def test_to_qubits_maximal(i: float, z: float, x: float, y: float, rho: QubitRho
     q0, q1 = qlist
     assert q0.state is q1.state
     assert qubit_rho_classify_noise(rho, q0.state.rho) == 0
-    assert q0.state.state() is not None  # pure state
+
+    pure_state = q0.state.state()
+    assert pure_state is not None  # pure state
+    assert qubit_state_are_equal(state, pure_state)
 
     v0 = q0.measure()
     v1 = q1.measure()

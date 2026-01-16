@@ -168,7 +168,7 @@ def qubit_rho_to_state(rho: QubitRho, n=1) -> QubitState | None:
 
 def qubit_rho_classify_noise(ideal: QubitRho, noisy: QubitRho) -> int:
     """
-    Determine whether depolarizing noise exists.
+    Identify what kind of noise has been applied to transform ``ideal`` state to ``noisy`` state.
 
     Args:
         * 0 - identical.

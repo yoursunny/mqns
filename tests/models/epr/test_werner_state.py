@@ -1,7 +1,13 @@
 import pytest
 
 from mqns.models.epr import Entanglement, WernerStateEntanglement
-from mqns.models.qubit.state import BELL_RHO_PHI_P, QUBIT_STATE_P, qubit_rho_classify_noise, qubit_state_are_equal
+from mqns.models.qubit.state import (
+    BELL_RHO_PHI_P,
+    BELL_STATE_PHI_P,
+    QUBIT_STATE_P,
+    qubit_rho_classify_noise,
+    qubit_state_are_equal,
+)
 from mqns.simulator import Time
 
 
@@ -147,7 +153,10 @@ def test_to_qubits_maximal():
     assert q0.state is q1.state
     print(q0.state)
     assert qubit_rho_classify_noise(BELL_RHO_PHI_P, q0.state.rho) == 0
-    assert q0.state.state() is not None  # pure state
+
+    state = q0.state.state()
+    assert state is not None  # pure state
+    assert qubit_state_are_equal(BELL_STATE_PHI_P, state)
 
     v0 = q0.measure()
     v1 = q1.measure()
@@ -180,4 +189,4 @@ def test_to_qubits_decohered():
     for q in q0, q1:
         state = q.state.state()
         assert state is not None
-        assert qubit_state_are_equal(state, QUBIT_STATE_P)
+        assert qubit_state_are_equal(QUBIT_STATE_P, state)
