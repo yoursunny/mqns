@@ -52,6 +52,11 @@ def build_qubit_state(input: Iterable[complex], n=1) -> QubitState:
     return check_qubit_state(column, n)
 
 
+def qubit_state_are_equal(s0: QubitState, s1: QubitState) -> bool:
+    """Compare qubit state vectors for equality."""
+    return np.allclose(s0, s1, atol=ATOL)
+
+
 QubitRho = np.ndarray[tuple[int, int], np.dtype[np.complex128]]
 """Qubit density matrix for N qubits, shape is (2**N, 2**N)."""
 
@@ -130,6 +135,50 @@ def normalize_qubit_rho(rho: np.ndarray, n=1, *, maybe_zero=False) -> QubitRho:
 def qubit_state_to_rho(state: QubitState, n=1) -> QubitRho:
     """Convert qubit state vector to density matrix."""
     return check_qubit_rho(np.outer(state, np.conj(state)), n)
+
+
+def qubit_rho_to_state(rho: QubitRho, n=1) -> QubitState | None:
+    """
+    Convert density matrix to state vector.
+
+    Args:
+        rho: density matrix.
+        n: number of qubits.
+
+    Returns:
+        * State vector if ``rho`` represents a pure state.
+        * None if ``rho`` represents a mixed state.
+    """
+    purity = np.linalg.norm(rho) ** 2
+    if not np.isclose(purity, 1.0, atol=ATOL):
+        return None
+
+    # eigh returns eigenvalues in ascending order.
+    # For a pure state, the largest eigenvalue should be 1.0, located at the end.
+    _, eigenvectors = np.linalg.eigh(rho)
+    psi = eigenvectors[:, -1]
+    psi = psi.reshape((-1, 1))
+
+    # Global phase correction: first non-zero element is real
+    phase = np.exp(-1j * np.angle(psi[np.argmax(np.abs(psi) > ATOL)]))
+    psi *= phase
+    return check_qubit_state(psi, n)
+
+
+def qubit_rho_classify_noise(ideal: QubitRho, noisy: QubitRho) -> int:
+    """
+    Determine whether depolarizing noise exists.
+
+    Args:
+        * 0 - identical.
+        * 1 - pure dephasing noise.
+        * 2 - depolarizing, bit-flip, or amplitude damping noise.
+    """
+    if np.allclose(ideal, noisy, atol=ATOL):
+        return 0
+    if np.allclose(ideal.diagonal(), noisy.diagonal(), atol=ATOL):
+        return 1
+    return 2
 
 
 def qubit_rho_remove(rho: QubitRho, i: int, n: int) -> QubitRho:

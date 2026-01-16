@@ -30,6 +30,7 @@ from mqns.models.qubit.state import (
     QubitState,
     check_qubit_rho,
     qubit_rho_remove,
+    qubit_rho_to_state,
     qubit_state_to_rho,
 )
 from mqns.utils import get_rand
@@ -160,16 +161,6 @@ class QState:
         """
         return np.all(self.rho == other_state.rho).item()
 
-    def is_pure_state(self, eps: float = 0.000_001) -> bool:
-        """Args:
-            eps: the accuracy
-
-        Returns:
-            bool, if the state is a pure state
-
-        """
-        return abs(np.trace(np.dot(self.rho, self.rho)) - 1) <= eps
-
     def state(self) -> QubitState | None:
         """If the state is a pure state, return the state vector, or return None
 
@@ -177,15 +168,7 @@ class QState:
             The pure state vector
 
         """
-        if not self.is_pure_state():
-            print(self.rho.T.conjugate() * self.rho)
-            return None
-        evs = np.linalg.eig(self.rho)
-        max_idx = 0
-        for idx, i in enumerate(evs[0]):
-            if i > evs[0][max_idx]:
-                max_idx = idx
-        return evs[1][:, max_idx].reshape((2**self.num, 1))
+        return qubit_rho_to_state(self.rho, self.num)
 
     def __repr__(self) -> str:
         if self.name is not None:
