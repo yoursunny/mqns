@@ -28,24 +28,21 @@
 import hashlib
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Generic, TypedDict, TypeVar, Unpack, cast
 
 import numpy as np
 
 from mqns.models.core import QuantumModel
-from mqns.models.qubit import QState, Qubit, state_to_rho
-from mqns.models.qubit.const import OPERATOR_PAULI_I, QUBIT_STATE_0, QUBIT_STATE_P
+from mqns.models.qubit import QState, Qubit
 from mqns.models.qubit.gate import CNOT, H, U, X, Y, Z
-from mqns.models.qubit.typing import MultiQubitRho
+from mqns.models.qubit.operator import OPERATOR_PAULI_I, Operator
+from mqns.models.qubit.state import QUBIT_STATE_0, QUBIT_STATE_P, QubitRho, build_qubit_state, qubit_state_to_rho
 from mqns.simulator import Time
 from mqns.utils import get_rand
 
 if TYPE_CHECKING:
     from mqns.entity.node import QNode
-
-
-def _name_hash(s1: str) -> str:
-    return hashlib.sha256(s1.encode()).hexdigest()
 
 
 EntanglementT = TypeVar("EntanglementT", bound="Entanglement")
@@ -177,10 +174,12 @@ class Entanglement(ABC, Generic[EntanglementT], QuantumModel):
             else:
                 orig_eprs.extend(cast(list[EntanglementT], epr.orig_eprs))
 
+        orig_names = "-".join((e.name for e in orig_eprs))
+        name = hashlib.sha256(orig_names.encode()).hexdigest()[:32]  # same length as `uuid.uuid4().hex`
         ne = type(epr0)._make_swapped(
             epr0,
             epr1,
-            name=_name_hash("-".join((e.name for e in orig_eprs))),
+            name=name,
             creation_time=now,
             decoherence_time=min(epr0.decoherence_time, epr1.decoherence_time),
             src=epr0.src,
@@ -237,7 +236,7 @@ class Entanglement(ABC, Generic[EntanglementT], QuantumModel):
     def to_qubits(self) -> list[Qubit]:
         """
         Transport the entanglement into a pair of qubits based on the fidelity.
-        Suppose the first qubit is the Plus state.
+        Maximally entanglement returns ``|Φ+>`` state.
 
         Returns:
             A list of two qubits.
@@ -256,11 +255,11 @@ class Entanglement(ABC, Generic[EntanglementT], QuantumModel):
         self.is_decoherenced = True
         return [q0, q1]
 
-    def _to_qubits_rho(self) -> MultiQubitRho:
+    def _to_qubits_rho(self) -> QubitRho:
         a = np.sqrt(self.fidelity / 2)
         b = np.sqrt((1 - self.fidelity) / 2)
-        state = np.array([[a], [b], [b], [a]], dtype=np.complex128)
-        return state_to_rho(state)
+        state = build_qubit_state((a, b, b, a), 2)
+        return qubit_state_to_rho(state, 2)
 
     def teleportation(self, qubit: Qubit) -> Qubit:
         """
@@ -277,9 +276,39 @@ class Entanglement(ABC, Generic[EntanglementT], QuantumModel):
             Z(q2)
         elif c1 == 1 and c0 == 1:
             Y(q2)
-            U(q2, np.complex128(1j) * OPERATOR_PAULI_I)
+            U(q2, Operator(np.complex128(1j) * OPERATOR_PAULI_I.u, 1))
         self.is_decoherenced = True
         return q2
 
     def __repr__(self) -> str:
-        return "<epr " + self.name + ">"
+        return ", ".join(_describe(self)) + ")"
+
+    def _describe_fidelity(self) -> Iterable[str]:
+        yield f"fidelity={self.fidelity:.4f}"
+
+
+def _describe(epr: Entanglement) -> Iterable[str]:
+    yield f"EPR({epr.name}"
+
+    if epr.is_decoherenced:
+        yield "DECOHERENCED"
+    else:
+        yield from epr._describe_fidelity()
+
+    if epr.creation_time is not Time.SENTINEL:
+        yield f"creation_time={epr.creation_time.sec}"
+    if epr.decoherence_time is not Time.SENTINEL:
+        yield f"decoherence_time={epr.decoherence_time.sec}"
+
+    if epr.src and epr.dst:
+        yield f"src={epr.src.name}"
+        yield f"dst={epr.dst.name}"
+        if epr.ch_index >= 0:
+            yield f"ch_index={epr.ch_index}"
+        elif len(epr.orig_eprs) > 0:
+            orig_eprs = ",".join(e.name for e in epr.orig_eprs)
+            yield f"orig_eprs=[{orig_eprs}]"
+
+    if epr.tmp_path_ids:
+        tmp_path_ids = ",".join(str(x) for x in epr.tmp_path_ids)
+        yield f"tmp_path_ids=[{tmp_path_ids}]"

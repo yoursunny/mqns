@@ -26,13 +26,13 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from collections.abc import Iterable
 from typing import Unpack, final, overload, override
 
 import numpy as np
 
-from mqns.models.epr.const import RHO_PHI_P
 from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
-from mqns.models.qubit.typing import MultiQubitRho
+from mqns.models.qubit.state import BELL_RHO_PHI_P, QubitRho, check_qubit_rho
 from mqns.utils import get_rand
 
 
@@ -134,19 +134,10 @@ class WernerStateEntanglement(Entanglement["WernerStateEntanglement"]):
         self.w *= np.exp(-decoherence_rate * length)
 
     @override
-    def _to_qubits_rho(self) -> MultiQubitRho:
-        return self.w * RHO_PHI_P + (1 - self.w) / 4 * np.identity(4)
+    def _to_qubits_rho(self) -> QubitRho:
+        return check_qubit_rho(self.w * BELL_RHO_PHI_P + (1 - self.w) / 4 * np.identity(4), n=2)
 
     @override
-    def __repr__(self):
-        return (
-            f"{self.__class__.__name__}("
-            f"name={self.name}, fidelity={self.fidelity:.4f}, "
-            f"is_decoherenced={self.is_decoherenced}, "
-            f"src={self.src}, dst={self.dst}, "
-            f"ch_index={self.ch_index}, "
-            f"orig_eprs={[e.name for e in self.orig_eprs]}), "
-            f"creation_time={self.creation_time}, "
-            f"decoherence_time={self.decoherence_time}), "
-            f"tmp_path_ids={self.tmp_path_ids})"
-        )
+    def _describe_fidelity(self) -> Iterable[str]:
+        yield from super()._describe_fidelity()
+        yield f"w={self.w:.4f}"

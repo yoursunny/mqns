@@ -1,8 +1,13 @@
-import numpy as np
 import pytest
 
 from mqns.models.epr import Entanglement, WernerStateEntanglement
-from mqns.models.qubit.const import QUBIT_STATE_P
+from mqns.models.qubit.state import (
+    BELL_RHO_PHI_P,
+    BELL_STATE_PHI_P,
+    QUBIT_STATE_P,
+    qubit_rho_classify_noise,
+    qubit_state_are_equal,
+)
 from mqns.simulator import Time
 
 
@@ -138,22 +143,50 @@ def test_transfer_error_model():
     assert 0 < e.fidelity < 1.0
 
 
-def test_to_qubits_non_decohered():
+def test_to_qubits_maximal():
     e = WernerStateEntanglement()
     qlist = e.to_qubits()
-    assert len(qlist) == 2
-    assert qlist[0].state is qlist[1].state
     assert e.is_decoherenced
+    assert len(qlist) == 2
+
+    q0, q1 = qlist
+    assert q0.state is q1.state
+    print(q0.state)
+    assert qubit_rho_classify_noise(BELL_RHO_PHI_P, q0.state.rho) == 0
+
+    state = q0.state.state()
+    assert state is not None  # pure state
+    assert qubit_state_are_equal(BELL_STATE_PHI_P, state)
+
+    v0 = q0.measure()
+    v1 = q1.measure()
+    assert v0 == v1
 
 
-def test_to_qubits_after_decoherence():
-    e = WernerStateEntanglement(fidelity=0.8)
+def test_to_qubits_mixed():
+    e = WernerStateEntanglement(fidelity=0.9)
+    qlist = e.to_qubits()
+    assert e.is_decoherenced
+    assert len(qlist) == 2
+
+    q0, q1 = qlist
+    assert q0.state is q1.state
+    print(q0.state)
+    assert qubit_rho_classify_noise(BELL_RHO_PHI_P, q0.state.rho) == 2
+    assert q0.state.state() is None  # mixed state
+
+
+def test_to_qubits_decohered():
+    e = WernerStateEntanglement()
     e.is_decoherenced = True
     qlist = e.to_qubits()
-
+    assert e.is_decoherenced
     assert len(qlist) == 2
 
-    for q in qlist:
-        state_vector = q.state.state()
-        assert state_vector is not None
-        assert np.allclose(state_vector, QUBIT_STATE_P, rtol=0, atol=1e-15)
+    q0, q1 = qlist
+    assert q0.state is not q1.state  # disjoint state
+
+    for q in q0, q1:
+        state = q.state.state()
+        assert state is not None
+        assert qubit_state_are_equal(QUBIT_STATE_P, state)

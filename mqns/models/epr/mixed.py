@@ -1,161 +1,195 @@
-#    SimQN: a discrete-event simulator for the quantum networks
-#    Copyright (C) 2021-2022 Lutong Chen, Jian Li, Kaiping Xue
-#    University of Science and Technology of China, USTC.
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-from typing import Unpack, final, override
+from collections.abc import Iterable
+from typing import Literal, Unpack, cast, final, overload, override
 
 import numpy as np
 
-from mqns.models.epr.const import RHO_PHI_N, RHO_PHI_P, RHO_PSI_N, RHO_PSI_P
 from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
-from mqns.models.qubit.typing import MultiQubitRho
+from mqns.models.qubit.state import (
+    ATOL,
+    BELL_RHO_PHI_N,
+    BELL_RHO_PHI_P,
+    BELL_RHO_PSI_N,
+    BELL_RHO_PSI_P,
+    QubitRho,
+    check_qubit_rho,
+)
 from mqns.utils import get_rand
+
+ProbabilityVector = np.ndarray[tuple[Literal[4]], np.dtype[np.float64]]
 
 
 @final
 class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
-    """
-    `MixedStateEntanglement` is a pair of entangled qubits in mixed State with a hidden-variable.
+    """A pair of entangled qubits in Bell-Diagonal State with a hidden-variable."""
 
-    ::
+    @overload
+    def __init__(self, *, fidelity=1.0, **kwargs: Unpack[EntanglementInitKwargs]):
+        """
+        Construct with fidelity.
 
-        rho = A * Phi^+ + B * Psi^+ + C * Psi^- + D * Phi^-
-    """
+        This creates a Werner state where the error probabilities are distributed equally among the three bad states.
+        """
+        pass
 
-    def __init__(
-        self,
-        *,
-        fidelity: float = 1,
-        b: float | None = None,
-        c: float | None = None,
-        d: float | None = None,
-        **kwargs: Unpack[EntanglementInitKwargs],
-    ):
-        """Generate an entanglement with certain fidelity
+    @overload
+    def __init__(self, *, i: float, z: float, x: float, y: float, **kwargs: Unpack[EntanglementInitKwargs]):
+        """
+        Construct with four probability values.
 
         Args:
-            fidelity (float): the fidelity, equals to the probability of Phi^+
-            b (float): probability of Psi^+
-            c (float): probability of Psi^-
-            d (float): probability of Phi^-
+            i: Probability of desired state, i.e. fidelity.
+            z: Probability of Z-flip.
+            x: Probability of X-flip.
+            y: Probability of Y-flip.
         """
+        pass
+
+    def __init__(self, *, fidelity: float | None = None, i=1.0, z=0.0, x=0.0, y=0.0, **kwargs: Unpack[EntanglementInitKwargs]):
         super().__init__(**kwargs)
-        dflt_bcd = (1 - fidelity) / 3
-        self._set_probabilities(
-            fidelity, dflt_bcd if b is None else b, dflt_bcd if c is None else c, dflt_bcd if d is None else d
-        )
+        if fidelity is None:
+            self.set_prob(i, z, x, y)
+        else:
+            self.fidelity = fidelity
 
     @property
     @override
     def fidelity(self) -> float:
-        return self.a
+        return self._prob[0].item()
 
     @fidelity.setter
     @override
     def fidelity(self, value: float):
-        assert 0 <= value <= 1
-        self.a = value
+        """Reset fidelity, turning into a Werner state."""
+        bcd = (1 - value) / 3
+        self.set_prob(value, bcd, bcd, bcd)
 
-    def _set_probabilities(self, a: float, b: float, c: float, d: float) -> None:
-        total = a + b + c + d
-        self.a = a / total
-        """Probability of ``Phi^+``."""
-        self.b = b / total
-        """Probability of ``Phi^-``."""
-        self.c = c / total
-        """Probability of ``Psi^+``."""
-        self.d = d / total
-        """Probability of ``Psi^-``."""
+    @property
+    def i(self) -> float:
+        """Probability of desired state."""
+        return self._prob[0]
+
+    @property
+    def z(self) -> float:
+        """Probability of Z-flip."""
+        return self._prob[1]
+
+    @property
+    def x(self) -> float:
+        """Probability of X-flip."""
+        return self._prob[2]
+
+    @property
+    def y(self) -> float:
+        """Probability of Y-flip."""
+        return self._prob[3]
+
+    def set_prob(self, i: float, z: float, x: float, y: float) -> None:
+        """Update probability values."""
+        self._set_prob(np.array((i, z, x, y), dtype=np.float64))
+
+    def _set_prob(self, prob: ProbabilityVector) -> None:
+        total = np.sum(prob)
+        if total <= ATOL:  # avoid divide-by-zero
+            self._prob = cast(ProbabilityVector, np.zeros(4, dtype=np.float64))
+        else:
+            self._prob = cast(ProbabilityVector, prob / total)
 
     @staticmethod
     @override
     def _make_swapped(epr0: "MixedStateEntanglement", epr1: "MixedStateEntanglement", **kwargs: Unpack[EntanglementInitKwargs]):
-        return MixedStateEntanglement(
-            fidelity=epr0.a * epr1.a + epr0.b * epr1.b + epr0.c * epr1.c + epr0.d * epr1.d,
-            b=epr0.a * epr1.b + epr0.b * epr1.a + epr0.c * epr1.d + epr0.d * epr1.c,
-            c=epr0.a * epr1.c + epr0.b * epr1.d + epr0.c * epr1.a + epr0.d * epr1.b,
-            d=epr0.a * epr1.d + epr0.b * epr1.c + epr0.c * epr1.d + epr0.d * epr1.a,
-            **kwargs,
+        i0, z0, x0, y0 = epr0._prob
+        m_swap = np.array(
+            [
+                [i0, z0, x0, y0],  # i row: (i0*i1, z0*z1, x0*x1, y0*y1)
+                [z0, i0, y0, x0],  # z row: (i0*z1, z0*i1, x0*y1, y0*x1)
+                [x0, y0, i0, z0],  # x row: (i0*x1, z0*y1, x0*i1, y0*z1)
+                [y0, x0, z0, i0],  # y row: (i0*y1, z0*x1, x0*z1, y0*i1)
+            ],
+            dtype=np.float64,
         )
+        i2, z2, x2, y2 = m_swap @ epr1._prob
+        return MixedStateEntanglement(i=i2, z=z2, x=x2, y=y2, **kwargs)
 
     @override
     def _do_purify(self, epr1: "MixedStateEntanglement") -> bool:
         """
         Perform distillation using BBPSSW protocol.
         """
-        p_succ = (self.a + self.d) * (epr1.a + epr1.d) + (self.b + self.c) * (epr1.c + epr1.b)
-        if get_rand() > p_succ:
+        i0, z0, x0, y0 = self._prob
+        i1, z1, x1, y1 = epr1._prob
+        p_succ = (i0 + y0) * (i1 + y1) + (z0 + x0) * (x1 + z1)
+        if p_succ <= ATOL or get_rand() > p_succ:
             return False
 
-        self._set_probabilities(
-            (self.a * epr1.a + self.d * epr1.d) / p_succ,
-            (self.b * epr1.b + self.c * epr1.c) / p_succ,
-            (self.b * epr1.c + self.c * epr1.b) / p_succ,
-            (self.a * epr1.d + self.d * epr1.a) / p_succ,
+        self.set_prob(
+            i0 * i1 + y0 * y1,
+            z0 * z1 + x0 * x1,
+            z0 * x1 + x0 * z1,
+            i0 * y1 + y0 * i1,
         )
         return True
+
+    def dephase(self, t: float, rate: float):
+        """
+        Inject dephasing noise.
+
+        Args:
+            t: time in seconds, distance in km, etc.
+            rate: dephasing rate, unit is inverse of ``t``.
+        """
+        i, z, x, y = self._prob
+        multiplier = np.exp(-rate * t)
+        self.set_prob(
+            0.5 + (i - 0.5) * multiplier,
+            0.5 + (z - 0.5) * multiplier,
+            x,
+            y,
+        )
+
+    def depolarize(self, t: float, rate: float):
+        """
+        Inject depolarizing noise.
+
+        Args:
+            t: time in seconds, distance in km, etc.
+            rate: depolarizing rate, unit is inverse of ``t``.
+        """
+        multiplier = np.exp(-rate * t)
+        self._set_prob(0.25 + (self._prob - 0.25) * multiplier)
 
     @override
     def store_error_model(self, t: float = 0, decoherence_rate: float = 0, **kwargs):
         """
-        The default error model for storing this entangled pair in a quantum memory.
-        The default behavior is::
-
-            a = 0.25 + (a-0.25)*e^{decoherence_rate*t}
-            b = 0.25 + (b-0.25)*e^{decoherence_rate*t}
-            c = 0.25 + (c-0.25)*e^{decoherence_rate*t}
-            d = 0.25 + (d-0.25)*e^{decoherence_rate*t}
+        Apply an error model for storing this entangled pair in a quantum memory.
 
         Args:
-            t: the time stored in a quantum memory. The unit it second.
-            decoherence_rate: the decoherence rate, equals to 1/T_coh, where T_coh is the coherence time.
-            kwargs: other parameters
-
+            t: duration since last update in seconds.
+            decoherence_rate: memory decoherence rate in Hz.
         """
-        self._set_probabilities(
-            0.25 + (self.a - 0.25) * np.exp(-decoherence_rate * t),
-            0.25 + (self.b - 0.25) * np.exp(-decoherence_rate * t),
-            0.25 + (self.c - 0.25) * np.exp(-decoherence_rate * t),
-            0.25 + (self.d - 0.25) * np.exp(-decoherence_rate * t),
-        )
+        _ = kwargs
+        self.depolarize(t, decoherence_rate)
 
     @override
     def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
         """
-        The default error model for transmitting this entanglement.
-        The success possibility of transmitting is::
-
-            a = 0.25 + (a-0.25)*e^{decoherence_rate*length}
-            b = 0.25 + (b-0.25)*e^{decoherence_rate*length}
-            c = 0.25 + (c-0.25)*e^{decoherence_rate*length}
-            d = 0.25 + (d-0.25)*e^{decoherence_rate*length}
+        Apply an error model for transmitting this entanglement.
 
         Args:
-            length (float): the length of the channel
-            decoherence_rate (float): the decoherency rate
-            kwargs: other parameters
-
+            length: channel length in km.
+            decoherence_rate: channel decoherence rate in km^-1.
         """
-        self._set_probabilities(
-            0.25 + (self.a - 0.25) * np.exp(-decoherence_rate * length),
-            0.25 + (self.b - 0.25) * np.exp(-decoherence_rate * length),
-            0.25 + (self.c - 0.25) * np.exp(-decoherence_rate * length),
-            0.25 + (self.d - 0.25) * np.exp(-decoherence_rate * length),
-        )
+        _ = kwargs
+        self.depolarize(length, decoherence_rate)
 
     @override
-    def _to_qubits_rho(self) -> MultiQubitRho:
-        return self.a * RHO_PHI_P + self.b * RHO_PSI_P + self.c * RHO_PSI_N + self.d * RHO_PHI_N
+    def _to_qubits_rho(self) -> QubitRho:
+        i, z, x, y = self._prob
+        return check_qubit_rho(i * BELL_RHO_PHI_P + z * BELL_RHO_PHI_N + x * BELL_RHO_PSI_P + y * BELL_RHO_PSI_N, n=2)
+
+    @override
+    def _describe_fidelity(self) -> Iterable[str]:
+        i, z, x, y = self._prob
+        yield f"i={i:.4f}"
+        yield f"z={z:.4f}"
+        yield f"x={x:.4f}"
+        yield f"y={y:.4f}"
