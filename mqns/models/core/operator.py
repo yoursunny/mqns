@@ -72,7 +72,7 @@ class Operator:
 
         Returns: n-qubit operator.
         """
-        assert self.n == 1, "cannot only lift 1-qubit operator"
+        assert self.n == 1, "can only lift 1-qubit operator"
         if not (0 <= i < n):
             raise ValueError("i or n is out of range")
         if n == 1:

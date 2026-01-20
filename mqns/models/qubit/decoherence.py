@@ -18,8 +18,8 @@
 
 import numpy as np
 
+from mqns.models.core.operator import OPERATOR_PAULI_I, OPERATOR_PAULI_X, OPERATOR_PAULI_Y, OPERATOR_PAULI_Z
 from mqns.models.core.state import QUBIT_STATE_0
-from mqns.models.qubit.gate import I, X, Y, Z
 from mqns.models.qubit.qubit import QState
 from mqns.utils import rng
 
@@ -44,7 +44,7 @@ def DephaseError(self, p: float = 0, **kwargs):
     """
     if p < 0 or p > 1:
         raise Exception("Error decoherence rate, should be in [0, 1]")
-    self.stochastic_operate([I, Z], [1 - p, p])
+    self.stochastic_operate([OPERATOR_PAULI_I, OPERATOR_PAULI_Z], [1 - p, p])
 
 
 def DepolarError(self, p: float = 0, **kwargs):
@@ -60,9 +60,9 @@ def DepolarError(self, p: float = 0, **kwargs):
     if p < 0 or p > 1:
         raise Exception("Error decoherence rate, should be in [0, 1]")
     if 1 - 3 * p > 0:
-        self.stochastic_operate([I, X, Y, Z], [1 - 3 * p, p, p, p])
+        self.stochastic_operate([OPERATOR_PAULI_I, OPERATOR_PAULI_X, OPERATOR_PAULI_Y, OPERATOR_PAULI_Z], [1 - 3 * p, p, p, p])
     else:
-        self.stochastic_operate([X, Y, Z], [1 / 3, 1 / 3, 1 / 3])
+        self.stochastic_operate([OPERATOR_PAULI_X, OPERATOR_PAULI_Y, OPERATOR_PAULI_Z], [1 / 3, 1 / 3, 1 / 3])
 
 
 def BitFlipError(self, p: float = 0, **kwargs):
@@ -75,7 +75,7 @@ def BitFlipError(self, p: float = 0, **kwargs):
     """
     if p < 0 or p > 1:
         raise Exception("Error decoherence rate, should be in [0, 1]")
-    self.stochastic_operate([I, X], [1 - p, p])
+    self.stochastic_operate([OPERATOR_PAULI_I, OPERATOR_PAULI_X], [1 - p, p])
 
 
 def DissipationError(self, p: float = 0, **kwargs):

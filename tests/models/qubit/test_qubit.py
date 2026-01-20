@@ -1,50 +1,103 @@
-import itertools
+from collections.abc import Iterable
 
 import numpy as np
+import pytest
 
 from mqns.models.core.operator import OPERATOR_RX, OPERATOR_RY
-from mqns.models.core.state import QUBIT_STATE_0, QUBIT_STATE_1, QUBIT_STATE_N
+from mqns.models.core.state import (
+    QUBIT_STATE_0,
+    QUBIT_STATE_1,
+    build_qubit_state,
+    qubit_rho_equal,
+    qubit_state_equal,
+    qubit_state_normalize_phase,
+)
+from mqns.models.qubit import Qubit
 from mqns.models.qubit.gate import CNOT, CR, CZ, RX, RY, H, Swap, Toffoli, U
-from mqns.models.qubit.qubit import Qubit
+
+_sqrt1_2 = 1 / np.sqrt(2)
 
 
-def test_qubit():
-    q0 = Qubit(state=QUBIT_STATE_0, name="q0")
-    q1 = Qubit(state=QUBIT_STATE_0, name="q1")
+def make_qubits(*values: int) -> tuple[Qubit, ...]:
+    return tuple(
+        Qubit(
+            state=QUBIT_STATE_1 if v == 1 else QUBIT_STATE_0,
+            name=f"q{i}",
+        )
+        for i, v in enumerate(values)
+    )
+
+
+def check_state(qubits: list[Qubit], expected_input: Iterable[complex]):
+    state = qubits[0].state
+    assert state.qubits == qubits
+    pure = state.state()
+    assert pure is not None
+    pure = qubit_state_normalize_phase(pure)
+    expected = build_qubit_state(expected_input, len(qubits))
+    assert qubit_state_equal(pure, expected)
+
+
+def test_bell_state():
+    # Build Psi+ state
+    q0, q1 = make_qubits(0, 0)
     H(q0)
     CNOT(q0, q1)
+
+    # They should share a state
+    assert q0.state is q1.state
+
+    # Measuring a qubit would unshare the state
     c0 = q0.measure()
+    assert q0.state is not q1.state
     c1 = q1.measure()
+
+    # Measurement outcome should be the same
     assert c0 == c1
 
 
-def test_qubit_rotate():
-    q0 = Qubit(state=QUBIT_STATE_0, name="q0")
-    q1 = Qubit(state=QUBIT_STATE_0, name="q1")
+def test_rx():
+    q0, q1 = make_qubits(0, 0)
     RX(q0)
     U(q1, OPERATOR_RX(theta=np.pi / 4))
-    assert q0.state.equal(q1.state)
+    assert qubit_rho_equal(q0.state.rho, q1.state.rho)
 
-    q0 = Qubit(state=QUBIT_STATE_0, name="q0")
-    q1 = Qubit(state=QUBIT_STATE_0, name="q1")
+
+def test_ry():
+    q0, q1 = make_qubits(0, 0)
     RY(q0)
     U(q1, OPERATOR_RY(theta=np.pi / 4))
-    assert q0.state.equal(q1.state)
+    assert qubit_rho_equal(q0.state.rho, q1.state.rho)
 
 
-def test_2qubit():
-    q0 = Qubit(state=QUBIT_STATE_0, name="q0")
-    q1 = Qubit(state=QUBIT_STATE_0, name="q1")
+@pytest.mark.parametrize(
+    ("v1", "expected"),
+    [
+        (0, [1, 0, 1, 0]),
+        (1, [0, 1, 0, -1]),
+    ],
+)
+def test_cz(v1: int, expected: Iterable[complex]):
+    q0, q1 = make_qubits(0, v1)
     H(q0)
     CZ(q0, q1)
-    q0 = Qubit(state=QUBIT_STATE_0, name="q0")
-    q1 = Qubit(state=QUBIT_STATE_1, name="q1")
+    check_state([q0, q1], expected)
+
+
+@pytest.mark.parametrize(
+    ("v1", "theta", "expected"),
+    [
+        (0, np.pi / 4, [1, 0, 1, 0]),
+        (1, np.pi / 4, [0, _sqrt1_2, 0, _sqrt1_2 * np.exp(1j * np.pi / 4)]),
+        (0, np.pi / 2, [1, 0, 1, 0]),
+        (1, np.pi / 2, [0, _sqrt1_2, 0, _sqrt1_2 * np.exp(1j * np.pi / 2)]),
+    ],
+)
+def test_cr(v1: int, theta: float, expected: Iterable[complex]):
+    q0, q1 = make_qubits(0, v1)
     H(q0)
-    CR(q0, q1, theta=np.pi / 4)
-    q0 = Qubit(state=QUBIT_STATE_0, name="q0")
-    q1 = Qubit(state=QUBIT_STATE_1, name="q1")
-    H(q0)
-    CR(q0, q1, theta=np.pi / 2)
+    CR(q0, q1, theta=theta)
+    check_state([q0, q1], expected)
 
 
 def test_swap():
@@ -63,25 +116,16 @@ def test_swap():
     assert q2.measure() == 1
 
 
-def test_toffoli():
-    a = [QUBIT_STATE_0, QUBIT_STATE_1]
-
-    all = itertools.product(a, a)
-    for c in all:
-        q0 = Qubit(state=c[0], name="q0")
-        q1 = Qubit(state=c[1], name="q1")
-        q2 = Qubit(state=QUBIT_STATE_0, name="q2")
-        Toffoli(q0, q1, q2)
-        c2 = q2.measure()
-        if (c[0] == QUBIT_STATE_1).all() and (c[1] == QUBIT_STATE_1).all():
-            assert c2 == 1
-        else:
-            assert c2 == 0
-
-
-def test_state():
-    # w,v = np.linalg.eig(np.array([[-1, 1, 0], [-4, 3, 0], [1, 0, 2]]))
-    # print('w: ', w)
-    # print('v: ', v)
-    q0 = Qubit(state=QUBIT_STATE_N, name="q0")
-    q0.state.state()
+@pytest.mark.parametrize(
+    ("v0", "v1", "expected_q2"),
+    [
+        (0, 0, 0),
+        (0, 1, 0),
+        (1, 0, 0),
+        (1, 1, 1),
+    ],
+)
+def test_toffoli(v0: int, v1: int, expected_q2: int):
+    q0, q1, q2 = make_qubits(v0, v1, 0)
+    Toffoli(q0, q1, q2)
+    assert q2.measure() == expected_q2

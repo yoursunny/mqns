@@ -110,14 +110,16 @@ class QState:
         qubit.state = ns
         return ret
 
-    def operate(self, operator: Operator) -> None:
+    def operate(self, op: Operator | np.ndarray) -> None:
         """
         Apply an operator to the state.
 
         Args:
-            operator: the operator, which must have the correct dimension.
+            op: the operator or its matrix with the correct dimension.
         """
-        self.rho = operator(self.rho)
+        if not isinstance(op, Operator):
+            op = Operator(op, self.num)
+        self.rho = op(self.rho)
 
     def stochastic_operate(self, operators: list[Operator] = [], probabilities: list[float] = []) -> None:
         """
@@ -138,15 +140,6 @@ class QState:
         for op, p in zip(operators, prob):
             new_state += p * op(self.rho)
         self.rho = check_qubit_rho(new_state, self.num)
-
-    def equal(self, other_state: "QState") -> bool:
-        """Compare two state vectors, return True if they are the same
-
-        Args:
-            other_state (QState): the second QState
-
-        """
-        return np.all(self.rho == other_state.rho).item()
 
     def state(self) -> QubitState | None:
         """
@@ -231,12 +224,6 @@ class Qubit(QuantumModel):
         self.measure_error_model(decoherence_rate=self.measure_decoherence_rate)
         return self.state.measure(self, basis)
 
-    def operate(self, operator: Operator) -> None:
-        """Apply an operator on this qubit."""
-        self.operate_error_model(self.operate_decoherence_rate)
-        full_operator = operator.lift(self.state.qubits.index(self), self.state.num)
-        self.state.operate(full_operator)
-
     def stochastic_operate(self, operators: list[Operator] = [], probabilities: list[float] = []) -> None:
         """
         Apply a set of operators with associated probabilities to the qubit.
@@ -247,9 +234,7 @@ class Qubit(QuantumModel):
             probabilities: the probability of applying each operator; their sum must be 1.
         """
         i, n = self.state.qubits.index(self), self.state.num
-        full_operators: list[Operator] = []
-        for j, op in enumerate(operators):
-            full_operators.append(op.lift(i, n))
+        full_operators: list[Operator] = [op.lift(i, n) for op in operators]
         self.state.stochastic_operate(full_operators, probabilities)
 
     def __repr__(self) -> str:

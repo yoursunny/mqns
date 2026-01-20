@@ -23,8 +23,7 @@ import numpy as np
 from mqns.entity.cchannel import ClassicChannel, ClassicPacket, RecvClassicPacket
 from mqns.entity.node import Application, Node, QNode
 from mqns.entity.qchannel import QuantumChannel, RecvQubitPacket
-from mqns.models.core.basis import BASIS_X, BASIS_Z
-from mqns.models.core.operator import Operator
+from mqns.models.core import BASIS_X, BASIS_Z
 from mqns.models.core.state import QUBIT_STATE_0, QUBIT_STATE_1, QUBIT_STATE_N, QUBIT_STATE_P
 from mqns.models.qubit import Qubit
 from mqns.simulator import func_to_event
@@ -37,7 +36,7 @@ class QubitWithError(Qubit):
         standand_lkm = 50.0
         theta = rng.uniform(0, lkm / standand_lkm * np.pi / 4)
         operation = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]], dtype=np.complex128)
-        self.state.operate(Operator(operation))
+        self.state.operate(operation)
 
 
 class BB84SendApp(Application[QNode]):

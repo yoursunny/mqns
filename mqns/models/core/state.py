@@ -53,6 +53,23 @@ def build_qubit_state(input: Iterable[complex], n=1) -> QubitState:
     return check_qubit_state(column, n)
 
 
+def qubit_state_normalize_phase(state: QubitState) -> QubitState:
+    """
+    Standardize the global phase of a state vector.
+    """
+    # Find element(s) with significant magnitude.
+    found, _ = np.where(np.abs(state) > ATOL)
+    if len(found) < 1:
+        return state
+
+    # Extract the phase of the first found element.
+    value = state[found[0]]
+    phase = np.conj(value) / np.abs(value)
+
+    # Multiply the vector by that phase.
+    return state * phase
+
+
 def qubit_state_equal(s0: QubitState, s1: QubitState) -> bool:
     """Compare qubit state vectors for equality."""
     return np.allclose(s0, s1, atol=ATOL)
