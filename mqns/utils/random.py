@@ -1,17 +1,50 @@
 from collections.abc import Callable
-from typing import Any, override
+from typing import Any, cast, override
 
 import numpy.random as npr
 
-rng = npr.default_rng()
+_rng = npr.default_rng()
+"""
+Real rng instance.
+This may be re-assigned.
+"""
+
+class RngUtils:
+    def reseed(self, seed: int|None):
+        """
+        Reseed the random number generator.
+        """
+        global _rng
+        _rng = npr.default_rng(npr.PCG64(seed))
+
+
+
+class RngProxy(RngUtils):
+    """
+    Proxy class for global rng.
+    """
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(_rng, name)
+
+
+class RngPublic(npr.Generator, RngUtils):
+    def __init__(self):
+        assert False
+
+
+rng = cast(RngPublic, RngProxy())
+"""
+Global random number generator.
+"""
 
 
 def set_seed(seed: int | None):
     """
     Reseed the random number generator.
     """
-    global rng
-    rng = npr.default_rng(npr.PCG64(seed))
+    global _rng
+    _rng = npr.default_rng(npr.PCG64(seed))
 
 
 class FixedRng(npr.Generator):
