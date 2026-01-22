@@ -1,6 +1,6 @@
 import time
 
-from mqns.utils import rng, set_seed
+from mqns.utils import rng
 
 
 def pull_1000_randoms():
