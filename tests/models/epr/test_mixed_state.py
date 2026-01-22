@@ -16,6 +16,7 @@ from mqns.models.core.state import (
     qubit_state_equal,
 )
 from mqns.models.epr import MixedStateEntanglement
+from mqns.models.error import DephaseErrorModel, DepolarErrorModel, ErrorModelInput, parse_error
 from mqns.models.qubit import Qubit
 from mqns.simulator import Time
 from mqns.utils import rng
@@ -123,9 +124,17 @@ def test_to_qubits_maximal(i: float, z: float, x: float, y: float, state: QubitS
         assert v0 != v1
 
 
-def test_to_qubits_dephase():
+@pytest.mark.parametrize(
+    ("error", "classify_noise"),
+    [
+        ((DephaseErrorModel, {"p_error": 0.1}), 1),
+        ((DepolarErrorModel, {"p_error": 0.1}), 2),
+    ],
+)
+def test_to_qubits_mixed(error: ErrorModelInput, classify_noise: int):
+    error = parse_error(error)
     e = MixedStateEntanglement()
-    e.dephase(1.0, 1 / 5.0)
+    e.apply_error(error)
     print(e.probv)
 
     qlist = e.to_qubits()
@@ -135,21 +144,5 @@ def test_to_qubits_dephase():
     q0, q1 = qlist
     assert q0.state is q1.state
     print(q0.state)
-    assert qubit_rho_classify_noise(BELL_RHO_PHI_P, q0.state.rho) == 1
-    assert q0.state.state() is None  # mixed state
-
-
-def test_to_qubits_depolarize():
-    e = MixedStateEntanglement()
-    e.depolarize(1.0, 1 / 5.0)
-    print(e.probv)
-
-    qlist = e.to_qubits()
-    assert e.is_decoherenced
-    assert len(qlist) == 2
-
-    q0, q1 = qlist
-    assert q0.state is q1.state
-    print(q0.state)
-    assert qubit_rho_classify_noise(BELL_RHO_PHI_P, q0.state.rho) == 2
+    assert qubit_rho_classify_noise(BELL_RHO_PHI_P, q0.state.rho) == classify_noise
     assert q0.state.state() is None  # mixed state

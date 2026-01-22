@@ -14,11 +14,25 @@
 #
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from typing import TypeVar
+
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, TypeVar
+
+if TYPE_CHECKING:
+    from mqns.models.error import ErrorModel
 
 
-class QuantumModel:
-    """The interface to present the backend models, including qubit, epr and other models."""
+class QuantumModel(ABC):
+    """Abstract backend model for quantum data."""
+
+    @abstractmethod
+    def apply_error(self, error: "ErrorModel") -> None:
+        """
+        Apply an error model.
+
+        Args:
+            error: error model with assigned error probability.
+        """
 
     def store_error_model(self, t: float = 0, decoherence_rate: float = 0, **kwargs):
         """The error model for quantum memory.
@@ -40,28 +54,6 @@ class QuantumModel:
 
         Args:
             length (float): the length of the channel
-            decoherence_rate (float): the decoherency rate
-            kwargs: other parameters
-
-        """
-        pass
-
-    def operate_error_model(self, decoherence_rate: float = 0, **kwargs):
-        """The error model for operating a qubit.
-        This function will change the quantum state.
-
-        Args:
-            decoherence_rate (float): the decoherency rate
-            kwargs: other parameters
-
-        """
-        pass
-
-    def measure_error_model(self, decoherence_rate: float = 0, **kwargs):
-        """The error model for measuring a qubit.
-        This function will change the quantum state.
-
-        Args:
             decoherence_rate (float): the decoherency rate
             kwargs: other parameters
 

@@ -115,6 +115,10 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
         )
         return True
 
+    @override
+    def apply_error(self, error) -> None:
+        error.mixed(self)
+
     def dephase(self, t: float, rate: float):
         """
         Inject dephasing noise.

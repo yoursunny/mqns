@@ -33,7 +33,7 @@ def operate_single(qubit: Qubit, op: Operator) -> None:
     i, n = state.qubits.index(qubit), state.num
     full_op = op.lift(i, n)
 
-    qubit.operate_error_model(qubit.operate_decoherence_rate)
+    qubit.apply_error(qubit.operate_error)
     state.operate(full_op)
 
 
@@ -61,7 +61,7 @@ def operate_controlled(q0: Qubit, q1: Qubit, op: Operator) -> None:
     full_op = functools.reduce(np.kron, mats0) + functools.reduce(np.kron, mats1)
 
     for q in q0, q1:
-        q.operate_error_model(q.operate_decoherence_rate)
+        q.apply_error(q.operate_error)
     state.operate(full_op)
 
 
@@ -99,7 +99,7 @@ def operate_cc(q0: Qubit, q1: Qubit, q2: Qubit, op: Operator) -> None:
     full_op = full_id - p11_on_controls + u11_on_target
 
     for q in q0, q1, q2:
-        q.operate_error_model(q.operate_decoherence_rate)
+        q.apply_error(q.operate_error)
     state.operate(full_op)
 
 

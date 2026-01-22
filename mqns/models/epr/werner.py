@@ -104,6 +104,10 @@ class WernerStateEntanglement(Entanglement["WernerStateEntanglement"]):
         return True
 
     @override
+    def apply_error(self, error) -> None:
+        error.werner(self)
+
+    @override
     def store_error_model(self, t: float = 0, decoherence_rate: float = 0, **kwargs):
         """
         Apply an error model for storing this entangled pair in quantum memory::

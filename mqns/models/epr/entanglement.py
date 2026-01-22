@@ -27,7 +27,7 @@
 
 import hashlib
 import uuid
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Generic, TypedDict, TypeVar, Unpack, cast
 
@@ -57,7 +57,7 @@ class EntanglementInitKwargs(TypedDict, total=False):
     mem_decohere_rate: tuple[float, float]
 
 
-class Entanglement(ABC, Generic[EntanglementT], QuantumModel):
+class Entanglement(Generic[EntanglementT], QuantumModel):
     """Base entanglement model."""
 
     def __init__(self, **kwargs: Unpack[EntanglementInitKwargs]):

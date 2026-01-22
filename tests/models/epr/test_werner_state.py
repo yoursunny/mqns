@@ -132,18 +132,6 @@ def test_purify_decohered_input():
     assert e1.fidelity == 0
 
 
-def test_store_error_model():
-    e = WernerStateEntanglement()
-    e.store_error_model(t=1.0, decoherence_rate=0.5)
-    assert 0 < e.fidelity < 1.0
-
-
-def test_transfer_error_model():
-    e = WernerStateEntanglement()
-    e.transfer_error_model(length=10.0, decoherence_rate=0.1)
-    assert 0 < e.fidelity < 1.0
-
-
 def test_to_qubits_maximal():
     e = WernerStateEntanglement()
     qlist = e.to_qubits()

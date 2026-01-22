@@ -13,7 +13,7 @@ from mqns.models.core.state import (
     qubit_state_normalize_phase,
 )
 from mqns.models.qubit import Qubit
-from mqns.models.qubit.gate import CNOT, CR, CZ, RX, RY, H, Swap, Toffoli, U
+from mqns.models.qubit.gate import CNOT, CR, CZ, RX, RY, H, Swap, Toffoli, U, X, Z
 
 _sqrt1_2 = 1 / np.sqrt(2)
 
@@ -101,9 +101,7 @@ def test_cr(v1: int, theta: float, expected: Iterable[complex]):
 
 
 def test_swap():
-    q0 = Qubit(state=QUBIT_STATE_0, name="q0")
-    q1 = Qubit(state=QUBIT_STATE_1, name="q1")
-    q2 = Qubit(state=QUBIT_STATE_0, name="q2")
+    q0, q1, q2 = make_qubits(0, 1, 0)
 
     # q0,q1,q2=0,1,0
     Swap(q0, q1)
@@ -129,3 +127,27 @@ def test_toffoli(v0: int, v1: int, expected_q2: int):
     q0, q1, q2 = make_qubits(v0, v1, 0)
     Toffoli(q0, q1, q2)
     assert q2.measure() == expected_q2
+
+
+def test_bsm():
+    q0, q1, q2, q3 = make_qubits(0, 0, 0, 0)
+
+    H(q0)
+    CNOT(q0, q1)
+
+    H(q2)
+    CNOT(q2, q3)
+
+    CNOT(q1, q2)
+    H(q1)
+    c0 = q2.measure()
+    c1 = q1.measure()
+
+    if c0 == 1 and c1 == 0:
+        X(q3)
+    elif c0 == 0 and c1 == 1:
+        Z(q3)
+    elif c0 == 1 and c1 == 1:
+        X(q3)
+        Z(q3)
+    assert q0.measure() == q3.measure()
