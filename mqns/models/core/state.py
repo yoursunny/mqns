@@ -236,6 +236,19 @@ QUBIT_STATE_R = build_qubit_state((1, 1j))
 QUBIT_STATE_L = build_qubit_state((1, -1j))
 """Single qubit state: ``|L>``."""
 
+QUBIT_RHO_0 = qubit_state_to_rho(QUBIT_STATE_0)
+"""Density matrix of ``QUBIT_STATE_0``."""
+QUBIT_RHO_1 = qubit_state_to_rho(QUBIT_STATE_1)
+"""Density matrix of ``QUBIT_STATE_1``."""
+QUBIT_RHO_P = qubit_state_to_rho(QUBIT_STATE_P)
+"""Density matrix of ``QUBIT_STATE_P``."""
+QUBIT_RHO_N = qubit_state_to_rho(QUBIT_STATE_N)
+"""Density matrix of ``QUBIT_STATE_N``."""
+QUBIT_RHO_R = qubit_state_to_rho(QUBIT_STATE_R)
+"""Density matrix of ``QUBIT_STATE_R``."""
+QUBIT_RHO_L = qubit_state_to_rho(QUBIT_STATE_L)
+"""Density matrix of ``QUBIT_STATE_L``."""
+
 BELL_STATE_PHI_P = build_qubit_state((1, 0, 0, 1), 2)
 """Two-qubit maximally entangled Bell state: ``|Φ+>`` i.e. ``(|00>+|11>)/sqrt(2)``."""
 BELL_STATE_PHI_N = build_qubit_state((1, 0, 0, -1), 2)

@@ -24,15 +24,15 @@ from mqns.utils import rng
 def test_fidelity_conversion():
     e = MixedStateEntanglement()
     assert e.fidelity == pytest.approx(1.0, abs=1e-9)
-    assert (e.i, e.z, e.x, e.y) == pytest.approx((1.0, 0.0, 0.0, 0.0), abs=1e-9)
+    assert e.probv == pytest.approx((1.0, 0.0, 0.0, 0.0), abs=1e-9)
 
     e = MixedStateEntanglement(fidelity=0.7)
     assert e.fidelity == pytest.approx(0.7, abs=1e-9)
-    assert (e.i, e.z, e.x, e.y) == pytest.approx((0.7, 0.1, 0.1, 0.1), abs=1e-9)
+    assert e.probv == pytest.approx((0.7, 0.1, 0.1, 0.1), abs=1e-9)
 
     e = MixedStateEntanglement(i=4, z=2, x=1, y=1)
     assert e.fidelity == pytest.approx(0.5, abs=1e-9)
-    assert (e.i, e.z, e.x, e.y) == pytest.approx((0.5, 0.25, 0.125, 0.125), abs=1e-9)
+    assert e.probv == pytest.approx((0.5, 0.25, 0.125, 0.125), abs=1e-9)
 
 
 def test_swap():
@@ -58,7 +58,7 @@ def test_purify_success(monkeypatch: pytest.MonkeyPatch):
 
     e8 = MixedStateEntanglement(fidelity=0.95, creation_time=now, decoherence_time=decohere)
     assert e3.purify(e8, now=now) is True
-    assert (e3.i, e3.z, e3.x, e3.y) == pytest.approx((9.183907e-1, 8.179613e-5, 8.179613e-5, 8.144570e-2), rel=1e-6)
+    assert e3.probv == pytest.approx((9.183907e-1, 8.179613e-5, 8.179613e-5, 8.144570e-2), rel=1e-6)
 
 
 def test_purify_failure(monkeypatch: pytest.MonkeyPatch):
@@ -126,7 +126,7 @@ def test_to_qubits_maximal(i: float, z: float, x: float, y: float, state: QubitS
 def test_to_qubits_dephase():
     e = MixedStateEntanglement()
     e.dephase(1.0, 1 / 5.0)
-    print(e.i, e.z, e.x, e.y)
+    print(e.probv)
 
     qlist = e.to_qubits()
     assert e.is_decoherenced
@@ -142,7 +142,7 @@ def test_to_qubits_dephase():
 def test_to_qubits_depolarize():
     e = MixedStateEntanglement()
     e.depolarize(1.0, 1 / 5.0)
-    print(e.i, e.z, e.x, e.y)
+    print(e.probv)
 
     qlist = e.to_qubits()
     assert e.is_decoherenced
