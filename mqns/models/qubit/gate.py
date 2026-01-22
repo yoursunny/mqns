@@ -17,7 +17,8 @@ from mqns.models.core.operator import (
     OPERATOR_T,
     Operator,
 )
-from mqns.models.qubit.qubit import QState, Qubit
+from mqns.models.qubit.qubit import Qubit
+from mqns.models.qubit.state import QState
 
 _id = np.identity(2, dtype=np.complex128)
 _p0 = np.array([[1, 0], [0, 0]], dtype=np.complex128)  # projector matrix |0><0|

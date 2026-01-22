@@ -30,7 +30,8 @@ from mqns.models.qubit.decoherence import (
     PrefectTransferErrorModel,
 )
 from mqns.models.qubit.factory import QubitFactory
-from mqns.models.qubit.qubit import QState, Qubit
+from mqns.models.qubit.qubit import Qubit
+from mqns.models.qubit.state import QState
 
 __all__ = [
     "DephaseMeasureErrorModel",

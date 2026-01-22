@@ -35,7 +35,7 @@ import numpy as np
 
 from mqns.models.core import QuantumModel
 from mqns.models.core.operator import OPERATOR_PAULI_I, Operator
-from mqns.models.core.state import QUBIT_STATE_0, QUBIT_STATE_P, QubitRho, build_qubit_state, qubit_state_to_rho
+from mqns.models.core.state import QUBIT_STATE_P, QubitRho, build_qubit_state, qubit_state_to_rho
 from mqns.models.qubit import QState, Qubit
 from mqns.models.qubit.gate import CNOT, H, U, X, Y, Z
 from mqns.simulator import Time
@@ -242,12 +242,12 @@ class Entanglement(ABC, Generic[EntanglementT], QuantumModel):
             A list of two qubits.
         """
         if self.is_decoherenced:
-            q0 = Qubit(state=QUBIT_STATE_P, name="q0")
-            q1 = Qubit(state=QUBIT_STATE_P, name="q1")
+            q0 = Qubit(QUBIT_STATE_P, name="q0")
+            q1 = Qubit(QUBIT_STATE_P, name="q1")
             return [q0, q1]
 
-        q0 = Qubit(state=QUBIT_STATE_0, name="q0")
-        q1 = Qubit(state=QUBIT_STATE_0, name="q1")
+        q0 = Qubit(name="q0")
+        q1 = Qubit(name="q1")
         qs = QState([q0, q1], rho=self._to_qubits_rho())
         q0.state = qs
         q1.state = qs
