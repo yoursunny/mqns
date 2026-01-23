@@ -41,7 +41,7 @@ from mqns.entity.memory.memory_qubit import MemoryQubit, PathDirection, QubitSta
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.core import QuantumModel, QuantumModelT
-from mqns.models.delay import DelayInput, parseDelay
+from mqns.models.delay import DelayInput, parse_delay
 from mqns.models.epr import Entanglement
 from mqns.simulator import Event, Simulator
 
@@ -80,7 +80,7 @@ class QuantumMemory(Entity):
         Memory capacity, i.e. how many qubits can be stored.
         Each qubit would have an address in `[0, capacity)`.
         """
-        self.delay = parseDelay(kwargs.get("delay", 0))
+        self.delay = parse_delay(kwargs.get("delay", 0))
         """Read/write delay, only applicable to async access."""
 
         self.t_cohere = kwargs.get("t_cohere", 1.0)
