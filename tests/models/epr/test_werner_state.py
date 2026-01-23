@@ -145,11 +145,9 @@ def test_purify_decohered_input():
 
 def test_to_qubits_maximal():
     e = WernerStateEntanglement()
-    qlist = e.to_qubits()
+    q0, q1 = e.to_qubits()
     assert e.is_decoherenced
-    assert len(qlist) == 2
 
-    q0, q1 = qlist
     assert q0.state is q1.state
     print(q0.state)
     assert qubit_rho_classify_noise(BELL_RHO_PHI_P, q0.state.rho) == 0
@@ -165,11 +163,9 @@ def test_to_qubits_maximal():
 
 def test_to_qubits_mixed():
     e = WernerStateEntanglement(fidelity=0.9)
-    qlist = e.to_qubits()
+    q0, q1 = e.to_qubits()
     assert e.is_decoherenced
-    assert len(qlist) == 2
 
-    q0, q1 = qlist
     assert q0.state is q1.state
     print(q0.state)
     assert qubit_rho_classify_noise(BELL_RHO_PHI_P, q0.state.rho) == 2
@@ -179,13 +175,10 @@ def test_to_qubits_mixed():
 def test_to_qubits_decohered():
     e = WernerStateEntanglement()
     e.is_decoherenced = True
-    qlist = e.to_qubits()
+    q0, q1 = e.to_qubits()
     assert e.is_decoherenced
-    assert len(qlist) == 2
 
-    q0, q1 = qlist
     assert q0.state is not q1.state  # disjoint state
-
     for q in q0, q1:
         state = q.state.state()
         assert state is not None

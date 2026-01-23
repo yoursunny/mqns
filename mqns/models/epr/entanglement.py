@@ -239,18 +239,18 @@ class Entanglement(Generic[EntanglementT], QuantumModel):
     def _do_purify(self, epr1: EntanglementT) -> bool:
         pass
 
-    def to_qubits(self) -> list[Qubit]:
+    def to_qubits(self) -> tuple[Qubit, Qubit]:
         """
         Transport the entanglement into a pair of qubits based on the fidelity.
         Maximally entanglement returns ``|Φ+>`` state.
 
         Returns:
-            A list of two qubits.
+            A tuple of two qubits.
         """
         if self.is_decoherenced:
             q0 = Qubit(QUBIT_STATE_P, name="q0")
             q1 = Qubit(QUBIT_STATE_P, name="q1")
-            return [q0, q1]
+            return (q0, q1)
 
         q0 = Qubit(name="q0")
         q1 = Qubit(name="q1")
@@ -259,7 +259,7 @@ class Entanglement(Generic[EntanglementT], QuantumModel):
         q1.state = qs
 
         self.is_decoherenced = True
-        return [q0, q1]
+        return (q0, q1)
 
     def _to_qubits_rho(self) -> QubitRho:
         a = np.sqrt(self.fidelity / 2)

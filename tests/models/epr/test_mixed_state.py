@@ -105,11 +105,9 @@ def test_teleportion():
 def test_to_qubits_maximal(i: float, z: float, x: float, y: float, state: QubitState, rho: QubitRho, measured_same: bool):
     e = MixedStateEntanglement(i=i, z=z, x=x, y=y)
 
-    qlist = e.to_qubits()
+    q0, q1 = e.to_qubits()
     assert e.is_decoherenced
-    assert len(qlist) == 2
 
-    q0, q1 = qlist
     assert q0.state is q1.state
     assert qubit_rho_classify_noise(rho, q0.state.rho) == 0
 
@@ -138,11 +136,9 @@ def test_to_qubits_mixed(error: ErrorModelInput, classify_noise: int):
     e.apply_error(error)
     print(e.probv)
 
-    qlist = e.to_qubits()
+    q0, q1 = e.to_qubits()
     assert e.is_decoherenced
-    assert len(qlist) == 2
 
-    q0, q1 = qlist
     assert q0.state is q1.state
     print(q0.state)
     assert qubit_rho_classify_noise(BELL_RHO_PHI_P, q0.state.rho) == classify_noise
