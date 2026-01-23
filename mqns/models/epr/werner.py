@@ -123,21 +123,6 @@ class WernerStateEntanglement(Entanglement["WernerStateEntanglement"]):
         self.w *= np.exp(-decoherence_rate * t)
 
     @override
-    def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
-        """
-        Apply an error model for transmitting this entanglement::
-
-            w = w * e^{decoherence_rate * length}
-
-        Args:
-            length: the length of the channel in kilometers.
-            decoherence_rate: the decoherence rate, equals to the inverse of coherence time.
-
-        """
-        _ = kwargs
-        self.w *= np.exp(-decoherence_rate * length)
-
-    @override
     def _to_qubits_rho(self) -> QubitRho:
         return check_qubit_rho(self.w * BELL_RHO_PHI_P + (1 - self.w) / 4 * np.identity(4), n=2)
 

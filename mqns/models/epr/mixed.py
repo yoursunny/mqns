@@ -162,18 +162,6 @@ class MixedStateEntanglement(Entanglement["MixedStateEntanglement"]):
         self.depolarize(t, decoherence_rate)
 
     @override
-    def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
-        """
-        Apply an error model for transmitting this entanglement.
-
-        Args:
-            length: channel length in km.
-            decoherence_rate: channel decoherence rate in km^-1.
-        """
-        _ = kwargs
-        self.depolarize(length, decoherence_rate)
-
-    @override
     def _to_qubits_rho(self) -> QubitRho:
         i, z, x, y = self.probv
         return check_qubit_rho(i * BELL_RHO_PHI_P + z * BELL_RHO_PHI_N + x * BELL_RHO_PSI_P + y * BELL_RHO_PSI_N, n=2)

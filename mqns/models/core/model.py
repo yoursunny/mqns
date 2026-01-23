@@ -47,18 +47,5 @@ class QuantumModel(ABC):
         """
         pass
 
-    def transfer_error_model(self, length: float = 0, decoherence_rate: float = 0, **kwargs):
-        """The error model for transmitting a qubit in quantum channel.
-        This function will change the quantum state or fidelity
-        according to different backend models.
-
-        Args:
-            length (float): the length of the channel
-            decoherence_rate (float): the decoherency rate
-            kwargs: other parameters
-
-        """
-        pass
-
 
 QuantumModelT = TypeVar("QuantumModelT", bound=QuantumModel)
