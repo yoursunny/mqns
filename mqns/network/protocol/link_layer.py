@@ -206,6 +206,21 @@ class LinkLayer(Application[QNode]):
             assert path_id is None
             return
 
+        # link_arch.set() may be called multiple times in several situations:
+        # - qchannel is activated, deactivated, and re-activated.
+        # - qchannel is activated from both sides due to shared paths in opposite directions.
+        # Nevertheless, we assume every LinkLayer instance has the same parameters,
+        # so that the parameters saved into LinkArch are the same every time.
+        qchannel.link_arch.set(
+            length=qchannel.length,
+            alpha=self.alpha_db_per_km,
+            eta_s=self.eta_s,
+            eta_d=self.eta_d,
+            reset_time=self.reset_time,
+            tau_l=qchannel.delay.calculate(),  # time to send photon/message one way
+            tau_0=self.tau_0,
+        )
+
         log.debug(
             f"{self.node}: add qchannel {qchannel} with {neighbor} on path {path_id}, link arch {qchannel.link_arch.name}"
         )
@@ -352,18 +367,10 @@ class LinkLayer(Application[QNode]):
         mem_b = next_hop.memory
 
         # Calculate which attempt would succeed.
-        p = qchannel.link_arch.success_prob(
-            length=qchannel.length, alpha=self.alpha_db_per_km, eta_s=self.eta_s, eta_d=self.eta_d
-        )
-        k = rng.geometric(p)
+        k = rng.geometric(qchannel.link_arch.success_prob)
 
         # Calculate when would the k-th attempt (1-based) succeed.
-        d_epr_creation, d_notify_a, d_notify_b = qchannel.link_arch.delays(
-            k,
-            reset_time=self.reset_time,
-            tau_l=qchannel.delay.calculate(),  # time to send photon/message one way
-            tau_0=self.tau_0,
-        )
+        d_epr_creation, d_notify_a, d_notify_b = qchannel.link_arch.delays(k)
         # TODO space out EPRs on a qchannel by attempt_interval or qchannel.bandwidth
         now = self.simulator.tc
         t_epr_creation = now + d_epr_creation

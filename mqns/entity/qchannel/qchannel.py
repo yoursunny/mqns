@@ -25,6 +25,7 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import copy
 from typing import Any, Unpack, final, override
 
 from mqns.entity.base_channel import BaseChannel, BaseChannelInitKwargs
@@ -47,11 +48,19 @@ class QuantumChannelInitKwargs(BaseChannelInitKwargs, total=False):
 
 
 class QuantumChannel(BaseChannel[QNode]):
-    """QuantumChannel is the channel for transmitting qubit"""
+    """
+    QuantumChannel is the channel for transmitting photonic qubits.
+
+    Currently, MQNS does not use the ``send()`` method to transmit photonic qubits.
+    Instead, the ``LinkLayer`` application calculates entanglement arrival times and fidelity from channel parameters
+    such as ``length`` and ``link_arch``, and directly schedules entanglement arrivals.
+    """
 
     def __init__(self, name: str, **kwargs: Unpack[QuantumChannelInitKwargs]):
         super().__init__(name, **kwargs)
-        self.link_arch = kwargs.get("link_arch", None) or LinkArchDimBkSeq()
+        link_arch = kwargs.get("link_arch", None)
+        self.link_arch = copy.deepcopy(link_arch) if link_arch else LinkArchDimBkSeq()
+        """Link architecture model (separate instance per channel)."""
         self.transfer_error = parse_error(kwargs.get("transfer_error"), DepolarErrorModel, self.length)
 
     @override
@@ -76,14 +85,15 @@ class QuantumChannel(BaseChannel[QNode]):
             node.memory.assign(self, n=cap)
 
     def send(self, qubit: QuantumModel, next_hop: QNode):
-        """Send a qubit to the next_hop
+        """
+        Send a qubit to the next_hop.
 
         Args:
-            qubit (QuantumModel): the transmitting qubit
-            next_hop (QNode): the next hop QNode
-        Raises:
-            NextHopNotConnectionException: the next_hop is not connected to this channel
+            qubit: the photonic qubit.
+            next_hop: the recipient quantum node.
 
+        Raises:
+            NextHopNotConnectionException: next_hop is not connected to this channel.
         """
         drop, recv_time = self._send(
             packet_repr=f"qubit {qubit}",
@@ -108,7 +118,9 @@ class QuantumChannel(BaseChannel[QNode]):
 
 @final
 class RecvQubitPacket(Event):
-    """The event for a QNode to receive a qubit"""
+    """
+    Event dispatched on recipient QNode for receiving a qubit.
+    """
 
     def __init__(
         self, *, t: Time, name: str | None = None, by: Any = None, qchannel: QuantumChannel, qubit: QuantumModel, dest: QNode

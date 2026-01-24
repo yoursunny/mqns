@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import override
+from typing import Protocol, TypedDict, Unpack, override
 
 
 def _calc_propagation_loss(length: float, alpha: float) -> float:
@@ -16,46 +16,108 @@ def _calc_propagation_loss(length: float, alpha: float) -> float:
     return 10 ** (-alpha * length / 10)
 
 
-class LinkArch(ABC):
-    """Link architecture."""
+class LinkArchParameters(TypedDict):
+    length: float
+    """Fiber length in kilometers."""
+    alpha: float
+    """Fiber loss in dB/km."""
+    eta_s: float
+    """Source efficiency between 0 and 1."""
+    eta_d: float
+    """Detector efficiency between 0 and 1."""
+    reset_time: float
+    """Inverse of source frequency in Hz."""
+    tau_l: float
+    """Fiber propagation delay in seconds."""
+    tau_0: float
+    """Local operation delay in seconds."""
 
-    def __init__(self, name: str):
-        self.name = name
 
-    @abstractmethod
-    def success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
+class LinkArch(Protocol):
+    """
+    Link architecture models the elementary entanglement generation protocol.
+
+    Together with quantum channel and node hardware parameters, it supplies information to
+    the skip-ahead sampling implementation in ``LinkLayer`` application.
+    """
+
+    name: str
+    """Link architecture name."""
+
+    success_prob: float
+    """
+    Success probability of a single attempt.
+
+    This is available after `set()`.
+    """
+
+    def set(self, **kwargs: Unpack[LinkArchParameters]) -> None:
         """
-        Compute success probability of a single attempt.
-
-        Args:
-            length: fiber length in kilometers.
-            alpha: fiber loss in dB/km.
-            eta_s: source efficiency between 0 and 1.
-            eta_d: detector efficiency between 0 and 1
+        Save parameters about quantum channel and node hardware.
         """
-        pass
 
-    @abstractmethod
-    def delays(self, k: int, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
+    def delays(self, k: int) -> tuple[float, float, float]:
         """
-        Compute protocol delays.
+        Compute protocol delays for k-th attempt.
+        This is available after `set()`.
 
         Args:
             k: number of attempts, minimum is 1.
-            reset_time: inverse of source frequency in Hz.
-            tau_l: fiber propagation delay.
-            tau_0: local operation delay.
 
         Returns:
             Each value is a duration in seconds.
-            [0]: EPR creation time, since RESERVE_QUBIT_OK arrives at primary node.
-            [1]: notification time to primary node, since EPR creation.
-            [2]: notification time to secondary node, since EPR creation.
+
+            * [0]: EPR creation time, since RESERVE_QUBIT_OK arrives at primary node.
+            * [1]: notification time to primary node, since EPR creation.
+            * [2]: notification time to secondary node, since EPR creation.
         """
-        pass
+        ...
 
 
-class LinkArchDimBk(LinkArch):
+class LinkArchBase(ABC, LinkArch):
+    def __init__(self, name: str):
+        self.name = name
+        self.success_prob = 0.0
+        self.attempt_interval = 0.0
+        self.d_notify_a = 0.0
+        self.d_notify_b = 0.0
+
+    @override
+    def set(self, **kwargs: Unpack[LinkArchParameters]) -> None:
+        self.success_prob = self._compute_success_prob(
+            length=kwargs["length"],
+            alpha=kwargs["alpha"],
+            eta_s=kwargs["eta_s"],
+            eta_d=kwargs["eta_d"],
+        )
+
+        self.attempt_interval, self.d_notify_a, self.d_notify_b = self._compute_delays(
+            reset_time=kwargs["reset_time"],
+            tau_l=kwargs["tau_l"],
+            tau_0=kwargs["tau_0"],
+        )
+
+    @abstractmethod
+    def _compute_success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
+        """
+        Compute success probability of a single attempt.
+        Subclass implementation may precompute or save other parameters if necessary.
+        """
+
+    @abstractmethod
+    def _compute_delays(self, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
+        """
+        Compute attempt interval and notification delays, for protocol delay computation.
+        Subclass implementation may precompute or save other parameters if necessary.
+        Override ``delays()`` method for unusual situations.
+        """
+
+    @override
+    def delays(self, k: int) -> tuple[float, float, float]:
+        return (k - 1) * self.attempt_interval, self.d_notify_a, self.d_notify_b
+
+
+class LinkArchDimBk(LinkArchBase):
     """
     Detection-in-Midpoint link architecture with single-rail encoding using Barrett-Kok protocol.
     """
@@ -64,7 +126,7 @@ class LinkArchDimBk(LinkArch):
         super().__init__(name)
 
     @override
-    def success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
+    def _compute_success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
         # Barrett-Kok uses single-rail encoding where the presence/absence of a photon indicates quantum state.
         # For a successful attempt, exactly one photon should arrive at the Bell-state analyzer M in each round.
         #
@@ -81,7 +143,7 @@ class LinkArchDimBk(LinkArch):
         return p_bsa * eta_sb**2
 
     @override
-    def delays(self, k: int, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
+    def _compute_delays(self, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
         # Reservation and setup were completed by LinkLayer.
         # In each attempt:
         # 1. Qubits are generated at +0
@@ -94,7 +156,7 @@ class LinkArchDimBk(LinkArch):
         # The attempt interval is lower bounded by twice of reset_time for two memory excitations.
         attempt_duration = 2 * (tau_l + tau_0)
         attempt_interval = max(attempt_duration, 2 * reset_time)
-        return (k - 1) * attempt_interval, attempt_duration, attempt_duration
+        return attempt_interval, attempt_duration, attempt_duration
 
 
 class LinkArchDimBkSeq(LinkArchDimBk):
@@ -107,7 +169,7 @@ class LinkArchDimBkSeq(LinkArchDimBk):
         super().__init__(name)
 
     @override
-    def delays(self, k: int, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
+    def _compute_delays(self, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
         # According to SeQUeNCe logic:
         # 1. A and B perform the first round negotiation, which completes at +2τl
         # 2. Qubits are generated at +2τl
@@ -131,10 +193,10 @@ class LinkArchDimBkSeq(LinkArchDimBk):
         attempt_duration = 5 * tau_l + 2 * tau_0
         attempt_interval = max(attempt_duration, 2 * reset_time)
         d_notify = 4 * tau_l + 2 * tau_0
-        return (k - 1) * attempt_interval, d_notify, d_notify
+        return attempt_interval, d_notify, d_notify
 
 
-class LinkArchDimDual(LinkArch):
+class LinkArchDimDual(LinkArchBase):
     """
     Detection-in-Midpoint link architecture with dual-rail polarization encoding.
     """
@@ -143,7 +205,7 @@ class LinkArchDimDual(LinkArch):
         super().__init__(name)
 
     @override
-    def success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
+    def _compute_success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
         # For a successful attempt, one photon from each of A and B should arrive at the Bell-state analyzer M.
         #
         # eta_sb is the probability of a photon triggering a detector, which consists of:
@@ -159,7 +221,7 @@ class LinkArchDimDual(LinkArch):
         return p_bsa * eta_sb**2
 
     @override
-    def delays(self, k: int, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
+    def _compute_delays(self, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
         # Reservation and setup were completed by LinkLayer.
         # In each attempt:
         # 1. Qubits are generated at +0
@@ -169,10 +231,10 @@ class LinkArchDimDual(LinkArch):
         # The attempt interval is lower bounded by reset_time for one memory excitation.
         attempt_duration = tau_l + tau_0
         attempt_interval = max(attempt_duration, reset_time)
-        return (k - 1) * attempt_interval, attempt_duration, attempt_duration
+        return attempt_interval, attempt_duration, attempt_duration
 
 
-class LinkArchSr(LinkArch):
+class LinkArchSr(LinkArchBase):
     """
     Sender-Receiver link architecture with dual-rail polarization encoding.
     """
@@ -181,7 +243,7 @@ class LinkArchSr(LinkArch):
         super().__init__(name)
 
     @override
-    def success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
+    def _compute_success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
         # The success probability consists of:
         # - eta_s: the source at B emits a photon.
         # - p_l_sr: the photon propagates through the fiber without loss.
@@ -191,7 +253,7 @@ class LinkArchSr(LinkArch):
         return eta_sr
 
     @override
-    def delays(self, k: int, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
+    def _compute_delays(self, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
         # Reservation and setup were completed by LinkLayer.
         # In each attempt:
         # 1. Qubits are generated at +0
@@ -202,10 +264,10 @@ class LinkArchSr(LinkArch):
         # The attempt interval is lower bounded by reset_time for one memory excitation.
         attempt_duration = 2 * tau_l + tau_0
         attempt_interval = max(attempt_duration, reset_time)
-        return (k - 1) * attempt_interval, tau_l + tau_0, attempt_duration
+        return attempt_interval, tau_l + tau_0, attempt_duration
 
 
-class LinkArchSim(LinkArch):
+class LinkArchSim(LinkArchBase):
     """
     Source-in-Midpoint link architecture with dual-rail polarization encoding.
     """
@@ -214,7 +276,7 @@ class LinkArchSim(LinkArch):
         super().__init__(name)
 
     @override
-    def success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
+    def _compute_success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
         # For a successful attempt, A and B must each receive a photon from the pair.
         #
         # eta_d*p_l_sb is the probability of a photon reaching either A or B, which consists of:
@@ -228,7 +290,7 @@ class LinkArchSim(LinkArch):
         return eta_rr
 
     @override
-    def delays(self, k: int, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
+    def _compute_delays(self, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
         # Reservation and setup were completed by LinkLayer.
         # In each attempt:
         # 1. Entangled photon pairs are continuously emitted by the entangled photon source
@@ -239,7 +301,7 @@ class LinkArchSim(LinkArch):
         # The attempt interval is lower bounded by reset_time for one local qubit preparation.
         attempt_duration = tau_l + tau_0
         attempt_interval = max(attempt_duration, reset_time)
-        return (k - 1) * attempt_interval, attempt_duration, attempt_duration
+        return attempt_interval, attempt_duration, attempt_duration
 
 
 class LinkArchAlways(LinkArch):
@@ -248,14 +310,15 @@ class LinkArchAlways(LinkArch):
     """
 
     def __init__(self, inner: LinkArch):
-        super().__init__(f"{inner.name}-always")
+        self.name = f"{inner.name}-always"
         self.inner = inner
 
     @override
-    def success_prob(self, **_) -> float:
-        return 1
+    def set(self, **kwargs: Unpack[LinkArchParameters]) -> None:
+        self.inner.set(**kwargs)
+        self.success_prob = 1.0
 
     @override
-    def delays(self, k: int, **kwargs) -> tuple[float, float, float]:
+    def delays(self, k: int) -> tuple[float, float, float]:
         assert k == 1
-        return self.inner.delays(k, **kwargs)
+        return self.inner.delays(k)

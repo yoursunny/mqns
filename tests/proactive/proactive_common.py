@@ -201,21 +201,20 @@ def provide_entanglements(
             continue
         simulator = src.simulator
         ch = src.node.get_qchannel(dst.node)
-        _, d_notify_a, d_notify_b = ch.link_arch.delays(
-            1,
-            reset_time=0.0,
-            tau_l=ch.delay.calculate(),
-            tau_0=0.0,
-        )
+
+        ch.link_arch.set(length=0, alpha=0, eta_s=1, eta_d=1, reset_time=0, tau_l=ch.delay.calculate(), tau_0=0)
+        _, d_notify_a, d_notify_b = ch.link_arch.delays(1)
+
         t_creation = simulator.time(sec=t)
-        epr = WernerStateEntanglement(
-            fidelity=fidelity,
+        epr = src.network.epr_type(
             creation_time=t_creation,
             decoherence_time=t_creation + min(src.memory.decoherence_delay, dst.memory.decoherence_delay),
             src=src.node,
             dst=dst.node,
-            store_error=(src.memory.store_error, dst.memory.store_error),
+            store_errors=(src.memory.store_error, dst.memory.store_error),
         )
+        epr.fidelity = fidelity
+
         for node, neighbor, d_notify in (src, dst, d_notify_a), (dst, src, d_notify_b):
             q, _ = next(node.memory.find(lambda _, v: v is None, qchannel=ch))
             node.memory.write(q.addr, epr)
