@@ -22,6 +22,7 @@ from mqns.entity.qchannel.link_arch import (
     LinkArchDimBk,
     LinkArchDimBkSeq,
     LinkArchDimDual,
+    LinkArchParameters,
     LinkArchSim,
     LinkArchSr,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "LinkArchDimBk",
     "LinkArchDimBkSeq",
     "LinkArchDimDual",
+    "LinkArchParameters",
     "LinkArchSim",
     "LinkArchSr",
     "NextHopNotConnectionException",

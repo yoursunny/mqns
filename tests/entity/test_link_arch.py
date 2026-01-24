@@ -22,12 +22,14 @@ def check_link_arch(
     def compare_to(m: DurationMultipliers, m2=1.0):
         return pytest.approx((tau_l * m[0] + tau_0 * m[1]) * m2, abs=1e-6)
 
-    d1_epr_creation, d1_notify_a, d1_notify_b = link_arch.delays(1, reset_time=0.0, tau_l=tau_l, tau_0=tau_0)
+    link_arch.set(length=0, alpha=0, eta_s=1, eta_d=1, reset_time=0, tau_l=tau_l, tau_0=tau_0)
+
+    d1_epr_creation, d1_notify_a, d1_notify_b = link_arch.delays(1)
     assert d1_epr_creation == compare_to(epr_creation)
     assert d1_notify_a == compare_to(notify_a)
     assert d1_notify_b == compare_to(notify_b)
 
-    d6_epr_creation, _, _ = link_arch.delays(6, reset_time=0.0, tau_l=tau_l, tau_0=tau_0)
+    d6_epr_creation, _, _ = link_arch.delays(6)
     assert d6_epr_creation - d1_epr_creation == compare_to(attempt_duration, 5)
 
 
