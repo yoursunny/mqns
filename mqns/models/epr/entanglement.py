@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from mqns.entity.node import QNode
 
 
-EntanglementStoreErrorFunc = Callable[["Entanglement", Time], None] | None
+type EntanglementStoreErrorFunc = Callable[["Entanglement", Time], None] | None
 
 
 class EntanglementInitKwargs(TypedDict, total=False):

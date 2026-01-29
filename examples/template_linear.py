@@ -138,7 +138,7 @@ channel_capacity_values = [CHANNEL_CAPACITY]  # include alternative allocations 
 
 
 # What to measure:
-MetricName = Literal["throughput", "mean_fidelity", "expired_ratio"]
+type MetricName = Literal["throughput", "mean_fidelity", "expired_ratio"]
 MEASURES: list[MetricName] = ["throughput", "mean_fidelity", "expired_ratio"]
 
 

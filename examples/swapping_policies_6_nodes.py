@@ -74,7 +74,7 @@ def run_simulation(
     return e2e_rate, decoh_ratio, mean_fidelity
 
 
-Results = dict[str, dict[str, dict[float, tuple[float, float]]]]
+type Results = dict[str, dict[str, dict[float, tuple[float, float]]]]
 
 
 def plot_results(results: Results) -> None:

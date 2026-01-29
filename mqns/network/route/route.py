@@ -16,7 +16,8 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
-from typing import NamedTuple, Protocol
+from collections.abc import Callable
+from typing import NamedTuple
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -24,11 +25,8 @@ from scipy.sparse import csr_matrix
 from mqns.entity.base_channel import BaseChannel
 from mqns.entity.node import Node
 
-
-class MetricFunc[C: BaseChannel](Protocol):
-    """Callback function that returns the edge cost of a channel."""
-
-    def __call__(self, ch: C, /) -> float: ...
+type MetricFunc[C: BaseChannel] = Callable[[C], float]
+"""Callback function that returns the edge cost of a channel."""
 
 
 def make_csr[N: Node, C: BaseChannel](
