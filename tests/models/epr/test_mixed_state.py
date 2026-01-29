@@ -40,8 +40,8 @@ def test_swap():
     now = Time(0, accuracy=1000000)
     decohere = now + 5.0
 
-    e1 = MixedStateEntanglement(fidelity=0.95, name="e1", creation_time=now, decoherence_time=decohere)
-    e2 = MixedStateEntanglement(fidelity=0.95, name="e2", creation_time=now, decoherence_time=decohere)
+    e1 = MixedStateEntanglement(fidelity=0.95, fidelity_time=now, decohere_time=decohere)
+    e2 = MixedStateEntanglement(fidelity=0.95, fidelity_time=now, decohere_time=decohere)
     e1.read, e2.read = True, True
     e3 = MixedStateEntanglement.swap(e1, e2, now=now)
     assert e3 is not None
@@ -53,12 +53,12 @@ def test_purify_success(monkeypatch: pytest.MonkeyPatch):
     now = Time(0, accuracy=1000000)
     decohere = now + 5.0
 
-    e3 = MixedStateEntanglement(fidelity=0.9033333333333332, creation_time=now, decoherence_time=decohere)
-    e6 = MixedStateEntanglement(fidelity=0.9033333333333332, creation_time=now, decoherence_time=decohere)
+    e3 = MixedStateEntanglement(fidelity=0.9033333333333332, fidelity_time=now, decohere_time=decohere)
+    e6 = MixedStateEntanglement(fidelity=0.9033333333333332, fidelity_time=now, decohere_time=decohere)
     assert e3.purify(e6, now=now) is True
     assert e3.fidelity == pytest.approx(0.929080, abs=1e-6)
 
-    e8 = MixedStateEntanglement(fidelity=0.95, creation_time=now, decoherence_time=decohere)
+    e8 = MixedStateEntanglement(fidelity=0.95, fidelity_time=now, decohere_time=decohere)
     assert e3.purify(e8, now=now) is True
     assert e3.probv == pytest.approx((9.183907e-1, 8.179613e-5, 8.179613e-5, 8.144570e-2), rel=1e-6)
 
@@ -68,8 +68,8 @@ def test_purify_failure(monkeypatch: pytest.MonkeyPatch):
     now = Time(0, accuracy=1000000)
     decohere = now + 5.0
 
-    e3 = MixedStateEntanglement(fidelity=0.9033333333333332, creation_time=now, decoherence_time=decohere)
-    e6 = MixedStateEntanglement(fidelity=0.9033333333333332, creation_time=now, decoherence_time=decohere)
+    e3 = MixedStateEntanglement(fidelity=0.9033333333333332, fidelity_time=now, decohere_time=decohere)
+    e6 = MixedStateEntanglement(fidelity=0.9033333333333332, fidelity_time=now, decohere_time=decohere)
     assert e3.purify(e6, now=now) is False
 
 
@@ -82,8 +82,8 @@ def test_teleportion():
         z=0.08144570040246428,
         x=8.17961301968751e-05,
         y=8.17961301968751e-05,
-        creation_time=now,
-        decoherence_time=decohere,
+        decohere_time=decohere,
+        fidelity_time=now,
     )
 
     q_in = Qubit(QUBIT_STATE_0)

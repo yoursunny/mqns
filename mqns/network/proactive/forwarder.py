@@ -824,7 +824,7 @@ class ProactiveForwarder(Application[QNode]):
         """
         if (
             new_epr is None  # swapping failed
-            or new_epr.decoherence_time <= self.simulator.tc  # oldest pair decohered
+            or new_epr.decohere_time <= self.simulator.tc  # oldest pair decohered
         ):
             if new_epr:
                 log.debug(f"{self.node}: NEW EPR {new_epr} decohered during SU transmissions")
@@ -867,7 +867,7 @@ class ProactiveForwarder(Application[QNode]):
 
         if (
             new_epr is None  # swapping failed
-            or new_epr.decoherence_time <= self.simulator.tc  # oldest pair decohered
+            or new_epr.decohere_time <= self.simulator.tc  # oldest pair decohered
         ):
             # Determine the "destination".
             if other_epr.dst == self.node:  # destination is to the left of own node

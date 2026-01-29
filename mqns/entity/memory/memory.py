@@ -425,9 +425,9 @@ class QuantumMemory(Entity):
     def _schedule_decohere(self, qubit: MemoryQubit, epr: Entanglement):
         from mqns.network.protocol.event import QubitDecoheredEvent  # noqa: PLC0415
 
-        assert epr.decoherence_time >= self.simulator.tc
+        assert epr.decohere_time >= self.simulator.tc
 
-        event = QubitDecoheredEvent(self, qubit, epr, t=epr.decoherence_time)
+        event = QubitDecoheredEvent(self, qubit, epr, t=epr.decohere_time)
         qubit.set_event(QuantumMemory, event)
         self.simulator.add_event(event)
 

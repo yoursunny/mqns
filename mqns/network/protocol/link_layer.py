@@ -378,8 +378,8 @@ class LinkLayer(Application[QNode]):
         t_notify_b = now + (d_epr_creation + d_notify_b)
 
         epr = self.epr_type(
-            creation_time=t_epr_creation,
-            decoherence_time=t_epr_creation + min(mem_a.decoherence_delay, mem_b.decoherence_delay),
+            decohere_time=t_epr_creation + min(mem_a.decoherence_delay, mem_b.decoherence_delay),
+            fidelity_time=t_epr_creation,
             src=self.node,
             dst=next_hop,
             store_errors=(mem_a.store_error, mem_b.store_error),
@@ -416,7 +416,7 @@ class LinkLayer(Application[QNode]):
             self.cnt.increment_n_etg(event.attempts)
 
         log.debug(f"{self.node}: got half-EPR {epr.name} key={epr.key} {'dst' if is_primary else 'src'}={neighbor}")
-        assert epr.decoherence_time > self.simulator.tc
+        assert epr.decohere_time > self.simulator.tc
 
         qubit = self.memory.write(epr.key, epr)
         if qubit is None:
