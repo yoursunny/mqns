@@ -17,11 +17,20 @@ def _split_channel_capacity(item: int | tuple[int, int]) -> tuple[int, int]:
     return (item, item) if isinstance(item, int) else item
 
 
+CTRL_DELAY = 5e-06
+"""
+Delay of the classic channels between the controller and each QNode, in seconds.
+
+In most examples, the overall simulation duration is increased by this value,
+so that the QNodes can perform entanglement forwarding for the full intended duration.
+"""
+
+
 def build_topology(
     *,
     nodes: int | Sequence[str],
     mem_capacity: int | Sequence[int] | None = None,
-    t_cohere: float,
+    t_cohere: float = 0.02,
     channel_length: float | Sequence[float],
     channel_capacity: int | Sequence[int | tuple[int, int]] = 1,
     link_arch: LinkArch | Sequence[LinkArch] = LinkArchDimBkSeq(),
@@ -117,7 +126,7 @@ def build_topology(
         "apps": [ProactiveRoutingController(path)],
     }
     for node in nodes:
-        cchannels.append({"node1": "ctrl", "node2": node, "parameters": {"length": 1.0}})
+        cchannels.append({"node1": "ctrl", "node2": node, "parameters": {"delay": CTRL_DELAY}})
 
     topo: Topo = {"qnodes": qnodes, "qchannels": qchannels, "cchannels": cchannels, "controller": controller}
     return CustomTopology(
