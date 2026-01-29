@@ -16,22 +16,25 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
-from typing import Generic, NamedTuple
+from typing import NamedTuple, Protocol
 
 import numpy as np
 from scipy.sparse import csr_matrix
 
-from mqns.entity.base_channel import ChannelT, NodeT
-
-MetricFunc = Callable[[ChannelT], float]
-"""Callback function that returns the edge cost of a channel."""
+from mqns.entity.base_channel import BaseChannel
+from mqns.entity.node import Node
 
 
-def make_csr(
-    nodes: list[NodeT],
-    channels: list[ChannelT],
-    metric_func: MetricFunc,
+class MetricFunc[C: BaseChannel](Protocol):
+    """Callback function that returns the edge cost of a channel."""
+
+    def __call__(self, ch: C, /) -> float: ...
+
+
+def make_csr[N: Node, C: BaseChannel](
+    nodes: list[N],
+    channels: list[C],
+    metric_func: MetricFunc[C],
 ) -> csr_matrix:
     """
     Build a symmetric weighted adjacency matrix for SciPy CSR.
@@ -62,29 +65,29 @@ def make_csr(
     return csr_matrix((data, (rows, cols)), shape=(n, n))
 
 
-class RouteQueryResult(NamedTuple, Generic[NodeT]):
+class RouteQueryResult[N: Node](NamedTuple):
     metric: float
-    next_hop: NodeT
-    route: list[NodeT]
+    next_hop: N
+    route: list[N]
 
 
-class RouteAlgorithm(ABC, Generic[NodeT, ChannelT]):
+class RouteAlgorithm[N: Node, C: BaseChannel](ABC):
     """
     Represents a routing algorithm that computes routes between two nodes in a network.
     """
 
-    def __init__(self, name: str, metric_func: MetricFunc | None = None) -> None:
+    def __init__(self, name: str, metric_func: MetricFunc[C] | None = None) -> None:
         self.name = name
 
         if metric_func is None:
-            self.metric_func = lambda _: 1  # hop count
+            self.metric_func: MetricFunc[C] = lambda _: 1  # hop count
             self.unweighted = True
         else:
             self.metric_func = metric_func
             self.unweighted = False
 
     @abstractmethod
-    def build(self, nodes: list[NodeT], channels: list[ChannelT]) -> None:
+    def build(self, nodes: list[N], channels: list[C]) -> None:
         """
         Build static route tables.
 
@@ -95,7 +98,7 @@ class RouteAlgorithm(ABC, Generic[NodeT, ChannelT]):
         pass
 
     @abstractmethod
-    def query(self, src: NodeT, dst: NodeT) -> list[RouteQueryResult[NodeT]]:
+    def query(self, src: N, dst: N) -> list[RouteQueryResult[N]]:
         """
         Query the metric, next-hop and the path.
 

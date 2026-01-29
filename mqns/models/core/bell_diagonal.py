@@ -22,7 +22,7 @@ Elements:
 
 def normalize_bell_diagonal_probv(probv: BellDiagonalProbV) -> BellDiagonalProbV:
     """
-    Normalize Bell-Diagonal probability vector.
+    Normalize Bell-Diagonal probability vector in-place.
     """
     total = np.sum(probv)
     if total <= ATOL:  # avoid divide-by-zero
