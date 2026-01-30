@@ -1,23 +1,14 @@
+import copy
 from abc import ABC, abstractmethod
-from typing import Protocol, TypedDict, Unpack, override
+from collections.abc import Callable
+from typing import NotRequired, Protocol, TypedDict, Unpack, override
 
 from mqns.entity.node import QNode
-from mqns.models.epr import Entanglement
+from mqns.models.epr import Entanglement, EntanglementInitKwargs, MixedStateEntanglement, WernerStateEntanglement
+from mqns.models.error import DepolarErrorModel, ErrorModel, ErrorModelInput, TimeDecayFunc, parse_error, time_decay_nop
 from mqns.simulator import Time
 
-
-def _calc_propagation_loss(length: float, alpha: float) -> float:
-    """
-    Compute fiber propagation loss.
-
-    Args:
-        length: fiber length in kilometers.
-        alpha: fiber loss in dB/km.
-
-    Returns:
-        Probability of a single photon to propagate through the fiber without loss.
-    """
-    return 10 ** (-alpha * length / 10)
+type MakeEprFunc = Callable[[EntanglementInitKwargs], Entanglement]
 
 
 class LinkArchParameters(TypedDict):
@@ -40,8 +31,43 @@ class LinkArchParameters(TypedDict):
     """Local operation delay in seconds."""
     epr_type: type[Entanglement]
     """EPR type, either ``WernerStateEntanglement`` or ``MixedStateEntanglement``."""
-    init_fidelity: float
-    """Initial fidelity value."""
+    init_fidelity: NotRequired[float]
+    """
+    Initial fidelity value, defaults to ``-1``.
+
+    If omitted or negative, a mini simulation is performed to determine the proper fidelity values,
+    by applying error models to the memories, fibers, etc.
+
+    If non-negative, every entanglement has a Werner state with the specified fidelity.
+    """
+    t0: NotRequired[Time]
+    """
+    Time reference for mini simulation.
+    This is required if ``init_fidelity`` is omitted or negative.
+    """
+    store_decays: NotRequired[tuple[TimeDecayFunc, TimeDecayFunc]]
+    """
+    Memory time-based decay functions at src and dst, defaults to perfect.
+    This must accept the same time accuracy as ``t0``.
+    This is only used if ``init_fidelity`` is omitted or negative.
+
+    Current limitation: if a qchannel is activated in two paths with opposite directions,
+    and the two memories have different error models, the calculations would be incorrect.
+    """
+    transfer_error: NotRequired[ErrorModelInput]
+    """
+    Fiber transfer error model, defaults to perfect.
+    This is typically ``qchannel.transfer_error`` instance with assigned ``rate``.
+    This is only used if ``init_fidelity`` is omitted or negative.
+
+    If the LinkArch subclass needs to apply transfer error at a different length,
+    it will clone the instance and adjust the length while preserving the decoherence rate.
+    """
+    bsa_error: NotRequired[ErrorModelInput]
+    """
+    Bell-state analyzer or absorptive memory capture error model, defaults to perfect.
+    This is only used if ``init_fidelity`` is omitted or negative.
+    """
 
 
 class LinkArch(Protocol):
@@ -100,6 +126,7 @@ class LinkArch(Protocol):
             Each value is a duration in seconds.
 
             * [0]: EPR object with fidelity assigned.
+                   Its ``fidelity_time`` may be different from "EPR creation time" returned by ``delays()``.
             * [1]: notification time point to primary node.
             * [2]: notification time point to secondary node.
         """
@@ -129,8 +156,15 @@ class LinkArchBase(ABC, LinkArch):
             tau_0=kwargs["tau_0"],
         )
 
-        self.epr_type = kwargs["epr_type"]
-        self.init_fidelity = kwargs["init_fidelity"]
+        epr_type = kwargs["epr_type"]
+        init_fidelity = kwargs.get("init_fidelity", -1)
+
+        def _make_epr_with_init_fidelity(a: EntanglementInitKwargs) -> Entanglement:
+            epr = epr_type(**a)
+            epr.fidelity = init_fidelity
+            return epr
+
+        self._make_epr: MakeEprFunc = self._prepare_make_epr(kwargs) if init_fidelity < 0 else _make_epr_with_init_fidelity
 
     @abstractmethod
     def _compute_success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
@@ -138,6 +172,20 @@ class LinkArchBase(ABC, LinkArch):
         Compute success probability of a single attempt.
         Subclass implementation may precompute or save other parameters if necessary.
         """
+
+    @staticmethod
+    def _calc_propagation_loss(length: float, alpha: float) -> float:
+        """
+        Compute fiber propagation loss.
+
+        Args:
+            length: fiber length in kilometers.
+            alpha: fiber loss in dB/km.
+
+        Returns:
+            Probability of a single photon to propagate through the fiber without loss.
+        """
+        return 10 ** (-alpha * length / 10)
 
     @abstractmethod
     def _compute_delays(self, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
@@ -151,6 +199,89 @@ class LinkArchBase(ABC, LinkArch):
     def delays(self, k: int) -> tuple[float, float, float]:
         return (k - 1) * self.attempt_interval, self.d_notify_a, self.d_notify_b
 
+    def _prepare_make_epr(self, d: LinkArchParameters) -> MakeEprFunc:
+        accuracy = d.get("t0", Time.SENTINEL).accuracy
+        t0 = Time.from_sec(1, accuracy=accuracy)
+        epr_type = d["epr_type"]
+        se0, se1 = d.get("store_decays", (time_decay_nop, time_decay_nop))
+        te = parse_error(d.get("transfer_error"), DepolarErrorModel)
+        te2 = copy.deepcopy(te)
+        te2.set(length=d["length"] / 2)
+
+        # Perform a mini simulation to calculate the state of heralded entanglement.
+        epr = self._simulate_errors(
+            epr_type=epr_type,
+            tc=t0,
+            reset_time=Time.from_sec(d["reset_time"], accuracy=accuracy),
+            tau_l=Time.from_sec(d["tau_l"], accuracy=accuracy),
+            tau_l2=Time.from_sec(d["tau_l"] / 2, accuracy=accuracy),
+            tau_0=Time.from_sec(d["tau_0"], accuracy=accuracy),
+            store_src=se0,
+            store_dst=se1,
+            transfer_full=te,
+            transfer_half=te2,
+            bsa=parse_error(d.get("bsa_error"), DepolarErrorModel),
+        )
+        assert type(epr) is epr_type
+
+        # The final state could reflect any time point between EPR creation time and the earlier heralding time.
+        t_diff = epr.fidelity_time - t0
+        assert Time(0, accuracy=accuracy) <= t_diff <= Time.from_sec(min(self.d_notify_a, self.d_notify_b), accuracy=accuracy)
+
+        # Capture the final state.
+        update = {}
+        if type(epr) is WernerStateEntanglement:
+            update["w"] = epr.w
+        elif type(epr) is MixedStateEntanglement:
+            update["probv"] = epr.probv
+        else:
+            raise TypeError("unsupported EPR type")
+
+        def _make_epr_adjusted(a: EntanglementInitKwargs) -> Entanglement:
+            # Copy final state and adjust fidelity_time.
+            if "fidelity_time" in a:
+                a["fidelity_time"] += t_diff
+            a.update(update)
+            return epr_type(**a)
+
+        return _make_epr_adjusted
+
+    @abstractmethod
+    def _simulate_errors(
+        self,
+        *,
+        epr_type: type[Entanglement],
+        tc: Time,
+        reset_time: Time,
+        store_src: TimeDecayFunc,
+        store_dst: TimeDecayFunc,
+        tau_l: Time,
+        tau_l2: Time,
+        tau_0: Time,
+        transfer_full: ErrorModel,
+        transfer_half: ErrorModel,
+        bsa: ErrorModel,
+    ) -> Entanglement:
+        """
+        Perform a mini simulation to establish elementary entanglement between two nodes,
+        applying error models along the way.
+
+        Args:
+            epr_type: Entanglement type.
+            tc: Reference time point corresponding to ``t_epr_creation``.
+            reset_time: Inverse of source frequency.
+            store_src: Memory time-based decay function at primary node.
+            store_dst: Memory time-based decay function at secondary node.
+            tau_l: Fiber propagation delay for full length.
+            tau_l2: Fiber propagation delay for half length.
+            tau_0: Local propagation delay.
+            transfer_full: Transfer error model for full length.
+            transfer_half: Transfer error model for half length.
+            bsa: Bell-state analyzer error model.
+
+        Returns: the final entanglement.
+        """
+
     @override
     def make_epr(self, k: int, now: Time, *, key: str | None, src: QNode, dst: QNode) -> tuple[Entanglement, Time, Time]:
         d_epr_creation, d_notify_a, d_notify_b = self.delays(k)
@@ -159,204 +290,18 @@ class LinkArchBase(ABC, LinkArch):
         t_notify_b = now + (d_epr_creation + d_notify_b)
 
         mem_a, mem_b = src.memory, dst.memory
-        epr = self.epr_type(
-            decohere_time=t_epr_creation + min(mem_a.decoherence_delay, mem_b.decoherence_delay),
-            fidelity_time=t_epr_creation,
-            src=src,
-            dst=dst,
-            store_decays=(mem_a.time_decay, mem_b.time_decay),
+        epr = self._make_epr(
+            EntanglementInitKwargs(
+                decohere_time=t_epr_creation + min(mem_a.decoherence_delay, mem_b.decoherence_delay),
+                fidelity_time=t_epr_creation,
+                src=src,
+                dst=dst,
+                store_decays=(mem_a.time_decay, mem_b.time_decay),
+            )
         )
-        epr.fidelity = self.init_fidelity
         epr.key = key
 
         return epr, t_notify_a, t_notify_b
-
-
-class LinkArchDimBk(LinkArchBase):
-    """
-    Detection-in-Midpoint link architecture with single-rail encoding using Barrett-Kok protocol.
-    """
-
-    def __init__(self, name="DIM-BK"):
-        super().__init__(name)
-
-    @override
-    def _compute_success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
-        # Barrett-Kok uses single-rail encoding where the presence/absence of a photon indicates quantum state.
-        # For a successful attempt, exactly one photon should arrive at the Bell-state analyzer M in each round.
-        #
-        # eta_sb is the probability of a photon triggering a detector, which consists of:
-        # - eta_s: the source at A or B emits a photon.
-        # - p_l_sb: the photon propagates through the fiber without loss.
-        # - eta_d: the detector at M detects the photon.
-        #
-        # p_bsa, set to 50%, is the maximum theoretical coincidence probability for distinguishing two of
-        # the four Bell states at a standard linear optics Bell-state analyzer.
-        p_bsa = 0.5
-        p_l_sb = _calc_propagation_loss(length / 2, alpha)
-        eta_sb = eta_s * eta_d * p_l_sb
-        return p_bsa * eta_sb**2
-
-    @override
-    def _compute_delays(self, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
-        # Reservation and setup were completed by LinkLayer.
-        # In each attempt:
-        # 1. Qubits are generated at +0
-        # 2. Both A and B emit photons at +τ0, which arrive at the Bell-state analyzer M at +(1/2)τl+τ0
-        # 3. M sends heralding results to both A and B, which arrive at +τl+τ0
-        # 4. Both A and B flip qubit gates locally
-        # 5. Both A and B emit photons at +τl+2τ0, which arrive at M at +(1 1/2)τl+2τ0
-        # 6. M sends heralding results to both A and B, which arrive at +2τl+2τ0
-        # If either heralding result indicates failure, the next attempt can immediately start.
-        # The attempt interval is lower bounded by twice of reset_time for two memory excitations.
-        attempt_duration = 2 * (tau_l + tau_0)
-        attempt_interval = max(attempt_duration, 2 * reset_time)
-        return attempt_interval, attempt_duration, attempt_duration
-
-
-class LinkArchDimBkSeq(LinkArchDimBk):
-    """
-    Detection-in-Midpoint link architecture with single-rail encoding using Barrett-Kok protocol,
-    timing adjusted as per negotiation logic implemented by SeQUeNCe simulator.
-    """
-
-    def __init__(self, name="DIM-BK-SeQUeNCe"):
-        super().__init__(name)
-
-    @override
-    def _compute_delays(self, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
-        # According to SeQUeNCe logic:
-        # 1. A and B perform the first round negotiation, which completes at +2τl
-        # 2. Qubits are generated at +2τl
-        # 3. Both A and B emit photons at +2τl+τ0, which arrive at M at +(2 1/2)τl+τ0
-        # 4. M sends heralding results to both A and B, which arrive at +3τl+τ0
-        # 5. If the heralding result indicates failure, the current attempt is aborted
-        # 6. A and B perform the second round negotiation, which completes at +5τl+τ0
-        # 7. Both A and B flip qubit gates locally
-        # 8. Both A and B emit photons at +5τl+2τ0, which arrive at M at +(5 1/2)τl+2τ0
-        # 9. M sends heralding results to both A and B, which arrive at +6τl+2τ0
-        # In summary, success occurs at +6τl+2τ0, failure occurs at either +3τl+τ0 or +6τl+2τ0.
-        #
-        # This model does not differentiate the two failure possibilities.
-        # The attempt duration is set to 5τl+2τ0, in between two possible failed attempt durations.
-        # It is also lower bounded by twice of reset_time for two memory excitations.
-        #
-        # The first round negotiation in the initial attempt, which takes 2τl, overlaps the reservation logic
-        # in LinkLayer, so that the initial attempt is 2τl shorter.
-        # For simplicity, this shortening is applied on the final attempt instead of the initial attempt.
-        # Thus, the final attempt succeeds at +4τl+2τ0 as calculated in d_notify.
-        attempt_duration = 5 * tau_l + 2 * tau_0
-        attempt_interval = max(attempt_duration, 2 * reset_time)
-        d_notify = 4 * tau_l + 2 * tau_0
-        return attempt_interval, d_notify, d_notify
-
-
-class LinkArchDimDual(LinkArchBase):
-    """
-    Detection-in-Midpoint link architecture with dual-rail polarization encoding.
-    """
-
-    def __init__(self, name="DIM-dual"):
-        super().__init__(name)
-
-    @override
-    def _compute_success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
-        # For a successful attempt, one photon from each of A and B should arrive at the Bell-state analyzer M.
-        #
-        # eta_sb is the probability of a photon triggering a detector, which consists of:
-        # - eta_s: the source at A or B emits a photon.
-        # - p_l_sb: the photon propagates through the fiber without loss.
-        # - eta_d: the detector at M detects the photon.
-        #
-        # p_bsa, set to 50%, is the maximum theoretical coincidence probability for distinguishing two of
-        # the four Bell states at a standard linear optics Bell-state analyzer.
-        p_bsa = 0.5
-        p_l_sb = _calc_propagation_loss(length / 2, alpha)
-        eta_sb = eta_s * eta_d * p_l_sb
-        return p_bsa * eta_sb**2
-
-    @override
-    def _compute_delays(self, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
-        # Reservation and setup were completed by LinkLayer.
-        # In each attempt:
-        # 1. Qubits are generated at +0
-        # 2. Both A and B emit photons at +τ0, which arrive at the Bell-state analyzer M at +(1/2)τl+τ0
-        # 3. M sends heralding results to both A and B, which arrive at +τl+τ0
-        # If the heralding result indicates failure, the next attempt can immediately start.
-        # The attempt interval is lower bounded by reset_time for one memory excitation.
-        attempt_duration = tau_l + tau_0
-        attempt_interval = max(attempt_duration, reset_time)
-        return attempt_interval, attempt_duration, attempt_duration
-
-
-class LinkArchSr(LinkArchBase):
-    """
-    Sender-Receiver link architecture with dual-rail polarization encoding.
-    """
-
-    def __init__(self, name="SR"):
-        super().__init__(name)
-
-    @override
-    def _compute_success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
-        # The success probability consists of:
-        # - eta_s: the source at B emits a photon.
-        # - p_l_sr: the photon propagates through the fiber without loss.
-        # - eta_d: the detector at A detects the photon.
-        p_l_sr = _calc_propagation_loss(length, alpha)
-        eta_sr = eta_s * eta_d * p_l_sr
-        return eta_sr
-
-    @override
-    def _compute_delays(self, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
-        # Reservation and setup were completed by LinkLayer.
-        # In each attempt:
-        # 1. Qubits are generated at +0
-        # 2. B emits a photon at +τ0, which arrives at +τl+τ0
-        # 3. A absorbs the photon at +τl+τ0
-        # 4. A sends heralding result to B, which arrives at +2τl+τ0
-        # If the heralding result indicates failure, the next attempt can immediately start.
-        # The attempt interval is lower bounded by reset_time for one memory excitation.
-        attempt_duration = 2 * tau_l + tau_0
-        attempt_interval = max(attempt_duration, reset_time)
-        return attempt_interval, tau_l + tau_0, attempt_duration
-
-
-class LinkArchSim(LinkArchBase):
-    """
-    Source-in-Midpoint link architecture with dual-rail polarization encoding.
-    """
-
-    def __init__(self, name="SIM"):
-        super().__init__(name)
-
-    @override
-    def _compute_success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
-        # For a successful attempt, A and B must each receive a photon from the pair.
-        #
-        # eta_d*p_l_sb is the probability of a photon reaching either A or B, which consists of:
-        # - p_l_sb: the photon propagates through the fiber without loss.
-        # - eta_d: the detector at A or B detects the photon.
-        #
-        # The overall success probability has `**2` because it requires both photons.
-        _ = eta_s
-        p_l_sb = _calc_propagation_loss(length / 2, alpha)
-        eta_rr = (eta_d * p_l_sb) ** 2
-        return eta_rr
-
-    @override
-    def _compute_delays(self, *, reset_time: float, tau_l: float, tau_0: float) -> tuple[float, float, float]:
-        # Reservation and setup were completed by LinkLayer.
-        # In each attempt:
-        # 1. Entangled photon pairs are continuously emitted by the entangled photon source
-        # 2. Both A and B prepare their local qubits at +0, which completes at +τ0
-        # 3. A absorbs a photon at +τ0; B absorbs the paired photon at +τ0
-        # 4. A sends heralding result to B, which arrives at +τl+τ0; B does the same in opposite direction
-        # If either heralding result indicates failure, the next attempt can immediately start.
-        # The attempt interval is lower bounded by reset_time for one local qubit preparation.
-        attempt_duration = tau_l + tau_0
-        attempt_interval = max(attempt_duration, reset_time)
-        return attempt_interval, attempt_duration, attempt_duration
 
 
 class LinkArchAlways(LinkArch):

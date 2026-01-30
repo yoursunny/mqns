@@ -30,10 +30,8 @@ from typing import Any, Unpack, final, override
 
 from mqns.entity.base_channel import BaseChannel, BaseChannelInitKwargs
 from mqns.entity.node import QNode
-from mqns.entity.qchannel.link_arch import (
-    LinkArch,
-    LinkArchDimBkSeq,
-)
+from mqns.entity.qchannel.link_arch import LinkArch
+from mqns.entity.qchannel.link_arch_dim import LinkArchDimBkSeq
 from mqns.models.core import QuantumModel
 from mqns.models.epr import Entanglement
 from mqns.models.error import DepolarErrorModel, ErrorModelInput, parse_error
