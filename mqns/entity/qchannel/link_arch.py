@@ -1,6 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Protocol, TypedDict, Unpack, override
 
+from mqns.entity.node import QNode
+from mqns.models.epr import Entanglement
+from mqns.simulator import Time
+
 
 def _calc_propagation_loss(length: float, alpha: float) -> float:
     """
@@ -28,9 +32,16 @@ class LinkArchParameters(TypedDict):
     reset_time: float
     """Inverse of source frequency in Hz."""
     tau_l: float
-    """Fiber propagation delay in seconds."""
+    """
+    Fiber propagation delay in seconds.
+    This is also used as one-way classical message delay.
+    """
     tau_0: float
     """Local operation delay in seconds."""
+    epr_type: type[Entanglement]
+    """EPR type, either ``WernerStateEntanglement`` or ``MixedStateEntanglement``."""
+    init_fidelity: float
+    """Initial fidelity value."""
 
 
 class LinkArch(Protocol):
@@ -73,6 +84,27 @@ class LinkArch(Protocol):
         """
         ...
 
+    def make_epr(self, k: int, now: Time, *, key: str | None, src: QNode, dst: QNode) -> tuple[Entanglement, Time, Time]:
+        """
+        Create an elementary entanglement for k-th attempt.
+        This is available after `set()`.
+
+        Args:
+            k: number of attempts, minimum is 1.
+            now: current time point, which is when RESERVE_QUBIT_OK arrives at primary node.
+            key: LinkLayer reservation key.
+            src: primary node.
+            dst: secondary node.
+
+        Returns:
+            Each value is a duration in seconds.
+
+            * [0]: EPR object with fidelity assigned.
+            * [1]: notification time point to primary node.
+            * [2]: notification time point to secondary node.
+        """
+        ...
+
 
 class LinkArchBase(ABC, LinkArch):
     def __init__(self, name: str):
@@ -97,6 +129,9 @@ class LinkArchBase(ABC, LinkArch):
             tau_0=kwargs["tau_0"],
         )
 
+        self.epr_type = kwargs["epr_type"]
+        self.init_fidelity = kwargs["init_fidelity"]
+
     @abstractmethod
     def _compute_success_prob(self, *, length: float, alpha: float, eta_s: float, eta_d: float) -> float:
         """
@@ -115,6 +150,26 @@ class LinkArchBase(ABC, LinkArch):
     @override
     def delays(self, k: int) -> tuple[float, float, float]:
         return (k - 1) * self.attempt_interval, self.d_notify_a, self.d_notify_b
+
+    @override
+    def make_epr(self, k: int, now: Time, *, key: str | None, src: QNode, dst: QNode) -> tuple[Entanglement, Time, Time]:
+        d_epr_creation, d_notify_a, d_notify_b = self.delays(k)
+        t_epr_creation = now + d_epr_creation
+        t_notify_a = now + (d_epr_creation + d_notify_a)
+        t_notify_b = now + (d_epr_creation + d_notify_b)
+
+        mem_a, mem_b = src.memory, dst.memory
+        epr = self.epr_type(
+            decohere_time=t_epr_creation + min(mem_a.decoherence_delay, mem_b.decoherence_delay),
+            fidelity_time=t_epr_creation,
+            src=src,
+            dst=dst,
+            store_errors=(mem_a.store_error, mem_b.store_error),
+        )
+        epr.fidelity = self.init_fidelity
+        epr.key = key
+
+        return epr, t_notify_a, t_notify_b
 
 
 class LinkArchDimBk(LinkArchBase):
@@ -322,3 +377,8 @@ class LinkArchAlways(LinkArch):
     def delays(self, k: int) -> tuple[float, float, float]:
         assert k == 1
         return self.inner.delays(k)
+
+    @override
+    def make_epr(self, k: int, *args, **kwargs):
+        assert k == 1
+        return self.inner.make_epr(k, *args, **kwargs)

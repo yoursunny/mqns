@@ -217,8 +217,10 @@ class LinkLayer(Application[QNode]):
             eta_s=self.eta_s,
             eta_d=self.eta_d,
             reset_time=self.reset_time,
-            tau_l=qchannel.delay.calculate(),  # time to send photon/message one way
+            tau_l=qchannel.delay.calculate(),
             tau_0=self.tau_0,
+            epr_type=self.epr_type,
+            init_fidelity=self.init_fidelity,
         )
 
         log.debug(
@@ -363,36 +365,21 @@ class LinkLayer(Application[QNode]):
             next_hop: The neighboring node with which the entanglement is attempted.
             qubit: The memory qubit used for this attempt.
         """
-        mem_a = self.memory
-        mem_b = next_hop.memory
-
         # Calculate which attempt would succeed.
         k = rng.geometric(qchannel.link_arch.success_prob)
 
         # Calculate when would the k-th attempt (1-based) succeed.
-        d_epr_creation, d_notify_a, d_notify_b = qchannel.link_arch.delays(k)
         # TODO space out EPRs on a qchannel by attempt_interval or qchannel.bandwidth
-        now = self.simulator.tc
-        t_epr_creation = now + d_epr_creation
-        t_notify_a = now + (d_epr_creation + d_notify_a)
-        t_notify_b = now + (d_epr_creation + d_notify_b)
-
-        epr = self.epr_type(
-            decohere_time=t_epr_creation + min(mem_a.decoherence_delay, mem_b.decoherence_delay),
-            fidelity_time=t_epr_creation,
-            src=self.node,
-            dst=next_hop,
-            store_errors=(mem_a.store_error, mem_b.store_error),
+        epr, t_notify_a, t_notify_b = qchannel.link_arch.make_epr(
+            k, self.simulator.tc, key=qubit.active, src=self.node, dst=next_hop
         )
-        epr.fidelity = self.init_fidelity
-        epr.key = qubit.active
 
         # If the network uses SYNC timing mode but the successful attempt would exceed the current EXTERNAL phase,
         # the EPR would not arrive in time, and therefore is not scheduled.
         if not self.node.timing.is_external(max(t_notify_a, t_notify_b)):
             log.debug(
                 f"{self.node}: skip prepare EPR {epr.name} key={epr.key} dst={epr.dst} attempts={k} "
-                f"times={t_epr_creation},{t_notify_a},{t_notify_b} reason=beyond-external-phase"
+                f"notify-times={t_notify_a},{t_notify_b} reason=beyond-external-phase"
             )
             return
 
@@ -400,7 +387,7 @@ class LinkLayer(Application[QNode]):
         # schedule the EPR arrival on both nodes via LinkArchSuccessEvents.
         log.debug(
             f"{self.node}: prepare EPR {epr.name} key={epr.key} dst={epr.dst} attempts={k} "
-            f"times={t_epr_creation},{t_notify_a},{t_notify_b}"
+            f"notify-times={t_notify_a},{t_notify_b}"
         )
 
         self.simulator.add_event(LinkArchSuccessEvent(self.node, epr, t=t_notify_a, by=self, attempts=k))

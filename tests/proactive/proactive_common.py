@@ -202,7 +202,17 @@ def provide_entanglements(
         simulator = src.simulator
         ch = src.node.get_qchannel(dst.node)
 
-        ch.link_arch.set(length=0, alpha=0, eta_s=1, eta_d=1, reset_time=0, tau_l=ch.delay.calculate(), tau_0=0)
+        ch.link_arch.set(
+            length=0,
+            alpha=0,
+            eta_s=1,
+            eta_d=1,
+            reset_time=0,
+            tau_l=ch.delay.calculate(),
+            tau_0=0,
+            epr_type=src.network.epr_type,
+            init_fidelity=1.0,
+        )
         _, d_notify_a, d_notify_b = ch.link_arch.delays(1)
 
         t_creation = simulator.time(sec=t)
