@@ -221,7 +221,7 @@ def provide_entanglements(
             fidelity_time=t_creation,
             src=src.node,
             dst=dst.node,
-            store_errors=(src.memory.store_error, dst.memory.store_error),
+            store_decays=(src.memory.time_decay, dst.memory.time_decay),
         )
         epr.fidelity = fidelity
 

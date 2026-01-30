@@ -28,7 +28,7 @@
 import hashlib
 import uuid
 from abc import abstractmethod
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Self, TypedDict, Unpack, cast
 
 import numpy as np
@@ -36,6 +36,7 @@ import numpy as np
 from mqns.models.core import QuantumModel
 from mqns.models.core.operator import OPERATOR_PAULI_I, Operator
 from mqns.models.core.state import QUBIT_STATE_P, QubitRho, build_qubit_state, qubit_state_to_rho
+from mqns.models.error import TimeDecayFunc, time_decay_nop
 from mqns.models.qubit import QState, Qubit
 from mqns.models.qubit.gate import CNOT, H, U, X, Y, Z
 from mqns.simulator import Time
@@ -45,16 +46,13 @@ if TYPE_CHECKING:
     from mqns.entity.node import QNode
 
 
-type EntanglementStoreErrorFunc = Callable[["Entanglement", Time], None] | None
-
-
 class EntanglementInitKwargs(TypedDict, total=False):
     name: str | None
     decohere_time: Time
     fidelity_time: Time
     src: "QNode|None"
     dst: "QNode|None"
-    store_errors: tuple[EntanglementStoreErrorFunc, EntanglementStoreErrorFunc]
+    store_decays: tuple[TimeDecayFunc | None, TimeDecayFunc | None]
 
 
 class Entanglement(QuantumModel):
@@ -70,7 +68,7 @@ class Entanglement(QuantumModel):
             fidelity_time: EPR creation or fidelity update time point, defaults to ``Time.SENTINEL``.
             src: Left node that holds one of the entangled qubits.
             dst: Right node that holds one of the entangled qubits.
-            store_errors: Memory store error functions at src and dst.
+            store_decays: Memory time-based decay functions at src and dst.
         """
         name = kwargs.get("name")
         self.name = uuid.uuid4().hex if name is None else name
@@ -93,7 +91,7 @@ class Entanglement(QuantumModel):
         Fidelity update time point, reflecting when fidelity values are last updated.
 
         * Upon creating a memory-memory EPR, this is assigned according to the EPR creation time.
-        * This may be updated to the current time at any time, while ``store_errors`` is applied to the EPR.
+        * This may be updated to the current time at any time, while ``store_decays`` is applied to the EPR.
         * Some operations are unavailable if this is ``Time.SENTINEL``.
         """
         self.read = False
@@ -105,8 +103,9 @@ class Entanglement(QuantumModel):
         """Left node that holds one of the entangled qubits."""
         self.dst = kwargs.get("dst")
         """Right node that holds one of the entangled qubits."""
-        self.store_errors = kwargs.get("store_errors", (None, None))
-        """Memory store error functions at src and dst."""
+        decay0, decay1 = kwargs.get("store_decays", (None, None))
+        self.store_decays = (decay0 or time_decay_nop, decay1 or time_decay_nop)
+        """Memory time-based decay functions at src and dst."""
 
         self.ch_index = -1
         """
@@ -132,15 +131,23 @@ class Entanglement(QuantumModel):
         """Mark the EPR as decoherenced."""
         self.is_decoherenced = True
 
-    def apply_store_errors(self, now: Time) -> None:
-        """Apply store error models for both qubits in this EPR."""
+    def apply_store_decays(self, now: Time, *, update_fidelity_time=True) -> None:
+        """
+        Apply memory time-based decays for both qubits in this EPR.
+
+        Args:
+            now: Current time point.
+            update_fidelity_time: Whether to update ``fidelity_time`` to ``now``.
+                                  This is temporary during refactoring.
+        """
         t = now - self.fidelity_time
         if self.read or t.time_slot == 0:
             return
-        for se in self.store_errors:
+        for se in self.store_decays:
             if se is not None:
                 se(self, t)
-        # self.fidelity_time = now
+        if update_fidelity_time:
+            self.fidelity_time = now
         self.read = True
 
     @staticmethod
@@ -179,8 +186,7 @@ class Entanglement(QuantumModel):
 
         orig_eprs: list[E] = []
         for epr in (epr0, epr1):
-            if not epr.read:
-                epr.apply_store_errors(now)
+            epr.apply_store_decays(now, update_fidelity_time=False)
 
             if epr.ch_index > -1:
                 orig_eprs.append(epr)
@@ -199,7 +205,7 @@ class Entanglement(QuantumModel):
                 fidelity_time=now,
                 src=epr0.src,
                 dst=epr1.dst,
-                store_errors=(epr0.store_errors[0], epr1.store_errors[1]),
+                store_decays=(epr0.store_decays[0], epr1.store_decays[1]),
             ),
         )
         ne.orig_eprs = orig_eprs

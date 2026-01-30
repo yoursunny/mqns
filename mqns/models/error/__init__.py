@@ -3,6 +3,7 @@ from mqns.models.error.dissipation import DissipationErrorModel
 from mqns.models.error.error import ErrorModel, PerfectErrorModel
 from mqns.models.error.input import ErrorModelInput, parse_error
 from mqns.models.error.pauli import BitFlipErrorModel, DephaseErrorModel, DepolarErrorModel
+from mqns.models.error.time_decay import TimeDecayFunc, make_time_decay_func, time_decay_nop
 
 __all__ = [
     "BitFlipErrorModel",
@@ -12,6 +13,9 @@ __all__ = [
     "DissipationErrorModel",
     "ErrorModel",
     "ErrorModelInput",
+    "make_time_decay_func",
     "parse_error",
     "PerfectErrorModel",
+    "time_decay_nop",
+    "TimeDecayFunc",
 ]

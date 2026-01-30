@@ -53,7 +53,7 @@ def test_swap_fidelity():
         e.apply_error(dephase_error)
 
     e1, e2, e3 = (
-        WernerStateEntanglement(fidelity=0.99, fidelity_time=c, decohere_time=c + mem_dt, store_errors=(dephase, dephase))
+        WernerStateEntanglement(fidelity=0.99, fidelity_time=c, decohere_time=c + mem_dt, store_decays=(dephase, dephase))
         for c in (micros(1000), micros(2000), micros(3000))
     )
 

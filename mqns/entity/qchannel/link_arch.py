@@ -164,7 +164,7 @@ class LinkArchBase(ABC, LinkArch):
             fidelity_time=t_epr_creation,
             src=src,
             dst=dst,
-            store_errors=(mem_a.store_error, mem_b.store_error),
+            store_decays=(mem_a.time_decay, mem_b.time_decay),
         )
         epr.fidelity = self.init_fidelity
         epr.key = key
