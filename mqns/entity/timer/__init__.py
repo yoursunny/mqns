@@ -17,4 +17,9 @@
 
 from mqns.entity.timer.timer import Timer
 
-__all__ = ["Timer"]
+__all__ = [
+    "Timer",
+]
+
+for name in __all__:
+    globals()[name].__module__ = __name__

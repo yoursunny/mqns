@@ -28,14 +28,6 @@ mqns.models.core.basis module
    :show-inheritance:
    :undoc-members:
 
-mqns.models.core.model module
------------------------------
-
-.. automodule:: mqns.models.core.model
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
 Module contents
 ---------------
 

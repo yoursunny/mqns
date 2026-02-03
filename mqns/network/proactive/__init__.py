@@ -56,3 +56,8 @@ __all__ = [
     "select_purif_qubit_random",
     "SelectPurifQubit",
 ]
+
+for name in __all__:
+    if name in ("LinkLayer", "MemoryEprIterator", "MemoryEprTuple", "SelectPurifQubit"):
+        continue
+    globals()[name].__module__ = __name__

@@ -18,4 +18,15 @@
 from mqns.entity.base_channel import NextHopNotConnectionException
 from mqns.entity.cchannel.cchannel import ClassicChannel, ClassicChannelInitKwargs, ClassicPacket, RecvClassicPacket
 
-__all__ = ["ClassicChannel", "ClassicChannelInitKwargs", "ClassicPacket", "RecvClassicPacket", "NextHopNotConnectionException"]
+__all__ = [
+    "ClassicChannel",
+    "ClassicChannelInitKwargs",
+    "ClassicPacket",
+    "NextHopNotConnectionException",
+    "RecvClassicPacket",
+]
+
+for name in __all__:
+    if name in ("NextHopNotConnectionException",):
+        continue
+    globals()[name].__module__ = __name__

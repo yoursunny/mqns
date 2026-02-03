@@ -15,3 +15,6 @@ __all__ = [
     "QubitRho",
     "QubitState",
 ]
+
+for name in ("QuantumModel",):
+    globals()[name].__module__ = __name__

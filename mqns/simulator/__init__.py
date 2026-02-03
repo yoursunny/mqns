@@ -25,3 +25,6 @@ __all__ = [
     "Simulator",
     "Time",
 ]
+
+for name in __all__:
+    globals()[name].__module__ = __name__

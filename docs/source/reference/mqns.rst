@@ -2,7 +2,7 @@ Reference
 =========
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 3
 
    mqns.network
    mqns.entity

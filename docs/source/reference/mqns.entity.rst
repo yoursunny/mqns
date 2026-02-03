@@ -5,14 +5,14 @@ Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 3
 
-   mqns.entity.cchannel
-   mqns.entity.memory
-   mqns.entity.monitor
    mqns.entity.node
-   mqns.entity.operator
+   mqns.entity.memory
+   mqns.entity.cchannel
    mqns.entity.qchannel
+   mqns.entity.operator
+   mqns.entity.monitor
    mqns.entity.timer
 
 Submodules

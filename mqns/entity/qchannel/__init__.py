@@ -19,3 +19,8 @@ __all__ = [
     "QuantumChannelInitKwargs",
     "RecvQubitPacket",
 ]
+
+for name in __all__:
+    if name in ("NextHopNotConnectionException",):
+        continue
+    globals()[name].__module__ = __name__

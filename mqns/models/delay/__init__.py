@@ -29,3 +29,8 @@ __all__ = [
     "parse_delay",
     "UniformDelayModel",
 ]
+
+for name in __all__:
+    if name in ("DelayInput",):
+        continue
+    globals()[name].__module__ = __name__
