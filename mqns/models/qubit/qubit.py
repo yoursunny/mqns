@@ -26,7 +26,8 @@ from mqns.models.core.state import (
     QubitRho,
     QubitState,
 )
-from mqns.models.error import DepolarErrorModel, ErrorModelInput, parse_error
+from mqns.models.error import DepolarErrorModel
+from mqns.models.error.input import ErrorModelInputBasic, parse_error
 from mqns.models.qubit.state import QState
 
 
@@ -38,8 +39,8 @@ class Qubit(QuantumModel):
         self,
         state: QubitState = QUBIT_STATE_0,
         *,
-        operate_error: ErrorModelInput = None,
-        measure_error: ErrorModelInput = None,
+        operate_error: ErrorModelInputBasic = None,
+        measure_error: ErrorModelInputBasic = None,
         name="",
     ):
         """
@@ -57,8 +58,8 @@ class Qubit(QuantumModel):
         self,
         *,
         rho: QubitRho,
-        operate_error: ErrorModelInput = None,
-        measure_error: ErrorModelInput = None,
+        operate_error: ErrorModelInputBasic = None,
+        measure_error: ErrorModelInputBasic = None,
         name="",
     ):
         """
@@ -76,8 +77,8 @@ class Qubit(QuantumModel):
         state: QubitState | None = None,
         *,
         rho: QubitRho = QUBIT_RHO_0,
-        operate_error: ErrorModelInput = None,
-        measure_error: ErrorModelInput = None,
+        operate_error: ErrorModelInputBasic = None,
+        measure_error: ErrorModelInputBasic = None,
         name="",
     ):
         self.name = name

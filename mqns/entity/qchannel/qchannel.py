@@ -34,14 +34,15 @@ from mqns.entity.qchannel.link_arch import LinkArch
 from mqns.entity.qchannel.link_arch_dim import LinkArchDimBkSeq
 from mqns.models.core import QuantumModel
 from mqns.models.epr import Entanglement
-from mqns.models.error import DepolarErrorModel, ErrorModelInput, parse_error
+from mqns.models.error import DepolarErrorModel
+from mqns.models.error.input import ErrorModelInputLength, parse_error
 from mqns.simulator import Event, Time
 
 
 class QuantumChannelInitKwargs(BaseChannelInitKwargs, total=False):
     link_arch: LinkArch
     """Link architecture model."""
-    transfer_error: ErrorModelInput
+    transfer_error: ErrorModelInputLength
     """Transfer error model."""
 
 

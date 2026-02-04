@@ -16,7 +16,8 @@ from mqns.models.core.state import (
     qubit_state_equal,
 )
 from mqns.models.epr import MixedStateEntanglement
-from mqns.models.error import DephaseErrorModel, DepolarErrorModel, DissipationErrorModel, ErrorModelInput, parse_error
+from mqns.models.error import DephaseErrorModel, DepolarErrorModel, DissipationErrorModel, PerfectErrorModel
+from mqns.models.error.input import ErrorModelInputBasic, parse_error
 from mqns.models.qubit import Qubit
 from mqns.simulator import Time
 from mqns.utils import rng
@@ -132,8 +133,8 @@ def test_to_qubits_maximal(i: float, z: float, x: float, y: float, state: QubitS
         ((DissipationErrorModel, {"p_error": 0.1}), [0.95, 0.05, 0, 0], "DEPHASE"),
     ],
 )
-def test_to_qubits_mixed(error: ErrorModelInput, probv: list[float], classify_noise: str):
-    error = parse_error(error)
+def test_to_qubits_mixed(error: ErrorModelInputBasic, probv: list[float], classify_noise: str):
+    error = parse_error(error, PerfectErrorModel)
     e = MixedStateEntanglement()
     e.apply_error(error)
     print(e.probv)

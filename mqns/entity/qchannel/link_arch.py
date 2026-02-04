@@ -5,7 +5,8 @@ from typing import NotRequired, Protocol, TypedDict, Unpack, override
 
 from mqns.entity.node import QNode
 from mqns.models.epr import Entanglement, EntanglementInitKwargs, MixedStateEntanglement, WernerStateEntanglement
-from mqns.models.error import DepolarErrorModel, ErrorModel, ErrorModelInput, TimeDecayFunc, parse_error, time_decay_nop
+from mqns.models.error import DepolarErrorModel, ErrorModel, TimeDecayFunc, time_decay_nop
+from mqns.models.error.input import ErrorModelInputBasic, ErrorModelInputLength, parse_error
 from mqns.simulator import Time
 
 type MakeEprFunc = Callable[[EntanglementInitKwargs], Entanglement]
@@ -54,7 +55,7 @@ class LinkArchParameters(TypedDict):
     Current limitation: if a qchannel is activated in two paths with opposite directions,
     and the two memories have different error models, the calculations would be incorrect.
     """
-    transfer_error: NotRequired[ErrorModelInput]
+    transfer_error: NotRequired[ErrorModelInputLength]
     """
     Fiber transfer error model, defaults to perfect.
     This is typically ``qchannel.transfer_error`` instance with assigned ``rate``.
@@ -63,7 +64,7 @@ class LinkArchParameters(TypedDict):
     If the LinkArch subclass needs to apply transfer error at a different length,
     it will clone the instance and adjust the length while preserving the decoherence rate.
     """
-    bsa_error: NotRequired[ErrorModelInput]
+    bsa_error: NotRequired[ErrorModelInputBasic]
     """
     Bell-state analyzer or absorptive memory capture error model, defaults to perfect.
     This is only used if ``init_fidelity`` is omitted or negative.

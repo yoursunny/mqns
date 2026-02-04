@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from mqns.models.error.input import ErrorModelConstructor, ErrorModelInput, parse_error
+from mqns.models.error.input import ErrorModelConstructor, ErrorModelInputTime, parse_error
 from mqns.models.error.pauli import DephaseErrorModel
 from mqns.simulator import Time
 
@@ -26,7 +26,7 @@ def time_decay_nop(target: "QuantumModel", t: Time) -> None:
 
 
 def make_time_decay_func(
-    input: ErrorModelInput = None,
+    input: ErrorModelInputTime = None,
     *,
     t_cohere: Time,
     dflt: ErrorModelConstructor = DephaseErrorModel,
