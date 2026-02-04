@@ -1,7 +1,7 @@
 from mqns.models.delay.constdelay import ConstantDelayModel
 from mqns.models.delay.delay import DelayModel
 
-type DelayInput = float | DelayModel
+DelayInput = float | DelayModel
 """
 Input to ``parse_delay``.
 

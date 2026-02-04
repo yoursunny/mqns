@@ -46,3 +46,8 @@ __all__ = [
     "TreeTopology",
     "WaxmanTopology",
 ]
+
+for name in __all__:
+    if name in ("CustomTopology",):
+        continue
+    globals()[name].__module__ = __name__

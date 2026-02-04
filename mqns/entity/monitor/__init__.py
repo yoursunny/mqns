@@ -17,4 +17,10 @@
 
 from mqns.entity.monitor.monitor import Monitor, MonitorEvent
 
-__all__ = ["Monitor", "MonitorEvent"]
+__all__ = [
+    "Monitor",
+    "MonitorEvent",
+]
+
+for name in __all__:
+    globals()[name].__module__ = __name__

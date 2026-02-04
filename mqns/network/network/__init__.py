@@ -11,3 +11,6 @@ __all__ = [
     "TimingPhase",
     "TimingPhaseEvent",
 ]
+
+for name in __all__:
+    globals()[name].__module__ = __name__

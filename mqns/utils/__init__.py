@@ -27,3 +27,6 @@ __all__ = [
     "rng",
     "WallClockTimeout",
 ]
+
+for name in __all__:
+    globals()[name].__module__ = __name__

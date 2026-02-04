@@ -27,8 +27,11 @@ class NetworkLayer(Application[QNode]):
     def __init__(self):
         super().__init__()
         self.release_after: float | None = None
+        """If set, ``QubitReleasedEvent`` would be emitted after specified duration for the next entanglement."""
         self.entangle: list[tuple[float, float]] = []
+        """Entanglement events, each entry contains entanglement time and EPR creation time."""
         self.decohere: list[float] = []
+        """Decoherence events, each entry is event time."""
 
         self.add_handler(self.handle_entangle, QubitEntangledEvent)
         self.add_handler(self.handle_decohere, QubitDecoheredEvent)
@@ -42,7 +45,8 @@ class NetworkLayer(Application[QNode]):
     def handle_entangle(self, event: QubitEntangledEvent):
         qubit, epr = self.memory.read(event.qubit.addr, has=self.epr_type)
         assert qubit is event.qubit
-        self.entangle.append((event.t.sec, epr.creation_time.sec))
+        t_create = epr.decohere_time - self.memory.decoherence_delay
+        self.entangle.append((event.t.sec, t_create.sec))
 
         if not isinstance(self.release_after, float):
             return

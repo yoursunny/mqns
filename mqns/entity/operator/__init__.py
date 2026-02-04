@@ -18,4 +18,11 @@
 from mqns.entity.operator.event import OperateRequestEvent, OperateResponseEvent
 from mqns.entity.operator.operator import QuantumOperator
 
-__all__ = ["QuantumOperator", "OperateRequestEvent", "OperateResponseEvent"]
+__all__ = [
+    "QuantumOperator",
+    "OperateRequestEvent",
+    "OperateResponseEvent",
+]
+
+for name in __all__:
+    globals()[name].__module__ = __name__

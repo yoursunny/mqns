@@ -43,8 +43,8 @@ from mqns.entity.qchannel import QuantumChannel
 from mqns.models.core import QuantumModel
 from mqns.models.delay import DelayInput, parse_delay
 from mqns.models.epr import Entanglement
-from mqns.models.error import DephaseErrorModel, ErrorModel
-from mqns.simulator import Event, Simulator, Time
+from mqns.models.error import make_time_decay_func
+from mqns.simulator import Event, Simulator
 
 
 class QuantumMemoryInitKwargs(TypedDict, total=False):
@@ -107,13 +107,9 @@ class QuantumMemory(Entity):
         self.decoherence_delay = simulator.time(sec=self.t_cohere)
         """Memory dephasing time."""
 
-        self._store_error: ErrorModel = DephaseErrorModel().set(t=0, rate=1.0 / self.decoherence_delay.time_slot)
+        self.time_decay = make_time_decay_func(t_cohere=self.decoherence_delay)
         """
-        Store error model.
-        Its time unit is time slot, based on simulator accuracy.
-
-        Prior to each application onto a stored qubit, caller should change the ``t`` parameter to the storage duration
-        in time slots, but preserve the existing ``rate`` parameter.
+        Time based decay function constructed from store error model.
         """
 
     @override
@@ -261,17 +257,6 @@ class QuantumMemory(Entity):
             qubit.path_id = None
             qubit.path_direction = None
 
-    def store_error(self, target: QuantumModel, t: Time) -> None:
-        """
-        Apply store error model to a qubit.
-
-        Args:
-            target: qubit that has been stored in this memory.
-            t: storage duration since the last update.
-        """
-        self._store_error.set(t=t.time_slot)
-        target.apply_error(self._store_error)
-
     @overload
     def read(self, key: int | str, *, remove: bool | QuantumModel = False) -> tuple[MemoryQubit, QuantumModel | None] | None:
         """
@@ -365,7 +350,7 @@ class QuantumMemory(Entity):
             raise ValueError(f"{self}: data at {qubit.addr} is not {has}")
 
         if set_fidelity and isinstance(data, Entanglement) and not data.read:
-            data.apply_store_errors(self.simulator.tc)
+            data.apply_store_decays(self.simulator.tc, update_fidelity_time=False)
 
         if remove in (True, data):
             qubit.set_event(QuantumMemory, None)  # cancel scheduled decoherence event
@@ -425,9 +410,9 @@ class QuantumMemory(Entity):
     def _schedule_decohere(self, qubit: MemoryQubit, epr: Entanglement):
         from mqns.network.protocol.event import QubitDecoheredEvent  # noqa: PLC0415
 
-        assert epr.decoherence_time >= self.simulator.tc
+        assert epr.decohere_time >= self.simulator.tc
 
-        event = QubitDecoheredEvent(self, qubit, epr, t=epr.decoherence_time)
+        event = QubitDecoheredEvent(self, qubit, epr, t=epr.decohere_time)
         qubit.set_event(QuantumMemory, event)
         self.simulator.add_event(event)
 
