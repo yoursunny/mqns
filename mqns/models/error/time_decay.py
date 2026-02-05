@@ -43,7 +43,7 @@ def make_time_decay_func(
     Returns:
         TimeDecayFunc that accepts ``Time`` with same accuracy as ``t_cohere``.
     """
-    error = dflt() if input is None else parse_error(input, dflt)
+    error = dflt() if input is None else parse_error(input, dflt, 0)
     error.set(t=0, rate=1 / t_cohere.time_slot)
 
     def apply_error_on(target: "QuantumModel", t: Time):

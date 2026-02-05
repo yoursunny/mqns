@@ -85,9 +85,9 @@ class Qubit(QuantumModel):
         """Descriptive name."""
         self.state = QState([self], state=state, rho=rho)
         """QState that includes this qubit."""
-        self.operate_error = parse_error(operate_error, DepolarErrorModel)
+        self.operate_error = parse_error(operate_error, DepolarErrorModel, -1)
         """Operate error model."""
-        self.measure_error = parse_error(measure_error, DepolarErrorModel)
+        self.measure_error = parse_error(measure_error, DepolarErrorModel, -1)
         """Measure error model."""
 
     def measure(self, basis=BASIS_Z) -> MeasureOutcome:

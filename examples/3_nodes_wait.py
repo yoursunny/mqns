@@ -25,6 +25,7 @@ class ArgsBase(Tap):
     workers: int = 1  # number of workers for parallel execution
     runs: int = 100  # number of trials per parameter set
     link_arch_sim: bool = False  # determine fidelity with LinkArch mini simulation
+    fiber_error: str = "DEPOLAR:0.01"  # fiber error model with decoherence rate
     csv: str = ""  # save results as CSV file
     plt: str = ""  # save plot as image file
 
@@ -54,6 +55,7 @@ def run_simulation(seed: int, args: Args, t_cohere: float, t_wait: float):
         nodes=["S", "R", "D"],
         t_cohere=t_cohere,
         channel_length=[32, 18],
+        fiber_error=args.fiber_error,
         link_arch=args.link_arch,
         init_fidelity=None if args.link_arch_sim else 0.99,
         swap=[1, 0, 1],

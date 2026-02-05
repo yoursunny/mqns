@@ -134,7 +134,7 @@ def test_to_qubits_maximal(i: float, z: float, x: float, y: float, state: QubitS
     ],
 )
 def test_to_qubits_mixed(error: ErrorModelInputBasic, probv: list[float], classify_noise: str):
-    error = parse_error(error, PerfectErrorModel)
+    error = parse_error(error, PerfectErrorModel, -1)
     e = MixedStateEntanglement()
     e.apply_error(error)
     print(e.probv)

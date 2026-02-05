@@ -221,7 +221,7 @@ class LinkArchBase(ABC, LinkArch):
             store_dst=se1,
             transfer_full=ch.transfer_error,
             transfer_half=copy.deepcopy(ch.transfer_error).set(length=ch.length / 2),
-            bsa=parse_error(d.get("bsa_error"), DepolarErrorModel),
+            bsa=parse_error(d.get("bsa_error"), DepolarErrorModel, -1),
         )
         assert type(epr) is epr_type
 

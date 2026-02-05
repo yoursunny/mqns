@@ -3,6 +3,7 @@ from typing import Literal, cast
 
 from mqns.entity.qchannel import LinkArch, LinkArchDimBk, LinkArchDimBkSeq, LinkArchDimDual, LinkArchSim, LinkArchSr
 from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
+from mqns.models.error.input import ErrorModelInputLength
 from mqns.network.network import QuantumNetwork
 from mqns.network.proactive import LinkLayer, ProactiveForwarder, ProactiveRoutingController, RoutingPathSingle
 from mqns.network.topology.customtopo import CustomTopology, Topo, TopoCChannel, TopoController, TopoQChannel, TopoQNode
@@ -53,7 +54,7 @@ def build_network(
     channel_length: float | Sequence[float],
     channel_capacity: int | Sequence[int | tuple[int, int]] = 1,
     fiber_alpha: float = 0.2,
-    fiber_rate: float = 0.05,
+    fiber_error: ErrorModelInputLength = "DEPOLAR:0.01",
     link_arch: LinkArchDef | Sequence[LinkArchDef] = LinkArchDimBkSeq,
     entg_attempt_rate: float = 50e6,
     init_fidelity: float | None = 0.99,
@@ -144,7 +145,7 @@ def build_network(
                 "parameters": {
                     "length": length,
                     "alpha": fiber_alpha,
-                    "transfer_error": {"rate": fiber_rate},
+                    "transfer_error": fiber_error,
                     "link_arch": la,
                 },
             }
