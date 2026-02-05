@@ -48,25 +48,25 @@ class LinkArchParameters(TypedDict):
     """Local operation delay in seconds."""
     epr_type: type[Entanglement]
     """EPR type, either ``WernerStateEntanglement`` or ``MixedStateEntanglement``."""
-    init_fidelity: NotRequired[float]
+    init_fidelity: NotRequired[float | None]
     """
-    Initial fidelity value, defaults to ``-1``.
+    Initial fidelity value.
 
-    If omitted or negative, a mini simulation is performed to determine the proper fidelity values,
+    If set, every entanglement has a Werner state with the specified fidelity.
+
+    If omitted or ``None``, a mini simulation is performed to determine the proper fidelity values,
     by applying error models to the memories, fibers, etc.
-
-    If non-negative, every entanglement has a Werner state with the specified fidelity.
     """
     t0: NotRequired[Time]
     """
     Time reference for mini simulation; only the accuracy is used.
-    This is required if ``init_fidelity`` is omitted or negative.
+    This is required if ``init_fidelity`` is omitted.
     """
     store_decays: NotRequired[tuple[TimeDecayFunc, TimeDecayFunc]]
     """
     Memory time-based decay functions at src and dst, defaults to perfect.
     This must accept the same time accuracy as ``t0``.
-    This is only used if ``init_fidelity`` is omitted or negative.
+    This is only used if ``init_fidelity`` is omitted.
 
     Current limitation: if a qchannel is activated in two paths with opposite directions,
     and the two memories have different error models, the calculations would be incorrect.
@@ -74,7 +74,7 @@ class LinkArchParameters(TypedDict):
     bsa_error: NotRequired[ErrorModelInputBasic]
     """
     Bell-state analyzer or absorptive memory capture error model, defaults to perfect.
-    This is only used if ``init_fidelity`` is omitted or negative.
+    This is only used if ``init_fidelity`` is omitted.
     """
 
 
@@ -170,16 +170,18 @@ class LinkArchBase(ABC, LinkArch):
         )
 
         epr_type = kwargs["epr_type"]
-        init_fidelity = kwargs.get("init_fidelity", -1)
+        init_fidelity = kwargs.get("init_fidelity")
 
-        def _make_epr_with_init_fidelity(a: EntanglementInitKwargs) -> Entanglement:
-            epr = epr_type(**a)
-            epr.fidelity = init_fidelity
-            return epr
-
-        if init_fidelity < 0:
+        if init_fidelity is None:
             self._make_epr: MakeEprFunc = self._prepare_make_epr(kwargs, ch, tau_l)
         else:
+            assert 0 <= init_fidelity <= 1
+
+            def _make_epr_with_init_fidelity(a: EntanglementInitKwargs) -> Entanglement:
+                epr = epr_type(**a)
+                epr.fidelity = init_fidelity
+                return epr
+
             self._make_epr = _make_epr_with_init_fidelity
 
     @abstractmethod

@@ -48,9 +48,17 @@ class QuantumChannelInitKwargs(BaseChannelInitKwargs, total=False):
 
     If ``BaseChannel.drop_rate`` is zero but both ``length`` and ``alpha`` are positive,
     ``BaseChannel.drop_rate`` is recalculated from ``length`` and ``alpha``.
+
+    In ``LinkArch``, this parameter determines the success probability,
+    but does not affect the decoherence / quality of the state given the photon arrived.
     """
     transfer_error: ErrorModelInputLength
-    """Transfer error model for loss of quantum information."""
+    """
+    Transfer error model for loss of quantum information.
+
+    In ``LinkArch``, this parameter determines the decoherence / quality of the state
+    given the photon arrived, but does not affect the success probability.
+    """
 
 
 class QuantumChannel(BaseChannel[QNode]):

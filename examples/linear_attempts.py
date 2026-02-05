@@ -26,13 +26,12 @@ import numpy as np
 import pandas as pd
 from tap import Tap
 
-from mqns.network.network import QuantumNetwork
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
 from examples_common.plotting import Axes, plt, plt_save
-from examples_common.topo_linear import CTRL_DELAY, build_topology
+from examples_common.topo_linear import CTRL_DELAY, build_network
 
 log.set_default_level("CRITICAL")
 
@@ -54,14 +53,13 @@ def run_simulation(seed: int, sim_duration: float, L: list[float], M: int) -> li
     """
     rng.reseed(seed)
 
-    topo = build_topology(
+    net = build_network(
         nodes=len(L) + 1,
         t_cohere=0.1,
         channel_length=L,
         channel_capacity=M,
         swap=[0] * (len(L) + 1),
     )
-    net = QuantumNetwork(topo)
 
     s = Simulator(0, sim_duration + CTRL_DELAY, accuracy=1000000, install_to=(log, net))
     s.run()

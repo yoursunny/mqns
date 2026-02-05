@@ -5,28 +5,40 @@ It gathers statistics of the end-to-end rate and fidelity.
 
 import itertools
 from multiprocessing import Pool, freeze_support
-from typing import Any, TypedDict, cast
+from typing import Any, TypedDict, cast, override
 
 import numpy as np
 import pandas as pd
 from tap import Tap
 
-from mqns.network.network import QuantumNetwork
 from mqns.network.proactive import CutoffSchemeWaitTime, ProactiveForwarder
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
 from examples_common.plotting import Axes1D, SubFigure1D, plt, plt_save
-from examples_common.topo_linear import CTRL_DELAY, build_topology
+from examples_common.topo_linear import CTRL_DELAY, EPR_TYPE_MAP, LINK_ARCH_MAP, EprTypeLiteral, LinkArchLiteral, build_network
 
 log.set_default_level("CRITICAL")
 
 
-class Args(Tap):
+class ArgsBase(Tap):
     workers: int = 1  # number of workers for parallel execution
     runs: int = 100  # number of trials per parameter set
+    link_arch_sim: bool = False  # determine fidelity with LinkArch mini simulation
     csv: str = ""  # save results as CSV file
     plt: str = ""  # save plot as image file
+
+
+class Args(ArgsBase):
+    epr_type: EprTypeLiteral
+    link_arch: LinkArchLiteral
+
+    @override
+    def configure(self) -> None:
+        super().configure()
+
+        self.add_argument("--epr_type", type=str, default="W", choices=EPR_TYPE_MAP.keys())
+        self.add_argument("--link_arch", type=str, default="DIM-BK-SeQUeNCe", choices=LINK_ARCH_MAP.keys())
 
 
 SIMULATOR_ACCURACY = 1000000
@@ -34,17 +46,19 @@ SEED_BASE = 100
 sim_duration = 5.0
 
 
-def run_simulation(seed: int, t_cohere: float, t_wait: float):
+def run_simulation(seed: int, args: Args, t_cohere: float, t_wait: float):
     rng.reseed(seed)
 
-    topo = build_topology(
+    net = build_network(
+        epr_type=args.epr_type,
         nodes=["S", "R", "D"],
         t_cohere=t_cohere,
         channel_length=[32, 18],
+        link_arch=args.link_arch,
+        init_fidelity=None if args.link_arch_sim else 0.99,
         swap=[1, 0, 1],
         swap_cutoff=[0, t_wait, 0],
     )
-    net = QuantumNetwork(topo)
 
     fwS = net.get_node("S").get_app(ProactiveForwarder)
     fwS.cnt.enable_collect_all()
@@ -84,11 +98,11 @@ class Histograms(TypedDict):
     wait: tuple[np.ndarray, np.ndarray]
 
 
-def run_row(n_runs: int, t_cohere: float, t_wait: float) -> tuple[Stats, Histograms]:
+def run_row(args: Args, t_cohere: float, t_wait: float) -> tuple[Stats, Histograms]:
     columns: list[list[float]] = [[] for _ in range(4)]
-    for i in range(n_runs):
+    for i in range(args.runs):
         print(f"T_cohere={t_cohere:.4f}, T_wait={t_wait:.4f}, run {i + 1}")
-        results = run_simulation(SEED_BASE + i, t_cohere, t_wait)
+        results = run_simulation(SEED_BASE + i, args, t_cohere, t_wait)
         for col, res in zip(columns, results, strict=True):
             col.extend(res)
 
@@ -162,7 +176,7 @@ if __name__ == "__main__":
     args = Args().parse_args()
 
     with Pool(processes=args.workers) as pool:
-        rows = pool.starmap(run_row, itertools.product([args.runs], t_cohere_values, t_wait_values))
+        rows = pool.starmap(run_row, itertools.product([args], t_cohere_values, t_wait_values))
 
     if args.csv:
         df = pd.DataFrame([s for s, _ in rows])

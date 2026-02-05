@@ -18,13 +18,12 @@ import numpy as np
 from tap import Tap
 
 from mqns.entity.qchannel import LinkArch, LinkArchDimBk, LinkArchSim, LinkArchSr
-from mqns.network.network import QuantumNetwork
 from mqns.network.proactive import ProactiveForwarder
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
 from examples_common.plotting import Axes2D, mpl, plt, plt_save
-from examples_common.topo_linear import CTRL_DELAY, build_topology
+from examples_common.topo_linear import CTRL_DELAY, build_network
 
 log.set_default_level("CRITICAL")
 
@@ -55,7 +54,7 @@ def run_simulation(
 ):
     rng.reseed(seed)
 
-    topo = build_topology(
+    net = build_network(
         nodes=nodes,
         mem_capacity=mem_capacities,
         t_cohere=t_cohere,
@@ -64,7 +63,6 @@ def run_simulation(
         link_arch=link_architectures,
         swap="swap_1",
     )
-    net = QuantumNetwork(topo)
 
     s = Simulator(0, sim_duration + CTRL_DELAY, accuracy=1000000, install_to=(log, net))
     s.run()

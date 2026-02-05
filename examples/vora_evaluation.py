@@ -52,13 +52,12 @@ from tap import Tap
 
 from mqns.network.network import QuantumNetwork
 from mqns.network.proactive import ProactiveForwarder, compute_vora_swap_sequence
-from mqns.network.topology.topo import Topology
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
 from examples_common.plotting import Axes2D, plt, plt_save
 from examples_common.stats import gather_etg_decoh
-from examples_common.topo_linear import CTRL_DELAY, build_topology
+from examples_common.topo_linear import CTRL_DELAY, build_network
 
 log.set_default_level("CRITICAL")
 
@@ -111,12 +110,12 @@ class ParameterSet:
     def t_cohere_ns(self) -> int:
         return int(self.t_cohere * 1e9)
 
-    def build_topology(self) -> Topology:
+    def build_network(self) -> QuantumNetwork:
         distances = self.compute_distances()
         swap = self.get_swap_sequence()
-        log.info(f"build_topology: distances={distances} sum={sum(distances)} swap-sequence={swap}")
+        log.info(f"build_network: distances={distances} sum={sum(distances)} swap-sequence={swap}")
 
-        return build_topology(
+        return build_network(
             nodes=2 + self.number_of_routers,
             t_cohere=self.t_cohere,
             channel_length=distances,
@@ -182,8 +181,7 @@ def vora_regen_row(p: ParameterSet, num_routers: int, dist_prop: str, indir: str
 def run_simulation(p: ParameterSet, seed: int) -> tuple[float, float]:
     rng.reseed(seed)
 
-    topo = p.build_topology()
-    net = QuantumNetwork(topo)
+    net = p.build_network()
 
     s = Simulator(0, p.sim_duration + CTRL_DELAY, accuracy=1000000, install_to=(log, net))
     s.run()

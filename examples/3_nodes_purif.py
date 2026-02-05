@@ -2,12 +2,11 @@ import numpy as np
 import pandas as pd
 from tap import Tap
 
-from mqns.network.network import QuantumNetwork
 from mqns.network.proactive import ProactiveForwarder
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
-from examples_common.topo_linear import CTRL_DELAY, build_topology
+from examples_common.topo_linear import CTRL_DELAY, build_network
 
 
 # Command line arguments
@@ -29,7 +28,7 @@ sim_duration = 5
 def run_simulation(t_cohere: float, seed: int):
     rng.reseed(seed)
 
-    topo = build_topology(
+    net = build_network(
         nodes=["S", "R", "D"],
         t_cohere=t_cohere,
         channel_length=[32, 18],
@@ -37,7 +36,6 @@ def run_simulation(t_cohere: float, seed: int):
         init_fidelity=0.7,
         swap="swap_1",
     )
-    net = QuantumNetwork(topo)
 
     s = Simulator(0, sim_duration + CTRL_DELAY, accuracy=1000000, install_to=(log, net))
     s.run()

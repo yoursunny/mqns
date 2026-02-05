@@ -1,10 +1,9 @@
-from mqns.network.network import QuantumNetwork
 from mqns.network.proactive import ProactiveForwarder
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
 from examples_common.stats import gather_etg_decoh
-from examples_common.topo_linear import CTRL_DELAY, build_topology
+from examples_common.topo_linear import CTRL_DELAY, build_network
 
 log.set_default_level("DEBUG")
 
@@ -15,7 +14,7 @@ sim_duration = 3
 
 rng.reseed(SEED_BASE)
 
-topo = build_topology(
+net = build_network(
     nodes=4,
     mem_capacity=4,  # number of qubits per node should be enough for qchannels
     t_cohere=0.01,  # sec
@@ -23,7 +22,6 @@ topo = build_topology(
     channel_capacity=[(4, 3), (1, 2), (2, 4)],
     swap="swap_2_l2r",
 )
-net = QuantumNetwork(topo)
 
 s = Simulator(0, sim_duration + CTRL_DELAY, accuracy=1000000, install_to=(log, net))
 s.run()

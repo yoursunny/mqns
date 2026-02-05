@@ -79,7 +79,7 @@ class LinkLayer(Application[QNode]):
         eta_d: float = 1.0,
         frequency: float = 80e6,
         tau_0: float = 0.0,
-        init_fidelity: float = 0.99,
+        init_fidelity: float | None = 0.99,
     ):
         """
         Constructor.
