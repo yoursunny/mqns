@@ -29,7 +29,7 @@ class ErrorModelDictLength(TypedDict):
 
 def _apply_input_dict(
     error: ErrorModel,
-    d: ErrorModelDictPSurvival | ErrorModelDictPError | ErrorModelDictTime | ErrorModelDictLength,
+    d: dict[Never, Never] | ErrorModelDictPSurvival | ErrorModelDictPError | ErrorModelDictTime | ErrorModelDictLength,
     dflt_t: float,
 ):
     if (p_survival := cast(ErrorModelDictPSurvival, d).get("p_survival")) is not None:
@@ -73,6 +73,7 @@ def _parse_error_str(input: str, dflt_t: float) -> ErrorModel:
 
 type ErrorModelInput[D: ErrorModelDictTime | ErrorModelDictLength] = (
     ErrorModel
+    | tuple[ErrorModel, dict[Never, Never] | ErrorModelDictPSurvival | ErrorModelDictPError | D]
     | tuple[ErrorModel | ErrorModelConstructor, ErrorModelDictPSurvival | ErrorModelDictPError | D]
     | ErrorModelDictPSurvival
     | ErrorModelDictPError

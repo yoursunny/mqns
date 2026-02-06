@@ -15,24 +15,26 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import override
+
 from mqns.models.delay.delay import DelayModel
 
 
 class ConstantDelayModel(DelayModel):
-    def __init__(self, delay: float = 0, name: str | None = None) -> None:
-        """A constant delay model
+    """
+    Constant delay.
+    """
+
+    def __init__(self, delay=0.0, name="constant") -> None:
+        """
+        Constructor.
 
         Args:
-            name (str): the name of this delay model
-            delay (float): the time delay [s]
-
+            delay: fixed delay in seconds.
         """
         super().__init__(name)
         self._delay = delay
 
+    @override
     def calculate(self) -> float:
-        """Return:
-        the time delay [s]
-
-        """
         return self._delay

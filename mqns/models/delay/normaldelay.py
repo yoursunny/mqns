@@ -16,23 +16,29 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import override
+
 from mqns.models.delay.delay import DelayModel
 from mqns.utils import rng
 
 
 class NormalDelayModel(DelayModel):
-    def __init__(self, mean_delay: float = 0, std: float = 0, name: str | None = None) -> None:
-        """A random delay from normal distribution X~N(mean_delay, std^2)
+    """
+    Random delay from normal distribution ``X~N(mean_delay, std^2)``.
+    """
+
+    def __init__(self, mean=0.0, std=0.0, name="normal") -> None:
+        """
+        Constructor.
 
         Args:
-            name (str): the name of this delay model
-            mean_delay (float): the mean of the time delay [s]
-            std (float): the standard deviation [s]
-
+            mean: mean delay in seconds.
+            std: standard deviation in seconds.
         """
         super().__init__(name)
-        self._mean_delay = mean_delay
+        self._mean = mean
         self._std = std
 
+    @override
     def calculate(self) -> float:
-        return rng.normal(loc=self._mean_delay, scale=self._std)
+        return rng.normal(loc=self._mean, scale=self._std)

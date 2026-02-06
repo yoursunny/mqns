@@ -15,24 +15,30 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import override
+
 from mqns.models.delay.delay import DelayModel
 from mqns.utils import rng
 
 
 class UniformDelayModel(DelayModel):
-    def __init__(self, min_delay: float = 0, max_delay: float = 0, name: str | None = None) -> None:
-        """A random delay from distribution X~U(min, max)
+    """
+    Random delay from uniform distribution ``X~U(min, max)``.
+    """
+
+    def __init__(self, min=0.0, max=0.0, name="uniform") -> None:
+        """
+        Constructor.
 
         Args:
-            name (str): the name of this delay model
-            min_delay (float): the minimum time delay [s]
-            max_delay (float): the maximum time delay [s]
-
+            min: minimum delay in seconds.
+            max: maximum delay in seconds.
         """
         super().__init__(name)
-        assert max_delay >= min_delay
-        self._min_delay = min_delay
-        self._max_delay = max_delay
+        assert max >= min
+        self._min = min
+        self._max = max
 
+    @override
     def calculate(self) -> float:
-        return rng.uniform(self._min_delay, self._max_delay)
+        return rng.uniform(self._min, self._max)

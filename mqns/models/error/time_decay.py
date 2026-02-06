@@ -18,11 +18,14 @@ Args:
 """
 
 
-def time_decay_nop(target: "QuantumModel", t: Time) -> None:
-    """
-    TimeDecayFunc that does nothing.
-    """
+def _time_decay_nop(target: "QuantumModel", t: Time) -> None:
     _ = target, t
+
+
+time_decay_nop: TimeDecayFunc = _time_decay_nop
+"""
+TimeDecayFunc that does nothing.
+"""
 
 
 def make_time_decay_func(
