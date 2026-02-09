@@ -21,30 +21,29 @@ from examples_common.topo_linear import CTRL_DELAY, EPR_TYPE_MAP, LINK_ARCH_MAP,
 log.set_default_level("CRITICAL")
 
 
-class ArgsBase(Tap):
+class Args(Tap):
     workers: int = 1  # number of workers for parallel execution
     runs: int = 100  # number of trials per parameter set
+    sim_duration: float = 5.0  # simulation duration in seconds
+    L: tuple[float, float] = (32, 18)  # qchannel lengths (km)
+    t_cohere: list[float] = [0.1]  # memory coherence time (s)
+    t_wait: list[float] = [0.0025, 0.005, 0.01, 0.02, 1000]  # wait-time cutoff values (s)
+    epr_type: EprTypeLiteral  # network-wide EPR type
+    link_arch: LinkArchLiteral  # link architecture
     link_arch_sim: bool = False  # determine fidelity with LinkArch mini simulation
     fiber_error: str = "DEPOLAR:0.01"  # fiber error model with decoherence rate
     csv: str = ""  # save results as CSV file
     plt: str = ""  # save plot as image file
 
-
-class Args(ArgsBase):
-    epr_type: EprTypeLiteral
-    link_arch: LinkArchLiteral
-
     @override
     def configure(self) -> None:
         super().configure()
-
         self.add_argument("--epr_type", type=str, default="W", choices=EPR_TYPE_MAP.keys())
         self.add_argument("--link_arch", type=str, default="DIM-BK-SeQUeNCe", choices=LINK_ARCH_MAP.keys())
 
 
 SIMULATOR_ACCURACY = 1000000
 SEED_BASE = 100
-sim_duration = 5.0
 
 
 def run_simulation(seed: int, args: Args, t_cohere: float, t_wait: float):
@@ -54,7 +53,7 @@ def run_simulation(seed: int, args: Args, t_cohere: float, t_wait: float):
         epr_type=args.epr_type,
         nodes=["S", "R", "D"],
         t_cohere=t_cohere,
-        channel_length=[32, 18],
+        channel_length=args.L,
         fiber_error=args.fiber_error,
         link_arch=args.link_arch,
         init_fidelity=None if args.link_arch_sim else 0.99,
@@ -68,11 +67,11 @@ def run_simulation(seed: int, args: Args, t_cohere: float, t_wait: float):
     waitR = CutoffSchemeWaitTime.of(fwR)
     waitR.cnt.enable_collect_all()
 
-    s = Simulator(0, sim_duration + CTRL_DELAY, accuracy=SIMULATOR_ACCURACY, install_to=(log, net))
+    s = Simulator(0, args.sim_duration + CTRL_DELAY, accuracy=SIMULATOR_ACCURACY, install_to=(log, net))
     s.run()
 
-    rate = fwS.cnt.n_consumed / sim_duration
-    discard = fwR.cnt.n_cutoff[0] / sim_duration
+    rate = fwS.cnt.n_consumed / args.sim_duration
+    discard = fwR.cnt.n_cutoff[0] / args.sim_duration
     assert fwS.cnt.consumed_fidelity_values is not None
     assert waitR.cnt.wait_values is not None
     return [rate], [discard], fwS.cnt.consumed_fidelity_values, waitR.cnt.wait_values
@@ -144,7 +143,8 @@ def plot(rows: list[tuple[Stats, Histograms]], *, save_plt: str):
     fig = plt.figure(figsize=(unit_width * 4, unit_height * len(rows)))
     fig.tight_layout()
 
-    subfigs = cast(SubFigure1D, fig.subfigures(nrows=len(rows), ncols=1, hspace=0.1))
+    subfigs = fig.subfigures(nrows=len(rows), ncols=1, hspace=0.1)
+    subfigs = cast(SubFigure1D, subfigs if len(rows) > 1 else [subfigs])
     last_axs: Axes1D = []
     for subfig, (stats, histograms) in zip(subfigs, rows, strict=True):
         subfig.suptitle(
@@ -169,16 +169,12 @@ def plot(rows: list[tuple[Stats, Histograms]], *, save_plt: str):
     plt_save(save_plt)
 
 
-t_cohere_values = [0.1]
-t_wait_values = [0.0025, 0.005, 0.01, 0.02, 1000]
-
-
 if __name__ == "__main__":
     freeze_support()
     args = Args().parse_args()
 
     with Pool(processes=args.workers) as pool:
-        rows = pool.starmap(run_row, itertools.product([args], t_cohere_values, t_wait_values))
+        rows = pool.starmap(run_row, itertools.product([args], args.t_cohere, args.t_wait))
 
     if args.csv:
         df = pd.DataFrame([s for s, _ in rows])

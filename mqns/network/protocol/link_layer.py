@@ -150,8 +150,6 @@ class LinkLayer(Application[QNode]):
         self._application_install(node, QNode)
         self.memory = self.node.memory
         """Quantum memory of the node."""
-        self.epr_type = self.node.network.epr_type
-        """Network-wide entanglement type."""
 
     def handle_sync_phase(self, event: TimingPhaseEvent):
         """
@@ -213,15 +211,20 @@ class LinkLayer(Application[QNode]):
             eta_d=self.eta_d,
             reset_time=self.reset_time,
             tau_0=self.tau_0,
-            epr_type=self.epr_type,
+            epr_type=self.node.network.epr_type,
             init_fidelity=self.init_fidelity,
             t0=self.simulator.tc,
             store_decays=(self.memory.time_decay, neighbor.memory.time_decay),
             bsa_error=None,
         )
 
+        epr_tpl, t_notify_a, t_notify_b = qchannel.link_arch.make_epr(
+            1, self.simulator.ts, key=None, src=self.node, dst=neighbor
+        )
         log.debug(
-            f"{self.node}: add qchannel {qchannel} with {neighbor} on path {path_id}, link arch {qchannel.link_arch.name}"
+            f"{self.node}: add qchannel {qchannel} with {neighbor} on path {path_id}, "
+            f"link arch {qchannel.link_arch.name}, "
+            f"EPR template {epr_tpl} t_notify_a={t_notify_a} t_notify_b={t_notify_b}"
         )
 
         if self.node.timing.is_async():

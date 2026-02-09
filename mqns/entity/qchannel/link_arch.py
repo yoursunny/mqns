@@ -13,7 +13,7 @@ from mqns.simulator import Time
 type MakeEprFunc = Callable[[EntanglementInitKwargs], Entanglement]
 
 
-class QchannelParameters(Protocol):
+class ChannelParameters(Protocol):
     """QuantumChannel parameters related to LinkArch."""
 
     length: float
@@ -36,7 +36,7 @@ class QchannelParameters(Protocol):
 
 
 class LinkArchParameters(TypedDict):
-    ch: QchannelParameters
+    ch: ChannelParameters
     """QuantumChannel to gather parameters from."""
     eta_s: float
     """Source efficiency between 0 and 1."""
@@ -169,12 +169,10 @@ class LinkArchBase(ABC, LinkArch):
             tau_0=kwargs["tau_0"],
         )
 
-        epr_type = kwargs["epr_type"]
-        init_fidelity = kwargs.get("init_fidelity")
-
-        if init_fidelity is None:
+        if (init_fidelity := kwargs.get("init_fidelity")) is None:
             self._make_epr: MakeEprFunc = self._prepare_make_epr(kwargs, ch, tau_l)
         else:
+            epr_type = kwargs["epr_type"]
             assert 0 <= init_fidelity <= 1
 
             def _make_epr_with_init_fidelity(a: EntanglementInitKwargs) -> Entanglement:
@@ -203,7 +201,7 @@ class LinkArchBase(ABC, LinkArch):
     def delays(self, k: int) -> tuple[float, float, float]:
         return (k - 1) * self.attempt_interval, self.d_notify_a, self.d_notify_b
 
-    def _prepare_make_epr(self, d: LinkArchParameters, ch: QchannelParameters, tau_l: float) -> MakeEprFunc:
+    def _prepare_make_epr(self, d: LinkArchParameters, ch: ChannelParameters, tau_l: float) -> MakeEprFunc:
         accuracy = d.get("t0", Time.SENTINEL).accuracy
         t0 = Time.from_sec(1, accuracy=accuracy)
         epr_type = d["epr_type"]

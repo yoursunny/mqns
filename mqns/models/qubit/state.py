@@ -77,7 +77,7 @@ class QState:
 
         # Calculate probability with Born rule
         full_m0 = basis.m0.lift(idx, self.num, check_unitary=False)
-        prob_0 = np.real(np.trace(full_m0.u_dagger @ full_m0.u @ self.rho))
+        prob_0 = np.real(np.trace(full_m0.u @ self.rho))
         prob_0 = np.clip(prob_0, 0.0, 1.0)  # avoid out-of-range due to floating-point calculation
 
         # Assign outcome

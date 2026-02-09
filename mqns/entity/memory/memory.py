@@ -108,9 +108,7 @@ class QuantumMemory(Entity):
         """Memory dephasing time."""
 
         self.time_decay = make_time_decay_func(t_cohere=self.decoherence_delay)
-        """
-        Time based decay function constructed from store error model.
-        """
+        """Time based decay function constructed from store error model."""
 
     @override
     def handle(self, event: Event) -> None:

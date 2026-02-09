@@ -110,7 +110,7 @@ class NextHopNotConnectionException(Exception):
 
 def calc_transmission_prob(length: float, alpha: float) -> float:
     """
-    Compute fiber transmission probability.
+    Compute fiber transmission probability (Beer-Lambert Law).
 
     Args:
         length: fiber length in km.
