@@ -28,8 +28,8 @@ class Args(Tap):
     L: tuple[float, float] = (32, 18)  # qchannel lengths (km)
     t_cohere: list[float] = [0.1]  # memory coherence time (s)
     t_wait: list[float] = [0.0025, 0.005, 0.01, 0.02, 1000]  # wait-time cutoff values (s)
-    epr_type: EprTypeLiteral  # network-wide EPR type
-    link_arch: LinkArchLiteral  # link architecture
+    epr_type: EprTypeLiteral = "W"  # network-wide EPR type
+    link_arch: LinkArchLiteral = "DIM-BK-SeQUeNCe"  # link architecture
     link_arch_sim: bool = False  # determine fidelity with LinkArch mini simulation
     fiber_error: str = "DEPOLAR:0.01"  # fiber error model with decoherence rate
     csv: str = ""  # save results as CSV file
@@ -38,8 +38,8 @@ class Args(Tap):
     @override
     def configure(self) -> None:
         super().configure()
-        self.add_argument("--epr_type", type=str, default="W", choices=EPR_TYPE_MAP.keys())
-        self.add_argument("--link_arch", type=str, default="DIM-BK-SeQUeNCe", choices=LINK_ARCH_MAP.keys())
+        self.add_argument("--epr_type", type=str, choices=EPR_TYPE_MAP.keys())
+        self.add_argument("--link_arch", type=str, choices=LINK_ARCH_MAP.keys())
 
 
 SIMULATOR_ACCURACY = 1000000
