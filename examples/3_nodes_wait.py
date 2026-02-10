@@ -4,6 +4,7 @@ It gathers statistics of the end-to-end rate and fidelity.
 """
 
 import itertools
+from collections.abc import Sequence
 from multiprocessing import Pool, freeze_support
 from typing import Any, TypedDict, cast, override
 
@@ -90,16 +91,21 @@ class Stats(TypedDict):
     wait_std: float
 
 
-class Histograms(TypedDict):
+FMIN_THRESHOLDS = np.linspace(50, 100)
+
+
+class Details(TypedDict):
     t_cohere: float
     t_wait: float
-    rate: tuple[np.ndarray, np.ndarray]
-    discard: tuple[np.ndarray, np.ndarray]
-    fid: tuple[np.ndarray, np.ndarray]
-    wait: tuple[np.ndarray, np.ndarray]
+    rate_hist: tuple[np.ndarray, np.ndarray]  # rate histogram
+    discard_hist: tuple[np.ndarray, np.ndarray]  # discard histogram
+    fid_hist: tuple[np.ndarray, np.ndarray]  # fidelity histogram
+    wait_hist: tuple[np.ndarray, np.ndarray]  # wait-time histogram
+    fid_min: float  # minimum fidelity
+    fmin_rate: Sequence[float]  # FMIN_THRESHOLDS - rate curve
 
 
-def run_row(args: Args, t_cohere: float, t_wait: float) -> tuple[Stats, Histograms]:
+def run_row(args: Args, t_cohere: float, t_wait: float) -> tuple[Stats, Details]:
     columns: list[list[float]] = [[] for _ in range(4)]
     for i in range(args.runs):
         print(f"T_cohere={t_cohere:.4f}, T_wait={t_wait:.4f}, run {i + 1}")
@@ -110,6 +116,9 @@ def run_row(args: Args, t_cohere: float, t_wait: float) -> tuple[Stats, Histogra
     rate, discard, fid, wait = columns
     fid = np.multiply(fid, 1e2)
     wait = np.multiply(wait, 1e3 / SIMULATOR_ACCURACY)
+
+    total_time = args.runs * args.sim_duration
+    fmin_rates = [np.sum(fid >= t) / total_time for t in FMIN_THRESHOLDS]
 
     return Stats(
         t_cohere=t_cohere,
@@ -122,13 +131,15 @@ def run_row(args: Args, t_cohere: float, t_wait: float) -> tuple[Stats, Histogra
         fid_std=np.std(fid).item(),
         wait_mean=np.mean(wait).item(),
         wait_std=np.std(wait).item(),
-    ), Histograms(
+    ), Details(
         t_cohere=t_cohere,
         t_wait=t_wait,
-        rate=np.histogram(rate, bins=16),
-        discard=np.histogram(discard, bins=16),
-        fid=np.histogram(fid, bins=16),
-        wait=np.histogram(wait, bins=16),
+        rate_hist=np.histogram(rate, bins=16),
+        discard_hist=np.histogram(discard, bins=16),
+        fid_hist=np.histogram(fid, bins=16),
+        wait_hist=np.histogram(wait, bins=16),
+        fid_min=np.min(fid),
+        fmin_rate=fmin_rates,
     )
 
 
@@ -138,27 +149,39 @@ HISTOGRAM_INFO = [
 ]
 
 
-def plot(rows: list[tuple[Stats, Histograms]], *, save_plt: str):
+def plot(rows: list[tuple[Stats, Details]], *, save_plt: str):
     unit_width, unit_height = 2.5, 2.5
-    fig = plt.figure(figsize=(unit_width * 4, unit_height * len(rows)))
+    fig = plt.figure(figsize=(unit_width * 4, unit_height * (1 + len(rows))))
     fig.tight_layout()
 
-    subfigs = fig.subfigures(nrows=len(rows), ncols=1, hspace=0.1)
-    subfigs = cast(SubFigure1D, subfigs if len(rows) > 1 else [subfigs])
+    subfigs = cast(SubFigure1D, fig.subfigures(nrows=1 + len(rows), ncols=1, hspace=0.2))
+    for subfig in subfigs:
+        subfig.subplots_adjust(bottom=0.2)
+
+    subfig = subfigs[0]
+    subfig.suptitle("Rate vs. Minimum Fidelity Threshold")
+    ax = subfig.subplots(nrows=1, ncols=1)
+    for stats, details in rows:
+        fmin_rates = details["fmin_rate"]
+        ax.plot(FMIN_THRESHOLDS, fmin_rates, label=f"T_wait={stats['t_wait']:.4f}", linewidth=1.5)
+    ax.set_xbound(max(50, min(details["fid_min"] for _, details in rows)), 100)
+    ax.set_xlabel("Minimum Fidelity Threshold $F_{min}$ (%)")
+    ax.set_ylabel("Rate (Hz)")
+    ax.legend(loc="lower left")
+    ax.grid(True, linestyle="--", alpha=0.6)
+
     last_axs: Axes1D = []
-    for subfig, (stats, histograms) in zip(subfigs, rows, strict=True):
+    for subfig, (stats, details) in zip(subfigs[1:], rows, strict=True):
         subfig.suptitle(
             f"T_cohere={stats['t_cohere']:.4f} "
             f"T_wait={stats['t_wait']:.4f} "
             f"rate={stats['rate_mean']:.2f}\xb1{stats['rate_std']:.2f} "
-            f"discard={stats['discard_mean']:.2f}\xb1{stats['discard_std']:.2f} "
+            f"discard={stats['discard_mean']:.2f}\xb1{stats['discard_std']:.2f} ",
         )
-
         axs = cast(Axes1D, subfig.subplots(nrows=1, ncols=2))
-        subfig.subplots_adjust(wspace=0.2, bottom=0.2)
         last_axs = axs
         for ax, (field, _, label_loc) in zip(axs, HISTOGRAM_INFO, strict=True):
-            counts, bins = cast(tuple[np.ndarray, np.ndarray], histograms[field])
+            counts, bins = cast(tuple[np.ndarray, np.ndarray], details[f"{field}_hist"])
             ax.bar(bins[:-1], counts, width=np.diff(bins), color="coral", edgecolor="black", align="edge")
             ax.set_title(f" {stats[f'{field}_mean']:.3f}\xb1{stats[f'{field}_std']:.3f} ", y=0.8, loc=cast(Any, label_loc))
             ax.set_ylabel("counts")
