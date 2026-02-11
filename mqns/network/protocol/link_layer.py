@@ -75,19 +75,17 @@ class LinkLayer(Application[QNode]):
         self,
         *,
         attempt_rate: float = 1e6,
-        alpha_db_per_km: float = 0.2,
         eta_s: float = 1.0,
         eta_d: float = 1.0,
         frequency: float = 80e6,
         tau_0: float = 0.0,
-        init_fidelity: float = 0.99,
+        init_fidelity: float | None = 0.99,
     ):
         """
         Constructor.
 
         Args:
             attempt_rate: max entanglement attempts per second (default: 1e6) (currently ineffective).
-            alpha_db_per_km: fiber attenuation loss in dB/km (default: 0.2).
             eta_s: source efficiency (default: 1.0).
             eta_d: detector efficiency (default: 1.0).
             frequency: entanglement source frequency in Hz (default: 80e6).
@@ -99,8 +97,6 @@ class LinkLayer(Application[QNode]):
 
         self.attempt_interval = 1 / attempt_rate
         """Minimum interval spaced out between attempts (currently ineffective)."""
-        self.alpha_db_per_km = alpha_db_per_km
-        """Fiber attenuation loss in dB/km."""
         self.eta_s = eta_s
         """Source efficiency between 0 and 1."""
         self.eta_d = eta_d
@@ -154,8 +150,6 @@ class LinkLayer(Application[QNode]):
         self._application_install(node, QNode)
         self.memory = self.node.memory
         """Quantum memory of the node."""
-        self.epr_type = self.node.network.epr_type
-        """Network-wide entanglement type."""
 
     def handle_sync_phase(self, event: TimingPhaseEvent):
         """
@@ -212,19 +206,25 @@ class LinkLayer(Application[QNode]):
         # Nevertheless, we assume every LinkLayer instance has the same parameters,
         # so that the parameters saved into LinkArch are the same every time.
         qchannel.link_arch.set(
-            length=qchannel.length,
-            alpha=self.alpha_db_per_km,
+            ch=qchannel,
             eta_s=self.eta_s,
             eta_d=self.eta_d,
             reset_time=self.reset_time,
-            tau_l=qchannel.delay.calculate(),
             tau_0=self.tau_0,
-            epr_type=self.epr_type,
+            epr_type=self.node.network.epr_type,
             init_fidelity=self.init_fidelity,
+            t0=self.simulator.tc,
+            store_decays=(self.memory.time_decay, neighbor.memory.time_decay),
+            bsa_error=None,
         )
 
+        epr_tpl, t_notify_a, t_notify_b = qchannel.link_arch.make_epr(
+            1, self.simulator.ts, key=None, src=self.node, dst=neighbor
+        )
         log.debug(
-            f"{self.node}: add qchannel {qchannel} with {neighbor} on path {path_id}, link arch {qchannel.link_arch.name}"
+            f"{self.node}: add qchannel {qchannel} with {neighbor} on path {path_id}, "
+            f"link arch {qchannel.link_arch.name}, "
+            f"EPR template {epr_tpl} t_notify_a={t_notify_a} t_notify_b={t_notify_b}"
         )
 
         if self.node.timing.is_async():

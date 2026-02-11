@@ -53,6 +53,7 @@ class BaseChannel[N: Node](Entity):
         self.delay = parse_delay(kwargs.get("delay", 0 if self.length == 0 else self.length / default_light_speed[0]))
 
         self.drop_rate = kwargs.get("drop_rate", 0.0)
+        """Packet/photon loss probability. 0 means never, 1 means always."""
         assert 0.0 <= self.drop_rate <= 1.0
 
     @override
@@ -105,3 +106,28 @@ class BaseChannel[N: Node](Entity):
 
 class NextHopNotConnectionException(Exception):
     pass
+
+
+def calc_transmission_prob(length: float, alpha: float) -> float:
+    """
+    Compute fiber transmission probability (Beer-Lambert Law).
+
+    Args:
+        length: fiber length in km.
+        alpha: attenuation loss in dB/km.
+
+    Returns:
+        Probability of a single photon to propagate through the fiber without loss.
+    """
+    # In fiber optics, loss is measured in decibel per kilometer.
+    # The decibel is a logarithmic unit used to describe a ratio.
+    # Loss (dB) = 10 * log10( Pin / Pout )
+    # If a fiber has a loss of 10 dB, it means only 10% of the light gets through.
+    # If it has 20 dB, it means only 1% gets through.
+    #
+    # In the formula below, ``-alpha * length`` gives the total loss (negative),
+    # ``/10`` removes the "deci" scaling, ``10**`` is the inverse of log10 that
+    # converts from the logarithmic dB scale to a linear probability.
+    assert length >= 0
+    assert alpha >= 0
+    return 10 ** (-alpha * length / 10)

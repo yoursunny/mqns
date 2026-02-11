@@ -55,12 +55,10 @@ class WernerStateEntanglement(Entanglement):
     @overload
     def __init__(self, *, fidelity: float = 1.0, **kwargs: Unpack[EntanglementInitKwargs]):
         """Construct with fidelity."""
-        pass
 
     @overload
     def __init__(self, *, w: float, **kwargs: Unpack[EntanglementInitKwargs]):
         """Construct with Werner parameter."""
-        pass
 
     def __init__(self, *, fidelity: float | None = None, w: float = _w_1, **kwargs: Unpack[EntanglementInitKwargs]):
         super().__init__(**kwargs)

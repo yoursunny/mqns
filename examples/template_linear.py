@@ -4,7 +4,7 @@ TEMPLATE: Custom simulation script for MQNS linear-topology experiments.
 Copy this file and edit the "USER CONFIG" sections.
 
 This template allows to:
-- build a linear topology S-R*-D via build_topology(...)
+- build a linear topology S-R*-D via examples_common.topo_linear.build_network(...)
 - Install a single default path S-D
 - extract stats from ProactiveForwarder counters (throughput, fidelity, etc.)
 - optionally compute decoherence/expired-memory metrics via gather_etg_decoh(...)
@@ -21,14 +21,13 @@ import pandas as pd
 from tap import Tap
 
 from mqns.entity.qchannel import LinkArchDimBk, LinkArchSim, LinkArchSr
-from mqns.network.network import QuantumNetwork
 from mqns.network.proactive import ProactiveForwarder
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
 from examples_common.plotting import plt, plt_save
 from examples_common.stats import gather_etg_decoh
-from examples_common.topo_linear import CTRL_DELAY, build_topology
+from examples_common.topo_linear import CTRL_DELAY, build_network
 
 _ = (LinkArchDimBk, LinkArchSim, LinkArchSr)
 
@@ -60,7 +59,7 @@ DEFAULT_RUNS = 10  #  Can be changed via --runs flag
 # USER CONFIG: Topology (linear path)
 # ──────────────────────────────────────────────────────────────────────────────
 # nodes:
-#   - int: build_topology will auto-name ["S", "R1", ..., "D"]
+#   - int: build_network will auto-name ["S", "R1", ..., "D"]
 #   - list[str]: explicit names (must include "S" and "D")
 NODES: int | list[str] = 4
 
@@ -74,7 +73,7 @@ CHANNEL_LENGTH: float | list[float] = [32.0, 18.0, 10.0]
 #   - list[int]: per-link capacity (left == right for each link)
 #   - list[tuple[int,int]]: per-link (left,right) endpoint allocation
 #
-# build_topology interprets (left,right) as:
+# build_network interprets (left,right) as:
 #   - capacity1 = allocation at node i
 #   - capacity2 = allocation at node i+1
 CHANNEL_CAPACITY: int | list[int] | list[tuple[int, int]] = 3
@@ -89,9 +88,8 @@ MEM_CAPACITY: int | list[int] | None = None
 T_COHERE = 0.01
 
 # link_arch:
-#   - None uses build_topology default LinkArchDimBkSeq()
-#   - or pass a LinkArch instance (broadcast to all links)
-#   - or pass list[LinkArch] (per-link)
+#   - pass a LinkArch instance (broadcast to all links)
+#   - pass list[LinkArch] (per-link)
 #
 # If you want custom architectures, uncomment and edit:
 # LINK_ARCH = [LinkArchSr(), LinkArchSim(), ...]
@@ -99,7 +97,7 @@ LINK_ARCH = [LinkArchDimBk(), LinkArchDimBk(), LinkArchDimBk()]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# USER CONFIG: Physics / Link-Layer parameters (passed into build_topology)
+# USER CONFIG: Physics / Link-Layer parameters (passed into build_network)
 # ──────────────────────────────────────────────────────────────────────────────
 ENTG_ATTEMPT_RATE = 50e6  # attempts/sec
 INIT_FIDELITY = 0.99  # fidelity of generated elementary entanglement
@@ -110,7 +108,7 @@ FREQUENCY = 1e6  # entanglement source / memory frequency
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# USER CONFIG: Swapping / routing (passed into build_topology)
+# USER CONFIG: Swapping / routing (passed into build_network)
 # ──────────────────────────────────────────────────────────────────────────────
 # swap:
 #   - preset string:
@@ -164,24 +162,22 @@ def run_simulation(
     """
     rng.reseed(seed)
 
-    topo = build_topology(
+    net = build_network(
         nodes=nodes,
         mem_capacity=MEM_CAPACITY,
         t_cohere=t_cohere,
         channel_length=channel_length,
         channel_capacity=channel_capacity,
+        fiber_alpha=FIBER_ALPHA,
         link_arch=LINK_ARCH,
         entg_attempt_rate=ENTG_ATTEMPT_RATE,
         init_fidelity=INIT_FIDELITY,
-        fiber_alpha=FIBER_ALPHA,
         eta_d=ETA_D,
         eta_s=ETA_S,
         frequency=FREQUENCY,
         p_swap=P_SWAP,
         swap=swap,
     )
-
-    net = QuantumNetwork(topo)
 
     # Run simulator for SIM_DURATION + time to install paths.
     s = Simulator(0, SIM_DURATION + CTRL_DELAY, accuracy=SIM_ACCURACY, install_to=(log, net))

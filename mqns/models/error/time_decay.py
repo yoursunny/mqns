@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from mqns.models.error.input import ErrorModeConstructor, ErrorModelInput, parse_error
+from mqns.models.error.input import ErrorModelConstructor, ErrorModelInputTime, parse_error
 from mqns.models.error.pauli import DephaseErrorModel
 from mqns.simulator import Time
 
@@ -18,18 +18,21 @@ Args:
 """
 
 
-def time_decay_nop(target: "QuantumModel", t: Time) -> None:
-    """
-    TimeDecayFunc that does nothing.
-    """
+def _time_decay_nop(target: "QuantumModel", t: Time) -> None:
     _ = target, t
 
 
+time_decay_nop: TimeDecayFunc = _time_decay_nop
+"""
+TimeDecayFunc that does nothing.
+"""
+
+
 def make_time_decay_func(
-    input: ErrorModelInput = None,
+    input: ErrorModelInputTime = None,
     *,
     t_cohere: Time,
-    dflt: ErrorModeConstructor = DephaseErrorModel,
+    dflt: ErrorModelConstructor = DephaseErrorModel,
 ) -> TimeDecayFunc:
     """
     Build TimeDecayFunc from coherence time.
@@ -43,7 +46,7 @@ def make_time_decay_func(
     Returns:
         TimeDecayFunc that accepts ``Time`` with same accuracy as ``t_cohere``.
     """
-    error = dflt() if input is None else parse_error(input, dflt)
+    error = dflt() if input is None else parse_error(input, dflt, 0)
     error.set(t=0, rate=1 / t_cohere.time_slot)
 
     def apply_error_on(target: "QuantumModel", t: Time):

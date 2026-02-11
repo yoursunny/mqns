@@ -10,6 +10,8 @@ from mqns.utils import rng
 class CoherentErrorModel(ErrorModel):
     """
     Coherent error model: distance-dependent unitary rotation.
+
+    Note: cannot construct this type with ``parse_error`` utility.
     """
 
     def __init__(self, name="dissipation", *, length=0.0, standard_lkm=50.0):
