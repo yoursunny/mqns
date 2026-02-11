@@ -12,6 +12,7 @@ from mqns.models.core.state import (
     qubit_state_equal,
 )
 from mqns.models.error import (
+    BitFlipErrorModel,
     CoherentErrorModel,
     DephaseErrorModel,
     DepolarErrorModel,
@@ -88,8 +89,9 @@ def test_parse_error():
 
     # str
     for prefix, typ in [
-        ("DEPOLAR", DepolarErrorModel),
+        ("BITFLIP", BitFlipErrorModel),
         ("DEPHASE", DephaseErrorModel),
+        ("DEPOLAR", DepolarErrorModel),
         ("DISSIPATION", DissipationErrorModel),
     ]:
         # str with rate
@@ -103,10 +105,12 @@ def test_parse_error():
         assert isinstance(error, typ)
         assert error.p_survival == pytest.approx(P_SURVIVAL)
 
-    with pytest.raises(ValueError, match="unrecognized ErrorModelInput string"):
+    with pytest.raises(ValueError, match="unrecognized ErrorModelInput string.*:float"):
         parse_error("UNKNOWN:0", PerfectErrorModel, 0)
-    with pytest.raises(ValueError, match="unrecognized ErrorModelInput string"):
+    with pytest.raises(ValueError, match="unrecognized ErrorModelInput string.*:rate"):
         parse_error("DEPOLAR:x", PerfectErrorModel, 0)
+    with pytest.raises(ValueError, match="unrecognized ErrorModelInput string.*:p_error"):
+        parse_error("DEPOLAR:x", PerfectErrorModel, -1)
 
 
 @pytest.mark.parametrize(

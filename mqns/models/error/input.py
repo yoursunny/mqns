@@ -4,7 +4,7 @@ from typing import Never, NotRequired, TypedDict, cast
 
 from mqns.models.error.dissipation import DissipationErrorModel
 from mqns.models.error.error import ErrorModel, PerfectErrorModel
-from mqns.models.error.pauli import DephaseErrorModel, DepolarErrorModel
+from mqns.models.error.pauli import BitFlipErrorModel, DephaseErrorModel, DepolarErrorModel
 
 type ErrorModelConstructor = Callable[[], ErrorModel]
 
@@ -45,24 +45,30 @@ def _apply_input_dict(
     return error
 
 
+_STR_ERROR_TYPES: dict[str, ErrorModelConstructor] = {
+    "BITFLIP": BitFlipErrorModel,
+    "DEPHASE": DephaseErrorModel,
+    "DEPOLAR": DepolarErrorModel,
+    "DISSIPATION": DissipationErrorModel,
+}
+
+_STR_PARSE_ERROR = f"unrecognized ErrorModelInput string: PERFECT | {'{'}{'|'.join(_STR_ERROR_TYPES)}{'}'}"
+
+
 def _parse_error_str(input: str, dflt_t: float) -> ErrorModel:
     tokens = input.split(":")
-    match tokens[0]:
-        case "PERFECT":
-            return PerfectErrorModel()
-        case "DEPOLAR":
-            m = DepolarErrorModel()
-        case "DEPHASE":
-            m = DephaseErrorModel()
-        case "DISSIPATION":
-            m = DissipationErrorModel()
-        case _:
-            raise ValueError("unrecognized ErrorModelInput string")
+    if tokens[0] == "PERFECT":
+        return PerfectErrorModel()
+
+    try:
+        m = _STR_ERROR_TYPES[tokens[0]]()
+    except KeyError:
+        raise ValueError(f"{_STR_PARSE_ERROR}:float")
 
     try:
         value = float(tokens[1])
     except (ValueError, IndexError):
-        raise ValueError("unrecognized ErrorModelInput string")
+        raise ValueError(f"{_STR_PARSE_ERROR}:{'p_error' if dflt_t < 0 else 'rate'}(float)")
 
     if dflt_t < 0:
         m.set(p_error=value)
@@ -120,10 +126,10 @@ def parse_error(
     The string could be one of:
 
     * ``"PERFECT"``: ``PerfectErrorModel``.
-    * ``DEPOLAR:rate``, ``DEPHASE:rate``, ``DISSIPATION:rate``: construct with specified rate,
-      available when parsing memory / qchannel errors with time/length based decay (``dflt_t>=0``).
-    * ``DEPOLAR:p_error``, ``DEPHASE:p_error``, ``DISSIPATION:p_error``: construct with specified error probability,
-      available when parsing BSA / operate / measure errors (``dflt_t<0``).
+    * ``DEPOLAR:rate``, ``DEPHASE:rate``, ``BITFLIP:rate``, ``DISSIPATION:rate``: construct with specified rate,
+      available for memory / qchannel errors with time/length based decay (``dflt_t>=0``).
+    * ``DEPOLAR:p_error``, ``DEPHASE:p_error``, ``BITFLIP:p_error``, ``DISSIPATION:p_error``: construct with
+      specified error probability, available for BSA / operate / measure errors (``dflt_t<0``).
     """
     if input is None:
         return PerfectErrorModel()
