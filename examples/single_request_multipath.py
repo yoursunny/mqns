@@ -1,8 +1,6 @@
-from mqns.network.network import QuantumNetwork
-from mqns.network.proactive import LinkLayer, ProactiveForwarder, ProactiveRoutingController, RoutingPathMulti
+from mqns.network.builder import CTRL_DELAY, NetworkBuilder
+from mqns.network.proactive import ProactiveForwarder
 from mqns.network.route import YenRouteAlgorithm
-from mqns.network.topology import Topology
-from mqns.network.topology.customtopo import CustomTopology, TopoQChannel
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
@@ -11,24 +9,9 @@ from examples_common.stats import gather_etg_decoh
 log.set_default_level("DEBUG")
 
 SEED_BASE = 100
-CTRL_DELAY = 5e-6
 
 # parameters
 sim_duration = 3
-
-fiber_alpha = 0.2
-eta_d = 0.95
-eta_s = 0.95
-frequency = 1e6  # memory frequency
-entg_attempt_rate = 50e6  # From fiber max frequency (50 MHz) AND detectors count rate (60 MHz)
-
-init_fidelity = 0.99
-p_swap = 0.5
-t_cohere = 0.01  # sec
-
-node_capacity = 4
-
-swapping_policy = "r2l"
 
 # Quantum channel lengths
 ch_S_R1 = 10
@@ -40,80 +23,30 @@ ch_S_R5 = 15
 ch_R5_R3 = 15
 
 
-def build_topology() -> Topology:
-    """
-    Defines the topology with globally declared simulation parameters.
-    """
-
-    def qch(n1: str, cap1: int, n2: str, cap2: int, length: float):
-        return TopoQChannel(
-            node1=n1, node2=n2, capacity1=cap1, capacity2=cap2, parameters={"length": length, "alpha": fiber_alpha}
-        )
-
-    return CustomTopology(
-        {
-            "qnodes": [
-                {"name": "S"},
-                {"name": "R1"},
-                {"name": "R2"},
-                {"name": "R3"},
-                {"name": "R4"},
-                {"name": "R5"},
-                {"name": "D"},
-            ],
-            "qchannels": [
-                qch("S", 2, "R1", 2, ch_S_R1),
-                qch("R1", 2, "R2", 2, ch_R1_R2),
-                qch("R2", 2, "R3", 1, ch_R2_R3),
-                qch("R3", 2, "R4", 2, ch_R3_R4),
-                qch("R4", 2, "D", 4, ch_R4_D),
-                qch("S", 2, "R5", 2, ch_S_R5),
-                qch("R5", 2, "R3", 1, ch_R5_R3),
-            ],
-            "cchannels": [
-                {"node1": "S", "node2": "R1", "parameters": {"length": ch_S_R1}},
-                {"node1": "R1", "node2": "R2", "parameters": {"length": ch_R1_R2}},
-                {"node1": "R2", "node2": "R3", "parameters": {"length": ch_R2_R3}},
-                {"node1": "R3", "node2": "R4", "parameters": {"length": ch_R3_R4}},
-                {"node1": "R4", "node2": "D", "parameters": {"length": ch_R4_D}},
-                {"node1": "S", "node2": "R5", "parameters": {"length": ch_S_R5}},
-                {"node1": "R5", "node2": "R3", "parameters": {"length": ch_R5_R3}},
-                {"node1": "ctrl", "node2": "S", "parameters": {"delay": CTRL_DELAY}},
-                {"node1": "ctrl", "node2": "R1", "parameters": {"delay": CTRL_DELAY}},
-                {"node1": "ctrl", "node2": "R2", "parameters": {"delay": CTRL_DELAY}},
-                {"node1": "ctrl", "node2": "R3", "parameters": {"delay": CTRL_DELAY}},
-                {"node1": "ctrl", "node2": "R4", "parameters": {"delay": CTRL_DELAY}},
-                {"node1": "ctrl", "node2": "R5", "parameters": {"delay": CTRL_DELAY}},
-                {"node1": "ctrl", "node2": "D", "parameters": {"delay": CTRL_DELAY}},
-            ],
-            "controller": {
-                "name": "ctrl",
-                "apps": [ProactiveRoutingController(RoutingPathMulti("S", "D", swap=swapping_policy))],
-            },
-        },
-        nodes_apps=[
-            LinkLayer(
-                attempt_rate=entg_attempt_rate,
-                init_fidelity=init_fidelity,
-                eta_d=eta_d,
-                eta_s=eta_s,
-                frequency=frequency,
-            ),
-            ProactiveForwarder(ps=p_swap),
-        ],
-        memory_args={
-            "t_cohere": t_cohere,
-            "capacity": node_capacity,
-        },
-    )
-
-
 rng.reseed(SEED_BASE)
 
-topo = build_topology()
-net = QuantumNetwork(
-    topo,
-    route=YenRouteAlgorithm(),  # Yen's algo is set here!
+net = (
+    NetworkBuilder(
+        route=YenRouteAlgorithm(k_paths=3),
+    )
+    .topo(
+        mem_capacity=4,
+        channels=[
+            ("S-R1", ch_S_R1, 2),
+            ("R1-R2", ch_R1_R2, 2),
+            ("R2-R3", ch_R2_R3, (2, 1)),
+            ("R3-R4", ch_R3_R4, 2),
+            ("R4-D", ch_R4_D, (2, 4)),
+            ("S-R5", ch_S_R5, 2),
+            ("R5-R3", ch_R5_R3, (2, 1)),
+        ],
+        t_cohere=0.01,
+    )
+    .proactive_centralized()
+    .path(
+        swap="r2l",
+    )
+    .make_network()
 )
 
 s = Simulator(0, sim_duration + CTRL_DELAY, accuracy=1000000, install_to=(log, net))

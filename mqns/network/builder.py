@@ -161,14 +161,94 @@ class NetworkBuilder:
         self,
         *,
         mem_capacity: int | Mapping[str, int] | None = None,
-        channel_length: Sequence[tuple[str, float]],
-        channel_capacity: int | Sequence[int | tuple[int, int]] = 1,
+        channels: Sequence[tuple[str, float] | tuple[str, float, int | tuple[int, int]]],
+        channel_capacity: int = 1,
         fiber_alpha: float = 0.2,
         fiber_error: ErrorModelInputLength = "DEPOLAR:0.01",
         link_arch: LinkArchDef | Sequence[LinkArchDef] = LinkArchDimBkSeq,
         **kwargs: Unpack[TopoCommonArgs],
     ) -> Self:
-        raise NotImplementedError
+        """
+        Build a general topology.
+
+        Args:
+            mem_capacity: Number of memory qubits per node.
+                If specified as number, it is applied to all nodes.
+                If specified as dict, it maps from node name to node memory capacity.
+                If ``None`` or for unspecified nodes, it is derived from channels.
+            channels: List of channels.
+                First tuple item is channel end point delimited with hyphen (``-``).
+                Second tuple item is channel length in kilometer.
+                Third tuple item is channel capacity, defaults to ``channel_capacity``.
+            channel_capacity: Qubit allocation per qchannel, if not specified in ``channels``.
+                For each qchannel, an integer applies to both sides, a tuple applies to (left,right) sides.
+            fiber_alpha: Fiber loss in dB/km, determines success probability.
+            fiber_rate: Fiber decoherence rate in km^{-1}, determines qualify of entangled state.
+            link_arch: Link architecture per qchannel.
+                If specified as list, it must have same length as ``channel_length``.
+                If specified as instance/type/string, it is broadcast to all qchannels.
+        """
+        self._parse_topo_args(kwargs)
+
+        n_links = len(channels)
+        link_arch = _broadcast("link_arch", link_arch, n_links)
+        node_by_name: dict[str, TopoQNode | Literal[True]] = {}
+
+        def ensure_node(name: str, ch_cap: int):
+            node = node_by_name.get(name)
+            if node is True:  # node created with mem_capacity
+                return
+
+            if node is not None:  # need to increase mem_capacity
+                assert "memory" in node
+                assert "capacity" in node["memory"]
+                node["memory"]["capacity"] += ch_cap
+                return
+
+            # found existing node
+            if mem_capacity is None:
+                mem_cap, defined_mem_cap = ch_cap, False
+            elif isinstance(mem_capacity, int):
+                mem_cap, defined_mem_cap = mem_capacity, True
+            elif name in mem_capacity:
+                mem_cap, defined_mem_cap = mem_capacity[name], True
+            else:
+                mem_cap, defined_mem_cap = ch_cap, False
+
+            node = TopoQNode(
+                name=name,
+                memory={
+                    "t_cohere": self.t_cohere,
+                    "capacity": mem_cap,
+                },
+            )
+            self.qnodes.append(node)
+            node_by_name[name] = True if defined_mem_cap else node
+
+        for (endpoint, length, *opt_cap), la in zip(channels, link_arch, strict=True):
+            nodes = endpoint.split("-")
+            if len(nodes) != 2:
+                raise ValueError(f"invalid channel endpoints: {endpoint}")
+            node1, node2 = nodes
+            cap1, cap2 = _split_channel_capacity(opt_cap[0] if len(opt_cap) > 0 else channel_capacity)
+            ensure_node(node1, cap1)
+            ensure_node(node2, cap2)
+            self.qchannels.append(
+                {
+                    "node1": node1,
+                    "node2": node2,
+                    "capacity1": cap1,
+                    "capacity2": cap2,
+                    "parameters": {
+                        "length": length,
+                        "alpha": fiber_alpha,
+                        "transfer_error": fiber_error,
+                        "link_arch": _convert_link_arch(la),
+                    },
+                }
+            )
+
+        return self
 
     def topo_linear(
         self,
@@ -193,7 +273,7 @@ class NetworkBuilder:
                 If specified as list, it must have same length as ``nodes``.
                 If specified as number, it is broadcast to all nodes.
                 If ``None``, it is derived from ``channel_capacity``.
-            channel_length: Lengths of qchannels between adjacent nodes.
+            channel_length: Lengths of qchannels between adjacent nodes in kilometer.
                 If specified as list, it must have length as ``len(nodes)-1``.
                 If specified as number, all qchannels have uniform length.
             channel_capacity: Qubit allocation per qchannel.
