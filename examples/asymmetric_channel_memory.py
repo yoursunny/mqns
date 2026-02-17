@@ -1,3 +1,5 @@
+from tap import Tap
+
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
 from mqns.network.proactive import ProactiveForwarder
 from mqns.simulator import Simulator
@@ -7,34 +9,44 @@ from examples_common.stats import gather_etg_decoh
 
 log.set_default_level("DEBUG")
 
+
+class Args(Tap):
+    sim_duration: float = 3  # simulation duration in seconds
+
+
 SEED_BASE = 100
 
-# parameters
-sim_duration = 3
 
-rng.reseed(SEED_BASE)
+def run_simulation(seed: int, args: Args):
+    rng.reseed(seed)
 
-net = (
-    NetworkBuilder()
-    .topo_linear(
-        nodes=4,
-        channel_length=[32, 18, 10],
-        channel_capacity=[(4, 3), (1, 2), (2, 4)],
-        t_cohere=0.01,
+    net = (
+        NetworkBuilder()
+        .topo_linear(
+            nodes=4,
+            channel_length=[32, 18, 10],
+            channel_capacity=[(4, 3), (1, 2), (2, 4)],
+            t_cohere=0.01,
+        )
+        .proactive_centralized()
+        .path(
+            swap="swap_2_l2r",
+        )
+        .make_network()
     )
-    .proactive_centralized()
-    .path(
-        swap="swap_2_l2r",
-    )
-    .make_network()
-)
 
-s = Simulator(0, sim_duration + CTRL_DELAY, accuracy=1000000, install_to=(log, net))
-s.run()
+    s = Simulator(0, args.sim_duration + CTRL_DELAY, accuracy=1000000, install_to=(log, net))
+    s.run()
 
-#### get stats
-_, _, decoh_ratio = gather_etg_decoh(net)
-e2e_rate = net.get_node("S").get_app(ProactiveForwarder).cnt.n_consumed / sim_duration
+    #### get stats
+    _, _, decoh_ratio = gather_etg_decoh(net)
+    e2e_rate = net.get_node("S").get_app(ProactiveForwarder).cnt.n_consumed / args.sim_duration
+    return e2e_rate, decoh_ratio
 
-print(f"E2E etg rate: {e2e_rate}")
-print(f"Expired memories: {decoh_ratio}")
+
+if __name__ == "__main__":
+    args = Args().parse_args()
+
+    e2e_rate, decoh_ratio = run_simulation(SEED_BASE, args)
+    print(f"E2E etg rate: {e2e_rate}")
+    print(f"Expired memories: {decoh_ratio}")
