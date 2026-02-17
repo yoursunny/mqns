@@ -180,9 +180,7 @@ def run_simulation(
             p_swap=P_SWAP,
         )
         .proactive_centralized()
-        .path(
-            swap=swap,
-        )
+        .path("S-D", swap=swap)
         .make_network()
     )
 

@@ -63,6 +63,7 @@ def run_simulation(seed: int, args: Args, t_cohere: float, t_wait: float):
         )
         .proactive_centralized()
         .path(
+            "S-D",
             swap=[1, 0, 1],
             swap_cutoff=[0, t_wait, 0],
         )

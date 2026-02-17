@@ -37,9 +37,7 @@ def run_simulation(t_cohere: float, seed: int):
             init_fidelity=0.7,
         )
         .proactive_centralized()
-        .path(
-            swap="swap_1",
-        )
+        .path("S-D", swap="swap_1")
         .make_network()
     )
 

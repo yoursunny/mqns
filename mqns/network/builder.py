@@ -32,13 +32,25 @@ from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm, YenRouteA
 from mqns.network.topology import ClassicTopology, Topology
 from mqns.network.topology.customtopo import CustomTopology, Topo, TopoController, TopoQChannel, TopoQNode
 
+type NodePair = str | tuple[str, str]
+"""
+Two node names on a channel or routing path.
+This could be either a tuple of two node names, or a string delimited by hyphen (``-``).
+"""
+
 type EprTypeLiteral = Literal["W", "M"]
+"""
+String representation of commonly used entanglement models.
+"""
 EPR_TYPE_MAP: dict[EprTypeLiteral, type[Entanglement]] = {
     "W": WernerStateEntanglement,
     "M": MixedStateEntanglement,
 }
 
 type LinkArchLiteral = Literal["DIM-BK", "DIM-BK-SeQUeNCe", "DIM-dual", "SR", "SIM"]
+"""
+String representation of commonly used link architectures.
+"""
 LINK_ARCH_MAP: dict[LinkArchLiteral, type[LinkArch]] = {
     "DIM-BK": LinkArchDimBk,
     "DIM-BK-SeQUeNCe": LinkArchDimBkSeq,
@@ -102,6 +114,15 @@ def _broadcast[T](name: str, input: T | Sequence[T], n: int) -> Sequence[T]:
     return [cast(T, input)] * n
 
 
+def _split_node_pair(np: NodePair) -> tuple[str, str]:
+    if isinstance(np, str):
+        tokens = np.split("-")
+        if len(tokens) != 2:
+            raise ValueError(f"expect two node names in '{np}'")
+        return cast(tuple[str, str], tuple(tokens))
+    return np
+
+
 def _split_channel_capacity(item: int | tuple[int, int]) -> tuple[int, int]:
     return (item, item) if isinstance(item, int) else item
 
@@ -161,7 +182,7 @@ class NetworkBuilder:
         self,
         *,
         mem_capacity: int | Mapping[str, int] | None = None,
-        channels: Sequence[tuple[str, float] | tuple[str, float, int | tuple[int, int]]],
+        channels: Sequence[tuple[NodePair, float] | tuple[NodePair, float, int | tuple[int, int]]],
         channel_capacity: int = 1,
         fiber_alpha: float = 0.2,
         fiber_error: ErrorModelInputLength = "DEPOLAR:0.01",
@@ -177,8 +198,7 @@ class NetworkBuilder:
                 If specified as dict, it maps from node name to node memory capacity.
                 If ``None`` or for unspecified nodes, it is derived from channels.
             channels: List of channels.
-                First tuple item is channel end points delimited with hyphen (``-``);
-                nodes are automatically created from these end points.
+                First tuple item is channel end points; nodes are automatically created.
                 Second tuple item is channel length in kilometer.
                 Third tuple item is channel capacity, defaults to ``channel_capacity``;
                 for each qchannel, an integer applies to both sides, a tuple applies to (left,right) sides.
@@ -226,11 +246,8 @@ class NetworkBuilder:
             self.qnodes.append(node)
             node_by_name[name] = True if defined_mem_cap else node
 
-        for (endpoint, length, *opt_cap), la in zip(channels, link_arch, strict=True):
-            nodes = endpoint.split("-")
-            if len(nodes) != 2:
-                raise ValueError(f"invalid channel endpoints: {endpoint}")
-            node1, node2 = nodes
+        for (np, length, *opt_cap), la in zip(channels, link_arch, strict=True):
+            node1, node2 = _split_node_pair(np)
             cap1, cap2 = _split_channel_capacity(opt_cap[0] if len(opt_cap) > 0 else channel_capacity)
             ensure_node(node1, cap1)
             ensure_node(node2, cap2)
@@ -407,45 +424,31 @@ class NetworkBuilder:
             raise TypeError("must install applications first")
 
     @overload
-    def path(self, rp: RoutingPath, /) -> Self:
-        """
-        Add a routing path.
-
-        Args:
-            rp: Routing path instance.
-        """
+    def path(self, rp: RoutingPath, /) -> Self: ...
 
     @overload
-    def path(self, *, src="S", dst="D", **kwargs: Unpack[RoutingPathInitArgs]) -> Self:
-        """
-        Add a routing path.
-
-        Args:
-            src: Source node name.
-            dst: Destination node name.
-            swap: Predefined or explicitly specified swapping order.
-            swap_cutoff: Swap cutoff times.
-        """
+    def path(self, srcdst: NodePair, /, **kwargs: Unpack[RoutingPathInitArgs]) -> Self: ...
 
     def path(
         self,
-        rp: RoutingPath | None = None,
-        *,
-        src="S",
-        dst="D",
+        arg1: RoutingPath | NodePair,
+        /,
         **kwargs: Unpack[RoutingPathInitArgs],
     ) -> Self:
+        """
+        Add a routing path.
+        """
         self._assert_can_add_paths()
         ctrl = self.controller_apps[0]
         if not isinstance(ctrl, ProactiveRoutingController):
             raise NotImplementedError
 
-        if rp:
-            path = rp
+        if isinstance(arg1, RoutingPath):
+            path = arg1
         elif isinstance(self.route, YenRouteAlgorithm):
-            path = RoutingPathMulti(src, dst, **kwargs)
+            path = RoutingPathMulti(*_split_node_pair(arg1), **kwargs)
         else:
-            path = RoutingPathSingle(src, dst, **kwargs, qubit_allocation=self.qubit_allocation)
+            path = RoutingPathSingle(*_split_node_pair(arg1), **kwargs, qubit_allocation=self.qubit_allocation)
         ctrl.paths.append(path)
         return self
 

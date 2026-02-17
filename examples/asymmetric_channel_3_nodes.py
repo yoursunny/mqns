@@ -61,9 +61,7 @@ def run_simulation(
             t_cohere=t_cohere,
         )
         .proactive_centralized()
-        .path(
-            swap="swap_1",
-        )
+        .path("S-D", swap="swap_1")
         .make_network()
     )
 

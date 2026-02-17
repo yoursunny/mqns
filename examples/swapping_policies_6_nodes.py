@@ -62,9 +62,7 @@ def run_simulation(
             channel_capacity=ch_capacities,
         )
         .proactive_centralized()
-        .path(
-            swap=swapping_order,
-        )
+        .path("S-D", swap=swapping_order)
         .make_network()
     )
 
