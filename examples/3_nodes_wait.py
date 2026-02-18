@@ -18,7 +18,7 @@ from mqns.network.proactive import CutoffSchemeWaitTime, ProactiveForwarder
 from mqns.simulator import Simulator
 from mqns.utils import json_default, log, rng
 
-from examples_common.plotting import Axes1D, SubFigure1D, plt, plt_save
+from examples_common.plotting import Axes, Axes1D, SubFigure, SubFigure1D, plt, plt_save
 
 log.set_default_level("CRITICAL")
 
@@ -164,6 +164,52 @@ HISTOGRAM_INFO = [
 type Rows = list[tuple[Stats, Details]]
 
 
+def _plot_wait_rate(ax: Axes, rows: Rows):
+    ax.errorbar(
+        range(len(rows)),
+        [stats["rate_mean"] for stats, _ in rows],
+        yerr=[stats["rate_std"] for stats, _ in rows],
+        fmt="o",
+        color="orange",
+        ecolor="orange",
+        capsize=4,
+        label="sim.",
+        linestyle="--",
+    )
+    ax.set_xticks(range(len(rows)))
+    ax.set_xticklabels([f"{stats['t_wait'] * 1000}" for stats, _ in rows])
+    ax.set_xlabel("wait-time (ms)")
+    ax.set_ylabel("Rate (Hz)")
+    ax.grid(True, linestyle="--", alpha=0.6)
+
+
+def _plot_fmin_rate(ax: Axes, rows: Rows):
+    for stats, details in rows:
+        fmin_rates = details["fmin_rate"]
+        ax.plot(FMIN_THRESHOLDS, fmin_rates, label=f"T_wait={stats['t_wait']:.4f}", linewidth=1.5)
+    ax.set_xbound(max(50, min(details["fid_min"] for _, details in rows)), 100)
+    ax.set_xlabel("Minimum Fidelity Threshold $F_{min}$ (%)")
+    ax.set_ylabel("Rate (Hz)")
+    ax.legend(loc="lower left")
+    ax.grid(True, linestyle="--", alpha=0.6)
+
+
+def _plot_row(subfig: SubFigure, stats: Stats, details: Details) -> Axes1D:
+    subfig.suptitle(
+        f"T_cohere={stats['t_cohere'] * 1000}ms "
+        f"T_wait={stats['t_wait'] * 1000}ms "
+        f"rate={stats['rate_mean']:.2f}\xb1{stats['rate_std']:.2f}Hz "
+        f"discard={stats['discard_mean']:.2f}\xb1{stats['discard_std']:.2f}Hz ",
+    )
+    axs = cast(Axes1D, subfig.subplots(nrows=1, ncols=2))
+    for ax, (field, _, label_loc) in zip(axs, HISTOGRAM_INFO, strict=True):
+        counts, bins = cast(tuple[np.ndarray, np.ndarray], details[f"{field}_hist"])
+        ax.bar(bins[:-1], counts, width=np.diff(bins), color="coral", edgecolor="black", align="edge")
+        ax.set_title(f" {stats[f'{field}_mean']:.3f}\xb1{stats[f'{field}_std']:.3f} ", y=0.8, loc=cast(Any, label_loc))
+        ax.set_ylabel("counts")
+    return axs
+
+
 def plot(rows: Rows, *, save_plt: str):
     unit_width, unit_height = 2.5, 2.5
     fig = plt.figure(figsize=(unit_width * 4, unit_height * (1 + len(rows))))
@@ -174,32 +220,13 @@ def plot(rows: Rows, *, save_plt: str):
         subfig.subplots_adjust(bottom=0.2)
 
     subfig = subfigs[0]
-    subfig.suptitle("Rate vs. Minimum Fidelity Threshold")
-    ax = subfig.subplots(nrows=1, ncols=1)
-    for stats, details in rows:
-        fmin_rates = details["fmin_rate"]
-        ax.plot(FMIN_THRESHOLDS, fmin_rates, label=f"T_wait={stats['t_wait']:.4f}", linewidth=1.5)
-    ax.set_xbound(max(50, min(details["fid_min"] for _, details in rows)), 100)
-    ax.set_xlabel("Minimum Fidelity Threshold $F_{min}$ (%)")
-    ax.set_ylabel("Rate (Hz)")
-    ax.legend(loc="lower left")
-    ax.grid(True, linestyle="--", alpha=0.6)
+    axs = cast(Axes1D, subfig.subplots(nrows=1, ncols=2))
+    _plot_wait_rate(axs[0], rows)
+    _plot_fmin_rate(axs[1], rows)
 
     last_axs: Axes1D = []
     for subfig, (stats, details) in zip(subfigs[1:], rows, strict=True):
-        subfig.suptitle(
-            f"T_cohere={stats['t_cohere']:.4f} "
-            f"T_wait={stats['t_wait']:.4f} "
-            f"rate={stats['rate_mean']:.2f}\xb1{stats['rate_std']:.2f} "
-            f"discard={stats['discard_mean']:.2f}\xb1{stats['discard_std']:.2f} ",
-        )
-        axs = cast(Axes1D, subfig.subplots(nrows=1, ncols=2))
-        last_axs = axs
-        for ax, (field, _, label_loc) in zip(axs, HISTOGRAM_INFO, strict=True):
-            counts, bins = cast(tuple[np.ndarray, np.ndarray], details[f"{field}_hist"])
-            ax.bar(bins[:-1], counts, width=np.diff(bins), color="coral", edgecolor="black", align="edge")
-            ax.set_title(f" {stats[f'{field}_mean']:.3f}\xb1{stats[f'{field}_std']:.3f} ", y=0.8, loc=cast(Any, label_loc))
-            ax.set_ylabel("counts")
+        last_axs = _plot_row(subfig, stats, details)
 
     for ax, (_, title, _) in zip(last_axs, HISTOGRAM_INFO, strict=True):
         ax.set_xlabel(title)
