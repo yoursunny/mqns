@@ -117,6 +117,7 @@ class Details(TypedDict):
     fid_hist: HistogramData  # fidelity histogram
     wait_hist: HistogramData  # wait-time histogram
     fid_min: float  # minimum fidelity
+    fid_max: float  # maximum fidelity
     fmin_rate: Sequence[float]  # FMIN_THRESHOLDS - rate curve
 
 
@@ -154,6 +155,7 @@ def run_row(args: Args, t_cohere: float, t_wait: float) -> tuple[Stats, Details]
         fid_hist=np.histogram(fid, bins=HISTOGRAM_BINS),
         wait_hist=np.histogram(wait, bins=HISTOGRAM_BINS),
         fid_min=np.min(fid),
+        fid_max=np.max(fid),
         fmin_rate=fmin_rates,
     )
 
@@ -164,6 +166,10 @@ HISTOGRAM_INFO = [
 ]
 
 type Rows = list[tuple[Stats, Details]]
+
+
+def _ms(n: float) -> str:
+    return f"{n * 1000}ms"
 
 
 def _plot_wait_rate(ax: Axes, rows: Rows):
@@ -188,8 +194,11 @@ def _plot_wait_rate(ax: Axes, rows: Rows):
 def _plot_fmin_rate(ax: Axes, rows: Rows):
     for stats, details in rows:
         fmin_rates = details["fmin_rate"]
-        ax.plot(FMIN_THRESHOLDS, fmin_rates, label=f"T_wait={stats['t_wait']:.4f}", linewidth=1.5)
-    ax.set_xbound(max(50, min(details["fid_min"] for _, details in rows)), 100)
+        ax.plot(FMIN_THRESHOLDS, fmin_rates, label=f"T_wait={_ms(stats['t_wait'])}", linewidth=1.5)
+    ax.set_xbound(
+        max(50, min(details["fid_min"] for _, details in rows)),
+        min(100, max(details["fid_max"] for _, details in rows) + 2),
+    )
     ax.set_xlabel("Minimum Fidelity Threshold $F_{min}$ (%)")
     ax.set_ylabel("Rate (Hz)")
     ax.legend(loc="lower left")
@@ -198,8 +207,8 @@ def _plot_fmin_rate(ax: Axes, rows: Rows):
 
 def _plot_row(subfig: SubFigure, stats: Stats, details: Details) -> Axes1D:
     subfig.suptitle(
-        f"T_cohere={stats['t_cohere'] * 1000}ms "
-        f"T_wait={stats['t_wait'] * 1000}ms "
+        f"T_cohere={_ms(stats['t_cohere'])} "
+        f"T_wait={_ms(stats['t_wait'])} "
         f"rate={stats['rate_mean']:.2f}\xb1{stats['rate_std']:.2f}Hz "
         f"discard={stats['discard_mean']:.2f}\xb1{stats['discard_std']:.2f}Hz ",
     )
