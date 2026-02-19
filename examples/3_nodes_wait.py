@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from tap import Tap
 
+from mqns.entity.base_channel import default_light_speed
 from mqns.network.builder import CTRL_DELAY, EprTypeLiteral, LinkArchLiteral, NetworkBuilder, tap_configure
 from mqns.network.proactive import CutoffSchemeWaitTime, ProactiveForwarder
 from mqns.simulator import Simulator
@@ -29,7 +30,7 @@ class Args(Tap):
     sim_duration: float = 5.0  # simulation duration in seconds
     L: tuple[float, float] = (32, 18)  # qchannel lengths (km)
     t_cohere: list[float] = [0.1]  # memory coherence time (s)
-    t_wait: list[float] = [0.0025, 0.005, 0.01, 0.02, 1000]  # wait-time cutoff values (s)
+    t_wait: list[float] = [0.0025, 0.005, 0.01, 0.02, 1000]  # wait-time cutoff values (s), empty for auto-sweep
     epr_type: EprTypeLiteral  # network-wide EPR type
     link_arch: LinkArchLiteral  # link architecture
     link_arch_sim: bool = False  # determine fidelity with LinkArch mini simulation
@@ -81,6 +82,7 @@ def run_simulation(seed: int, args: Args, t_cohere: float, t_wait: float):
 
     s = Simulator(0, args.sim_duration + CTRL_DELAY, accuracy=SIMULATOR_ACCURACY, install_to=(log, net))
     s.run()
+    log.install(None)
 
     rate = fwS.cnt.n_consumed / args.sim_duration
     discard = fwR.cnt.n_cutoff[0] / args.sim_duration
@@ -235,8 +237,28 @@ def plot(rows: Rows, *, save_plt: str):
 
 
 def main(args: Args) -> Rows:
+    t_wait: Sequence[float] = args.t_wait
+    rows: Rows = []
+    if len(args.t_wait) == 0:
+        if len(args.t_cohere) != 1:
+            raise ValueError("expect exactly one t_cohere for t_wait auto-sweep")
+        rows.append(row0 := run_row(args, args.t_cohere[0], args.t_cohere[0]))
+        stats0_wait_mean, stats0_wait_std = row0[0]["wait_mean"], row0[0]["wait_std"]
+        log.info(f"t_wait auto-sweep unrestricted run wait={stats0_wait_mean}\xb1{stats0_wait_std}")
+        t_wait_max = min(args.t_cohere[0] / 2, stats0_wait_mean + stats0_wait_std)
+        t_wait_min = max(args.L) / default_light_speed[0]
+        t_wait_cur, t_wait = t_wait_min, []
+        while True:
+            t_wait.append(t_wait_cur)
+            if t_wait_cur >= t_wait_max:
+                break
+            t_wait_cur *= 2
+        log.info(f"t_wait auto-sweep {t_wait_min}..{t_wait_max} => {t_wait}")
+
     with Pool(processes=args.workers) as pool:
-        rows: Rows = pool.starmap(run_row, itertools.product([args], args.t_cohere, args.t_wait))
+        rows.extend(pool.starmap(run_row, itertools.product([args], args.t_cohere, t_wait)))
+
+    rows.sort(key=lambda row: (row[0]["t_cohere"], row[0]["t_wait"]))
 
     if args.csv:
         df = pd.DataFrame([s for s, _ in rows])
