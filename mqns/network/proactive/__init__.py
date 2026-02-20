@@ -1,10 +1,5 @@
 from mqns.network.proactive.controller import ProactiveRoutingController
-from mqns.network.proactive.cutoff import (
-    CutoffScheme,
-    CutoffSchemeWaitTime,
-    CutoffSchemeWaitTimeCounters,
-    CutoffSchemeWernerAge,
-)
+from mqns.network.proactive.cutoff import CutoffScheme, CutoffSchemeWaitTime, CutoffSchemeWaitTimeCounters
 from mqns.network.proactive.fib import Fib, FibEntry
 from mqns.network.proactive.forwarder import ProactiveForwarder, ProactiveForwarderCounters
 from mqns.network.proactive.message import MultiplexingVector, SwapSequence
@@ -27,17 +22,14 @@ from mqns.network.proactive.select import (
     select_purif_qubit_random,
 )
 from mqns.network.proactive.swap_sequence import compute_vora_swap_sequence, parse_swap_sequence
-from mqns.network.protocol.link_layer import LinkLayer
 
 __all__ = [
     "compute_vora_swap_sequence",
     "CutoffScheme",
     "CutoffSchemeWaitTime",
     "CutoffSchemeWaitTimeCounters",
-    "CutoffSchemeWernerAge",
     "Fib",
     "FibEntry",
-    "LinkLayer",  # re-export for convenience
     "MemoryEprIterator",
     "MemoryEprTuple",
     "MultiplexingVector",
@@ -61,6 +53,6 @@ __all__ = [
 ]
 
 for name in __all__:
-    if name in ("LinkLayer", "MemoryEprIterator", "MemoryEprTuple", "MultiplexingVector", "SelectPurifQubit", "SwapSequence"):
+    if name in ("MemoryEprIterator", "MemoryEprTuple", "MultiplexingVector", "SelectPurifQubit", "SwapSequence"):
         continue
     globals()[name].__module__ = __name__

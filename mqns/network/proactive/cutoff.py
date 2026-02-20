@@ -195,12 +195,3 @@ class CutoffSchemeWaitTime(CutoffScheme):
 
         mq1.set_event(CutoffSchemeWaitTime, None)
         mq1.cutoff = None
-
-
-class CutoffSchemeWernerAge(CutoffScheme):
-    """
-    EPR age cut-off with accumulated Werner age metric.
-    """
-
-    def __init__(self, name="wait-time"):
-        super().__init__(name)
