@@ -1,10 +1,5 @@
 from mqns.network.proactive.controller import ProactiveRoutingController
-from mqns.network.proactive.cutoff import (
-    CutoffScheme,
-    CutoffSchemeWaitTime,
-    CutoffSchemeWaitTimeCounters,
-    CutoffSchemeWernerAge,
-)
+from mqns.network.proactive.cutoff import CutoffScheme, CutoffSchemeWaitTime, CutoffSchemeWaitTimeCounters
 from mqns.network.proactive.fib import Fib, FibEntry
 from mqns.network.proactive.forwarder import ProactiveForwarder, ProactiveForwarderCounters
 from mqns.network.proactive.message import MultiplexingVector, SwapSequence
@@ -33,7 +28,6 @@ __all__ = [
     "CutoffScheme",
     "CutoffSchemeWaitTime",
     "CutoffSchemeWaitTimeCounters",
-    "CutoffSchemeWernerAge",
     "Fib",
     "FibEntry",
     "MemoryEprIterator",
