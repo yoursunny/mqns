@@ -417,7 +417,7 @@ class NetworkBuilder:
         swap: list[int] | str,
     ) -> Self:
         """
-        Choose proactive forwarding with centralized control.
+        Choose reactive forwarding with centralized control.
 
         Note:
             This feature is in early stage.
@@ -489,8 +489,8 @@ class NetworkBuilder:
 
     def make_network(
         self,
-        topo: Topology | None = None,
         *,
+        topo: Topology | None = None,
         connect_controller=True,
     ) -> QuantumNetwork:
         """
@@ -502,7 +502,7 @@ class NetworkBuilder:
 
         Returns: QuantumNetwork ready for simulation.
         """
-        topo = topo if topo else self.make_topo()
+        topo = topo or self.make_topo()
         net = QuantumNetwork(
             topo,
             classic_topo=ClassicTopology.Follow,
