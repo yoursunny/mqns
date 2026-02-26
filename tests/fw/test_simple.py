@@ -1,5 +1,5 @@
 """
-Test suite for simple data structure objects in proactive forwarding.
+Test suite for simple data structure objects in forwarding.
 """
 
 import pytest
