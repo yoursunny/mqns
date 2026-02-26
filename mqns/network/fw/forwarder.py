@@ -57,32 +57,35 @@ class ForwarderInitKwargs(TypedDict, total=False):
 
 @json_encodable
 class ForwarderCounters:
+    """Counters of ``Forwarder``."""
+
     def __init__(self):
         self.n_entg = 0
-        """how many elementary entanglements received from link layer"""
+        """How many elementary entanglements received from link layer."""
         self.n_purif: list[int] = []
-        """how many entanglements completed i-th purif round (zero-based index)"""
+        """How many entanglements completed i-th purif round (zero-based index)."""
         self.n_eligible = 0
-        """how many entanglements completed all purif rounds and became eligible"""
+        """How many entanglements completed all purif rounds and became eligible."""
         self.n_swapped_s = 0
-        """how many swaps succeeded sequentially"""
+        """How many swaps succeeded sequentially."""
         self.n_swapped_p = 0
-        """how many swaps succeeded with parallel merging"""
+        """How many swaps succeeded with parallel merging."""
         self.n_swap_conflict = 0
-        """how many swaps were skipped due to conflictual decisions"""
+        """How many swaps were skipped due to conflictual decisions."""
         self.n_consumed = 0
-        """how many entanglements were consumed (either end-to-end or in swap-disabled mode)"""
+        """How many entanglements were consumed (either end-to-end or in swap-disabled mode)."""
         self.consumed_sum_fidelity = 0.0
-        """sum of fidelity of consumed entanglements"""
+        """Sum of fidelity of consumed entanglement.s"""
         self.consumed_fidelity_values: list[float] | None = None
-        """fidelity values of consumed entanglements, None disables collection"""
+        """Fidelity values of consumed entanglements, None disables collection."""
         self.n_cutoff = [0, 0]
         """
-        how many entanglements are discarded by CutoffScheme
-        [0]: swap_cutoff exceeded locally
-        [1]: swap_cutoff exceeded on partner forwarder
-        [2r+0]: purif_cutoff[r] exceeded locally
-        [2r+1]: purif_cutoff[r] exceeded on partner forwarder
+        How many entanglements are discarded by CutoffScheme.
+
+        * [0]: swap_cutoff exceeded locally
+        * [1]: swap_cutoff exceeded on partner forwarder
+        * [2r+0]: purif_cutoff[r] exceeded locally
+        * [2r+1]: purif_cutoff[r] exceeded on partner forwarder
         """
 
     def enable_collect_all(self) -> None:
@@ -109,12 +112,12 @@ class ForwarderCounters:
 
     @property
     def n_swapped(self) -> int:
-        """how many swaps succeeded"""
+        """How many swaps succeeded."""
         return self.n_swapped_s + self.n_swapped_p
 
     @property
     def consumed_avg_fidelity(self) -> float:
-        """average fidelity of consumed entanglements"""
+        """Average fidelity of consumed entanglements."""
         if self.n_consumed == 0:
             return 0.0
         if self.consumed_fidelity_values is None:

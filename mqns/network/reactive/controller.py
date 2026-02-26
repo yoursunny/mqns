@@ -20,7 +20,21 @@ from typing import override
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, RecvClassicPacket, classic_cmd_handler
 from mqns.network.fw import RoutingController, RoutingPathStatic
 from mqns.network.reactive.message import LinkStateMsg
-from mqns.utils import log
+from mqns.utils import json_encodable, log
+
+
+@json_encodable
+class ReactiveRoutingControllerCounters:
+    """Counters related to ``ReactiveRoutingController``."""
+
+    def __init__(self):
+        self.n_ls = 0
+        """How many link-state message arrived."""
+        self.n_decision = 0
+        """How many routing decisions sent."""
+
+    def __repr__(self) -> str:
+        return f"ls={self.n_ls} decision={self.n_decision}"
 
 
 class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController):
@@ -48,9 +62,17 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         self.route = route
         self.swap = swap
 
-        self.add_handler(self.handle_classic_command, RecvClassicPacket)
-
         self.ls_messages: list[LinkStateMsg] = []
+        """
+        Received but unprocessed link-state messages.
+        """
+
+        self.cnt = ReactiveRoutingControllerCounters()
+        """
+        Counters.
+        """
+
+        self.add_handler(self.handle_classic_command, RecvClassicPacket)
 
     @override
     def install(self, node):
@@ -70,8 +92,9 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
             return True
 
         log.debug(f"{self.node.name}: received LS message from {pkt.src} | {msg}")
-
+        self.cnt.n_ls += 1
         self.ls_messages.append(msg)
+
         if len(self.ls_messages) == len(self.route):
             self.do_routing()
             self.ls_messages.clear()
@@ -81,3 +104,8 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
     def do_routing(self):
         rpath = RoutingPathStatic(self.route, swap=self.swap)
         self.install_path(rpath)
+
+    @override
+    def install_path(self, rp):
+        self.cnt.n_decision += 1
+        super().install_path(rp)
