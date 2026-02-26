@@ -18,7 +18,7 @@
 from typing import override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, RecvClassicPacket, classic_cmd_handler
-from mqns.network.fw import RoutingController, RoutingPathStatic
+from mqns.network.fw import RoutingController, RoutingPathStatic, SwapSequenceInput
 from mqns.network.reactive.message import LinkStateMsg
 from mqns.utils import json_encodable, log
 
@@ -47,7 +47,7 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         self,
         *,
         route: list[str] = ["S", "R", "D"],
-        swap: list[int] | str,
+        swap: SwapSequenceInput = "asap",
     ):
         """
         Args:
@@ -60,7 +60,7 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         """
         super().__init__()
         self.route = route
-        self.swap = swap
+        self.swap: SwapSequenceInput = swap
 
         self.ls_messages: list[LinkStateMsg] = []
         """

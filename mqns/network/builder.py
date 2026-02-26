@@ -23,6 +23,7 @@ from mqns.network.fw import (
     RoutingPathInitArgs,
     RoutingPathMulti,
     RoutingPathSingle,
+    SwapSequenceInput,
 )
 from mqns.network.network import QuantumNetwork, TimingMode, TimingModeAsync
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
@@ -414,7 +415,7 @@ class NetworkBuilder:
     def reactive_centralized(
         self,
         *,
-        swap: list[int] | str,
+        swap: SwapSequenceInput = "asap",
     ) -> Self:
         """
         Choose reactive forwarding with centralized control.
