@@ -11,8 +11,10 @@ from mqns.models.core.state import (
     qubit_rho_equal,
     qubit_state_equal,
 )
+from mqns.models.epr import MixedStateEntanglement, WernerStateEntanglement
 from mqns.models.error import (
     BitFlipErrorModel,
+    ChainErrorModel,
     CoherentErrorModel,
     DephaseErrorModel,
     DepolarErrorModel,
@@ -206,3 +208,25 @@ def test_coherent(monkeypatch: pytest.MonkeyPatch, random: float, state: QubitSt
     pure_state = q.state.state()
     assert pure_state is not None
     assert qubit_state_equal(pure_state, state)
+
+
+def test_chain():
+    chain = ChainErrorModel(
+        [
+            e0 := DepolarErrorModel(),
+            e1 := DephaseErrorModel(),
+        ]
+    )
+    chain.set(p_survival=0.9)
+
+    assert chain.errors == [e0, e1]
+    assert e0.p_survival == pytest.approx(0.9, abs=1e-6)
+    assert e1.p_survival == pytest.approx(0.9, abs=1e-6)
+
+    we = WernerStateEntanglement()
+    we.apply_error(chain)
+    assert we.w == pytest.approx(0.81, abs=1e-6)
+
+    me = MixedStateEntanglement()
+    me.apply_error(chain)
+    assert me.probv == pytest.approx([0.813333, 0.12, 0.033333, 0.033333], abs=1e-6)
