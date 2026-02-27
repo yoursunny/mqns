@@ -1,7 +1,8 @@
 import copy
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Sequence
 from typing import Never, NotRequired, TypedDict, cast
 
+from mqns.models.error.chain import ChainErrorModel
 from mqns.models.error.dissipation import DissipationErrorModel
 from mqns.models.error.error import ErrorModel, PerfectErrorModel
 from mqns.models.error.pauli import BitFlipErrorModel, DephaseErrorModel, DepolarErrorModel
@@ -55,26 +56,24 @@ _STR_ERROR_TYPES: dict[str, ErrorModelConstructor] = {
 _STR_PARSE_ERROR = f"unrecognized ErrorModelInput string: PERFECT | {'{'}{'|'.join(_STR_ERROR_TYPES)}{'}'}"
 
 
-def _parse_error_str(input: str, dflt_t: float) -> ErrorModel:
-    tokens = input.split(":")
-    if tokens[0] == "PERFECT":
-        return PerfectErrorModel()
+def _parse_error_str(input: Sequence[str], dflt_t: float) -> Iterable[ErrorModel]:
+    it = iter(input)
+    for token in it:
+        if token == "PERFECT":
+            yield PerfectErrorModel()
+            continue
 
-    try:
-        m = _STR_ERROR_TYPES[tokens[0]]()
-    except KeyError:
-        raise ValueError(f"{_STR_PARSE_ERROR}:float")
+        try:
+            m = _STR_ERROR_TYPES[token]()
+            value = float(next(it))
+        except (KeyError, StopIteration, ValueError):
+            raise ValueError(f"{_STR_PARSE_ERROR}:{'p_error' if dflt_t < 0 else 'rate'}(float)")
 
-    try:
-        value = float(tokens[1])
-    except (ValueError, IndexError):
-        raise ValueError(f"{_STR_PARSE_ERROR}:{'p_error' if dflt_t < 0 else 'rate'}(float)")
-
-    if dflt_t < 0:
-        m.set(p_error=value)
-    else:
-        m.set(t=dflt_t, rate=value)
-    return m
+        if dflt_t < 0:
+            m.set(p_error=value)
+        else:
+            m.set(t=dflt_t, rate=value)
+        yield m
 
 
 type ErrorModelInput[D: ErrorModelDictTime | ErrorModelDictLength] = (
@@ -130,13 +129,17 @@ def parse_error(
       available for memory / qchannel errors with time/length based decay (``dflt_t>=0``).
     * ``DEPOLAR:p_error``, ``DEPHASE:p_error``, ``BITFLIP:p_error``, ``DISSIPATION:p_error``: construct with
       specified error probability, available for BSA / operate / measure errors (``dflt_t<0``).
+    * The above models concatenated with ``:``, such as ``DEPOLAR:rate_depolar:DEPHASE:rate_dephase``.
     """
     if input is None:
         return PerfectErrorModel()
     if isinstance(input, ErrorModel):
         return input
     if isinstance(input, str):
-        return _parse_error_str(input, dflt_t)
+        chain = list(_parse_error_str(input.split(":"), dflt_t))
+        if len(chain) == 1:
+            return chain[0]
+        return ChainErrorModel(chain)
 
     base, d = input if isinstance(input, tuple) else (dflt, input)
     error = copy.deepcopy(base) if isinstance(base, ErrorModel) else base()

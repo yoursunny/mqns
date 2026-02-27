@@ -107,12 +107,20 @@ def test_parse_error():
         assert isinstance(error, typ)
         assert error.p_survival == pytest.approx(P_SURVIVAL)
 
-    with pytest.raises(ValueError, match="unrecognized ErrorModelInput string.*:float"):
+    with pytest.raises(ValueError, match="unrecognized ErrorModelInput string"):
         parse_error("UNKNOWN:0", PerfectErrorModel, 0)
     with pytest.raises(ValueError, match="unrecognized ErrorModelInput string.*:rate"):
         parse_error("DEPOLAR:x", PerfectErrorModel, 0)
     with pytest.raises(ValueError, match="unrecognized ErrorModelInput string.*:p_error"):
         parse_error("DEPOLAR:x", PerfectErrorModel, -1)
+
+    # str concatenated
+    error = parse_error(f"DEPOLAR:{P_ERROR}:DEPHASE:{1 - P_SURVIVAL2}", PerfectErrorModel, -1)
+    assert isinstance(error, ChainErrorModel)
+    assert isinstance(error.errors[0], DepolarErrorModel)
+    assert error.errors[0].p_survival == pytest.approx(P_SURVIVAL)
+    assert isinstance(error.errors[1], DephaseErrorModel)
+    assert error.errors[1].p_survival == pytest.approx(P_SURVIVAL2)
 
 
 @pytest.mark.parametrize(
