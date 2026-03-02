@@ -10,6 +10,9 @@ class ChainErrorModel(ErrorModel):
 
     The ``set`` method sets the same parameters onto each enclosed error model.
     To set different parameters, call ``set`` on each enclosed error model directly.
+
+    ``p_survival`` and ``p_error`` properties are disabled because the chain can consist of
+    a mix of different physical noise processes that cannot be described by a scalar probability.
     """
 
     def __init__(self, errors: Iterable[ErrorModel]):
@@ -21,6 +24,16 @@ class ChainErrorModel(ErrorModel):
         """
         self.errors = list(errors)
         super().__init__("CHAIN(" + ",".join(m.name for m in self.errors) + ")")
+
+    @property
+    @override
+    def p_survival(self) -> float:
+        raise TypeError("cannot retrieve survival probability in ChainErrorModel")
+
+    @property
+    @override
+    def p_error(self) -> float:
+        raise TypeError("cannot retrieve error probability in ChainErrorModel")
 
     @override
     def _set(self, **kwargs) -> Self:
