@@ -43,7 +43,7 @@ from mqns.entity.qchannel import QuantumChannel
 from mqns.models.core import QuantumModel
 from mqns.models.delay import DelayInput, parse_delay
 from mqns.models.epr import Entanglement
-from mqns.models.error import make_time_decay_func
+from mqns.models.error import parse_time_decay
 from mqns.simulator import Event, Simulator
 
 
@@ -74,7 +74,7 @@ class QuantumMemory(Entity):
         """
         QNode that owns this memory.
 
-        This is assigned by `QNode.set_memory()`.
+        This is assigned by ``QNode.set_memory()``.
         """
         self.capacity = kwargs.get("capacity", 1)
         """
@@ -107,7 +107,7 @@ class QuantumMemory(Entity):
         self.decoherence_delay = simulator.time(sec=self.t_cohere)
         """Memory dephasing time."""
 
-        self.time_decay = make_time_decay_func(t_cohere=self.decoherence_delay)
+        self.time_decay = parse_time_decay(None, self.decoherence_delay)
         """Time based decay function constructed from store error model."""
 
     @override
@@ -178,7 +178,7 @@ class QuantumMemory(Entity):
             List of qubit addresses.
 
         Raises:
-            OverflowError - insufficient unassigned qubits.
+            OverflowError: insufficient unassigned qubits.
         """
         addrs: list[int] = []
         for qubit, _ in itertools.islice(self.find(lambda q, _: q.qchannel is None), n):
@@ -223,7 +223,7 @@ class QuantumMemory(Entity):
             List of qubit addresses.
 
         Raises:
-            OverflowError - insufficient unallocated qubits.
+            OverflowError: insufficient unallocated qubits.
         """
         iterable = self.find(lambda q, _: q.path_id is None, qchannel=ch)
         if n == "all":
@@ -247,7 +247,7 @@ class QuantumMemory(Entity):
         Deallocate one or more qubits from any assigned path.
 
         This method finds the memory qubit with the given address and clears its
-        path assignment (i.e., resets its `path_id` to None). It does not modify the
+        path assignment (i.e., resets its ``path_id`` to None). It does not modify the
         quantum state or remove the qubit from memory.
         """
         for addr in addrs:
@@ -269,7 +269,7 @@ class QuantumMemory(Entity):
             Qubit and associated data (possibly empty), or None if qubit is not found by EPR name.
 
         Raises:
-            IndexError - qubit address out of range.
+            IndexError: qubit address out of range.
         """
         pass
 
@@ -290,8 +290,8 @@ class QuantumMemory(Entity):
             Qubit and associated data (possibly empty).
 
         Raises:
-            IndexError - qubit not found.
-            ValueError - no quantum information is stored.
+            IndexError: qubit not found.
+            ValueError: no quantum information is stored.
         """
         pass
 
@@ -317,11 +317,11 @@ class QuantumMemory(Entity):
                     If specified as QuantumModel, remove only if stored data is the same object.
 
         Returns:
-            Qubit and associated data (has type specified in `must`).
+            Qubit and associated data (has type specified in ``has``).
 
         Raises:
-            IndexError - qubit not found.
-            ValueError - no quantum information is stored or it is not the expected type.
+            IndexError: qubit not found.
+            ValueError: no quantum information is stored or it is not the expected type.
         """
         pass
 
@@ -362,7 +362,7 @@ class QuantumMemory(Entity):
         Store data in memory.
 
         Args:
-            key: Qubit address, `qubit.active` identifier, or `None` for any unused qubit.
+            key: Qubit address, ``qubit.active`` identifier, or ``None`` for any unused qubit.
             data: Data to be stored.
                   If this is an EPR, a decoherence event is scheduled automatically.
             replace: True allows replacing existing data; False requires qubit to be empty.
@@ -371,8 +371,8 @@ class QuantumMemory(Entity):
             Qubit where the data is stored.
 
         Raises:
-            IndexError - qubit not found by `key` or no qubit available.
-            ValueError - `replace=False` but qubit has existing data.
+            IndexError: qubit not found by ``key`` or no qubit available.
+            ValueError: ``replace=False`` but qubit has existing data.
         """
         if type(key) is int:
             qubit, old = self._storage[key]
@@ -416,7 +416,7 @@ class QuantumMemory(Entity):
 
     def handle_decohere_qubit(self, qubit: MemoryQubit, epr: Entanglement) -> bool:
         """
-        Part of `QubitDecoheredEvent` logic.
+        Part of ``QubitDecoheredEvent`` logic.
 
         Args:
             qubit: The memory qubit that has reached its decoherence time.

@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 import numpy as np
 import pytest
 
@@ -19,7 +21,10 @@ from mqns.models.error import (
     DephaseErrorModel,
     DepolarErrorModel,
     DissipationErrorModel,
+    ErrorModel,
     PerfectErrorModel,
+    TimeDecayFunc,
+    parse_time_decay,
 )
 from mqns.models.error.input import (
     ErrorModelDictLength,
@@ -31,6 +36,7 @@ from mqns.models.error.input import (
 )
 from mqns.models.qubit import Qubit
 from mqns.models.qubit.gate import CNOT, H
+from mqns.simulator import Time
 from mqns.utils import rng
 
 
@@ -121,6 +127,82 @@ def test_parse_error():
     assert error.errors[0].p_survival == pytest.approx(P_SURVIVAL)
     assert isinstance(error.errors[1], DephaseErrorModel)
     assert error.errors[1].p_survival == pytest.approx(P_SURVIVAL2)
+
+
+def test_parse_time_decay():
+    ACCURACY = 1000
+
+    def check_same(
+        decay: TimeDecayFunc,
+        times: Sequence[int],
+        *errors: ErrorModel,
+    ):
+        e0 = MixedStateEntanglement()
+        for t in times:
+            decay(e0, Time(t, accuracy=ACCURACY))
+
+        e1 = MixedStateEntanglement()
+        for m in errors:
+            e1.apply_error(m)
+
+        assert np.all(e0.probv == e1.probv)
+
+    t10 = Time(10, accuracy=ACCURACY)
+    # 0.010 sec => 100 Hz
+    # 0.020 sec => 50 Hz
+    # 0.040 sec => 25 Hz
+
+    # "PERFECT"
+    check_same(
+        parse_time_decay("PERFECT", t10),
+        [20],
+        PerfectErrorModel(),
+    )
+
+    # None
+    check_same(
+        parse_time_decay(None, t10),
+        [20, 10],
+        DephaseErrorModel().set(t=0.020, rate=100),
+        DephaseErrorModel().set(t=0.010, rate=100),
+    )
+
+    # dict
+    check_same(
+        parse_time_decay({"t_cohere": 0.040}, t10),
+        [20],
+        DephaseErrorModel().set(t=0.020, rate=25),
+    )
+    check_same(
+        parse_time_decay({"rate": 25}, t10),
+        [20],
+        DephaseErrorModel().set(t=0.020, rate=25),
+    )
+
+    # type + dict
+    check_same(
+        parse_time_decay((DepolarErrorModel, {"rate": 25}), t10),
+        [20],
+        DepolarErrorModel().set(t=0.020, rate=25),
+    )
+
+    # str
+    check_same(
+        parse_time_decay("DEPHASE:25", t10),
+        [20],
+        DephaseErrorModel().set(t=0.020, rate=25),
+    )
+    check_same(
+        parse_time_decay("DEPHASE:-0.040", t10),
+        [20],
+        DephaseErrorModel().set(t=0.020, rate=25),
+    )
+    check_same(
+        parse_time_decay("DEPOLAR:50:PERFECT:DEPHASE:-0.040", t10),
+        [20],
+        DepolarErrorModel().set(t=0.020, rate=50),
+        DephaseErrorModel().set(t=0.020, rate=25),
+    )
 
 
 @pytest.mark.parametrize(

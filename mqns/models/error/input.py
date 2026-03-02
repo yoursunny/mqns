@@ -1,6 +1,6 @@
 import copy
 from collections.abc import Callable, Iterable, Sequence
-from typing import Never, NotRequired, TypedDict, cast
+from typing import Any, Never, NotRequired, TypedDict, cast
 
 from mqns.models.error.chain import ChainErrorModel
 from mqns.models.error.dissipation import DissipationErrorModel
@@ -56,7 +56,10 @@ _STR_ERROR_TYPES: dict[str, ErrorModelConstructor] = {
 _STR_PARSE_ERROR = f"unrecognized ErrorModelInput string: PERFECT | {'{'}{'|'.join(_STR_ERROR_TYPES)}{'}'}"
 
 
-def _parse_error_str(input: Sequence[str], dflt_t: float) -> Iterable[ErrorModel]:
+type ParseErrorStrSetter = Callable[[ErrorModel, float], Any]
+
+
+def _parse_error_str(input: Sequence[str], value_desc: str, set_onto: ParseErrorStrSetter) -> Iterable[ErrorModel]:
     it = iter(input)
     for token in it:
         if token == "PERFECT":
@@ -67,13 +70,29 @@ def _parse_error_str(input: Sequence[str], dflt_t: float) -> Iterable[ErrorModel
             m = _STR_ERROR_TYPES[token]()
             value = float(next(it))
         except (KeyError, StopIteration, ValueError):
-            raise ValueError(f"{_STR_PARSE_ERROR}:{'p_error' if dflt_t < 0 else 'rate'}(float)")
+            raise ValueError(f"{_STR_PARSE_ERROR}:{value_desc}(float)")
 
-        if dflt_t < 0:
-            m.set(p_error=value)
-        else:
-            m.set(t=dflt_t, rate=value)
+        set_onto(m, value)
         yield m
+
+
+def parse_error_str(input: str, value_desc: str, set_onto: ParseErrorStrSetter) -> ErrorModel:
+    """
+    Parse error model from string input.
+
+    Args:
+        input: input string, a sequence of tokens delimited by ``:``, where each token
+               either identifies an error model type or is a float value.
+        value_desc: description of each float value.
+        set_onto: callback function to save the float value onto constructed ``ErrorModel``.
+
+    Returns:
+        ErrorModel, either singular subclass or ``ChainErrorModel``.
+    """
+    chain = list(_parse_error_str(input.split(":"), value_desc, set_onto))
+    if len(chain) == 1:
+        return chain[0]
+    return ChainErrorModel(chain)
 
 
 type ErrorModelInput[D: ErrorModelDictTime | ErrorModelDictLength] = (
@@ -109,7 +128,7 @@ def parse_error(
     The input parameter could be one of:
 
     * ``None``: ``PerfectErrorModel``.
-    * ``ErrorModel`` instance: used as is.
+    * ``ErrorModel`` instance: clone.
     * Dict: used as probabilities with default error model type.
     * ``ErrorModel`` instance and dict: clone and assign probabilities.
     * ``ErrorModel`` type and dict: construct and assign probabilities.
@@ -125,21 +144,22 @@ def parse_error(
     The string could be one of:
 
     * ``"PERFECT"``: ``PerfectErrorModel``.
-    * ``DEPOLAR:rate``, ``DEPHASE:rate``, ``BITFLIP:rate``, ``DISSIPATION:rate``: construct with specified rate,
+    * ``(DEPOLAR|DEPHASE|BITFLIP|DISSIPATION):rate``: construct with specified rate,
       available for memory / qchannel errors with time/length based decay (``dflt_t>=0``).
-    * ``DEPOLAR:p_error``, ``DEPHASE:p_error``, ``BITFLIP:p_error``, ``DISSIPATION:p_error``: construct with
+    * ``(DEPOLAR|DEPHASE|BITFLIP|DISSIPATION):p_error``: construct with
       specified error probability, available for BSA / operate / measure errors (``dflt_t<0``).
     * The above models concatenated with ``:``, such as ``DEPOLAR:rate_depolar:DEPHASE:rate_dephase``.
     """
     if input is None:
         return PerfectErrorModel()
     if isinstance(input, ErrorModel):
-        return input
+        return copy.deepcopy(input)
     if isinstance(input, str):
-        chain = list(_parse_error_str(input.split(":"), dflt_t))
-        if len(chain) == 1:
-            return chain[0]
-        return ChainErrorModel(chain)
+        return parse_error_str(
+            input,
+            "p_error" if dflt_t < 0 else "rate",
+            (lambda m, v: m.set(p_error=v)) if dflt_t < 0 else (lambda m, v: m.set(t=dflt_t, rate=v)),
+        )
 
     base, d = input if isinstance(input, tuple) else (dflt, input)
     error = copy.deepcopy(base) if isinstance(base, ErrorModel) else base()

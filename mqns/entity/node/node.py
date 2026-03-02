@@ -123,7 +123,7 @@ class Node(Entity):
             app_type: Application type/class.
 
         Raises:
-            IndexError - application does not exist, or there are multiple instances
+            IndexError: application does not exist, or there are multiple instances
         """
         if self._app_by_type is None:  # this is called before self.install() populates _app_by_type
             self.ensure_not_installed()
