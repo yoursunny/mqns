@@ -28,10 +28,9 @@ class SendApp(Application[Node]):
         if len(route_result) <= 0 or len(route_result[0]) <= 1:
             raise RuntimeError("not found next hop")
         next_hop = route_result[0][1]
-        cchannel = self.node.get_cchannel(next_hop)
 
         # send the classic packet
-        cchannel.send(packet=packet, next_hop=next_hop)
+        self.node.send_cpacket(next_hop, packet)
 
         # calculate the next sending time
         t = self.simulator.tc + 1 / self.send_rate

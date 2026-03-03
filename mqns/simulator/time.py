@@ -18,10 +18,6 @@
 from typing import final
 
 
-def _to_time_slot(sec: int | float, accuracy: int) -> int:
-    return round(sec * accuracy)
-
-
 @final
 class Time:
     """
@@ -42,6 +38,13 @@ class Time:
         self.accuracy = accuracy
 
     @staticmethod
+    def sec_to_time_slot(sec: float, accuracy: int) -> int:
+        """
+        Convert seconds to time slots at given accuracy.
+        """
+        return round(sec * accuracy)
+
+    @staticmethod
     def from_sec(sec: float, *, accuracy: int) -> "Time":
         """
         Construct Time from seconds.
@@ -50,7 +53,7 @@ class Time:
             sec: seconds.
             accuracy: how many time slots per second.
         """
-        return Time(_to_time_slot(sec, accuracy), accuracy=accuracy)
+        return Time(Time.sec_to_time_slot(sec, accuracy), accuracy=accuracy)
 
     @property
     def sec(self) -> float:
@@ -107,7 +110,7 @@ class Time:
             assert ts.accuracy == self.accuracy
             time_slot = ts.time_slot
         else:
-            time_slot = _to_time_slot(ts, self.accuracy)
+            time_slot = Time.sec_to_time_slot(ts, self.accuracy)
         return Time(time_slot=self.time_slot + time_slot, accuracy=self.accuracy)
 
     def __sub__(self, ts: "Time|int|float") -> "Time":
@@ -121,7 +124,7 @@ class Time:
             assert ts.accuracy == self.accuracy
             time_slot = ts.time_slot
         else:
-            time_slot = _to_time_slot(ts, self.accuracy)
+            time_slot = Time.sec_to_time_slot(ts, self.accuracy)
         return Time(time_slot=self.time_slot - time_slot, accuracy=self.accuracy)
 
     def __repr__(self) -> str:

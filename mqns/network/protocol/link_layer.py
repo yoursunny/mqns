@@ -322,8 +322,7 @@ class LinkLayer(Application[QNode]):
         log.debug(f"{self.node}: start reservation key={key} dst={next_hop} addr={qubit.addr} path={qubit.path_id}")
 
         msg: ReserveMsg = {"cmd": "RESERVE_QUBIT", "path_id": qubit.path_id, "key": key}
-        cchannel = self.node.get_cchannel(next_hop)
-        cchannel.send(ClassicPacket(msg, src=self.node, dest=next_hop), next_hop=next_hop)
+        self.node.send_cpacket(next_hop, ClassicPacket(msg, src=self.node, dest=next_hop))
 
     def handle_reserve_req(self, msg: ReserveMsg, cchannel: ClassicChannel):
         """

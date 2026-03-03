@@ -234,10 +234,10 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
                 self.qubit_is_entangled(etg_event)
             self.waiting_etg.clear()
 
-    @fw_control_cmd_handler("install_path")
+    @fw_control_cmd_handler("INSTALL_PATH")
     def handle_install_path(self, msg: InstallPathMsg):
         """
-        Process an install_path message containing routing instructions from the controller.
+        Process an INSTALL_PATH message from the controller.
 
         1. Insert FIB entry.
         2. Identify neighbors and qchannels.
@@ -276,10 +276,10 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
             r_neighbor=r_neighbor,
         )
 
-    @fw_control_cmd_handler("uninstall_path")
+    @fw_control_cmd_handler("UNINSTALL_PATH")
     def handle_uninstall_path(self, msg: UninstallPathMsg):
         """
-        Process an uninstall_path message containing routing instructions from the controller.
+        Process an UNINSTALL_PATH message from the controller.
 
         1. Insert FIB entry.
         2. Identify neighbors and qchannels.
