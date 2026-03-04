@@ -128,7 +128,7 @@ def test_monitor_full_finite():
 
 
 def test_monitor_full_continuous():
-    simulator = Simulator(0, math.inf, accuracy=1000)
+    simulator = Simulator(0, math.inf, accuracy=1000, need_synchronized=False)
     sp, rp = build_network(simulator)
     m = make_monitor(simulator, sp, rp)
 
