@@ -11,11 +11,10 @@ from mqns.utils import log, rng
 
 log.set_default_level("INFO")
 
-SIMULATOR_ACCURACY = 1000000
-
 
 class Args(Tap):
     nats_prefix: str = ClassicBridge.DEFAULT_NATS_PREFIX  # prefix of NATS subjects
+    sim_accuracy: int = 1_000_000  # simulation accuracy in time slots per second
     seed: int | None = None  # random seed
     mode: Literal["P", "R"] = "P"  # choose proactive or reactive mode
     epr_type: EprTypeLiteral  # network-wide EPR type
@@ -53,7 +52,7 @@ def run_simulation(args: Args) -> dict[str, ForwarderCounters]:
     net = b.make_network()
     del b
 
-    s = Simulator(0, math.inf, accuracy=SIMULATOR_ACCURACY, install_to=(log, net))
+    s = Simulator(0, math.inf, accuracy=args.sim_accuracy, install_to=(log, net))
     s.run()
 
     results: dict[str, ForwarderCounters] = {}
@@ -67,5 +66,5 @@ if __name__ == "__main__":
     results = run_simulation(args)
     print("")
     print("---- RESULTS ----")
-    for node, cnt in results.items():
-        print(f"[{node}] {cnt}")
+    for node_name in ("S1", "D1", "S2", "D2", "R1", "R2"):
+        print(f"[{node_name}] {results[node_name]}")

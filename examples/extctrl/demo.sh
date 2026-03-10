@@ -24,7 +24,10 @@ for A in "$@"; do
     continue
   fi
   if [[ "$A" == '-h' || "$A" == '--help' ]]; then
-    info 'Usage: bash demo.sh [COMMON-ARGS] -- [PYTHON-ARGS] -- [RUST-ARGS]'
+    info 'Usage: bash demo.sh [COMMON-ARGS] -- [PY-ARGS] -- [RS-ARGS]'
+    info '  COMMON-ARGS: passed to both Python and Rust'
+    info '  PY-ARGS: passed to Python script'
+    info '  RS-ARGS: passed to Rust crate'
     info '----------------------------------------------------------------'
     info Python flags:
     python extctrl_dp.py --help
@@ -43,7 +46,6 @@ for A in "$@"; do
   fi
 done
 
-export NATS_URL=${NATS_URL:-nats://127.0.0.1:4222}
 NATS_PREFIX=${MQNS_NATS_PREFIX:-mqns.classicbridge}
 STREAM=${MQNS_NATS_STREAM:-MQNS_CLASSIC_BRIDGE}
 

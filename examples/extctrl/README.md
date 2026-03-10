@@ -38,11 +38,25 @@ Apart from MQNS library, the following dependencies are required:
 * NATS Messaging service with JetStream enabled: `docker run -d --name nats_server -p 4222:4222 nats:2 -addr :: -js`
 * `nats` CLI client: see [release page](https://github.com/nats-io/natscli/releases)
 
-To start the example, cd to this directory, and then execute one of the following commands:
+The **demo.sh** script orchestrates the execution.
+It creates necessary NATS JetStream objects, and launches both Python script and Rust program with appropriate flags.
+To start the example, cd to this directory, and then execute some of these sample commands:
 
 ```bash
-# proactive mode
-bash demo.sh -- --mode P
+# view help
+bash demo.sh --help
+
+# default: proactive, enable S1-D1 path with l2r swap order
+bash demo.sh
+
+# change simulation accuracy
+bash demo.sh --sim_accuracy 200000
+
+# proactive mode, enable S1-D1 path with asap swap order
+bash demo.sh -- --mode P -- --path1 asap --path2 disabled
+
+# proactive mode, enable both paths with r2l swap order
+bash demo.sh -- --mode P -- --path1 r2l --path2 r2l
 ```
 
 During the scenario execution, you can view NATS messages on a separate console:
