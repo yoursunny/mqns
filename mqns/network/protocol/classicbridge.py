@@ -33,10 +33,10 @@ class ClassicConnector:
     It acts as a PDES (Parallel Discrete Event Simulation) bridge, implementing a conservative synchronization protocol
     using a *Clock Gate* mechanism.
 
-    This connector is configured via environment variables:
+    This connector is configured via:
 
-    * ``NATS_URL`` specifies one or more NATS servers, defaults to ``nats://localhost:4222``.
-    * ``MQNS_NATS_PREFIX`` specifies the prefix of NATS subjects, defaults to ``mqns.classicbridge``.
+    * ``NATS_URL`` environment variable specifies one or more NATS servers, defaults to ``nats://localhost:4222``.
+    * ``nats_prefix`` constructor argument specifies the prefix of NATS subjects.
 
     When a *split node* receives a classic packet, it is published as:
 
@@ -73,7 +73,7 @@ class ClassicConnector:
     The external program must also release the gate to or beyond the stop time, for stopping to occur.
     """
 
-    def __init__(self, simulator: Simulator):
+    def __init__(self, simulator: Simulator, nats_prefix: str):
         if not nats:
             raise TypeError(
                 "ClassicBridge requires nats-py optional dependency. Please install with: pip install 'nats-py>=2.14.0,<3'"
@@ -82,7 +82,7 @@ class ClassicConnector:
         self.simulator = simulator
         self.bridges: dict[str, "ClassicBridge"] = {}
         self.nats_servers = os.getenv("NATS_URL", "nats://localhost:4222").split(",")
-        self.nats_prefix = os.getenv("MQNS_NATS_PREFIX", "mqns.classicbridge")
+        self.nats_prefix = nats_prefix
 
         self._last_inject_t = 0
         self._last_gate_event: Event | None = None
@@ -98,6 +98,7 @@ class ClassicConnector:
         assert nats
         try:
             nc = await nats.connect(self.nats_servers, connect_timeout=10, allow_reconnect=True)
+            log.info(f"ClassicConnector connected to NATS server {nc.connected_url} as client_id={nc.client_id}")
             async with nc:
                 self._js = nc.jetstream()
                 self._sub = await self._js.pull_subscribe(f"{self.nats_prefix}.*.*")
@@ -179,7 +180,7 @@ class ClassicConnector:
                 case "stop":
                     self.simulator.add_event(func_to_event(t, self.simulator.stop))
                 case _:
-                    log.error("ClassicConnector received unexpected special subject ._.{src}")
+                    log.error(f"ClassicConnector received unexpected special subject ._.{src}")
             return
 
         if not (bridge := self.bridges.get(src)):
@@ -207,8 +208,11 @@ class ClassicBridge(Application[Node]):
     while the ClassicBridge acts as the network interface in the simulation world.
     """
 
-    def __init__(self):
+    DEFAULT_NATS_PREFIX = "mqns.classicbridge"
+
+    def __init__(self, *, nats_prefix=DEFAULT_NATS_PREFIX):
         super().__init__()
+        self.nats_prefix = nats_prefix
         self.add_handler(self.handle_packet, RecvClassicPacket)
 
     @override
@@ -217,8 +221,10 @@ class ClassicBridge(Application[Node]):
         try:
             self.conn: ClassicConnector = getattr(self.simulator, "_classic_connector")
         except AttributeError:
-            self.conn = ClassicConnector(self.simulator)
+            self.conn = ClassicConnector(self.simulator, self.nats_prefix)
             setattr(self.simulator, "_classic_connector", self.conn)
+        if self.conn.nats_prefix != self.nats_prefix:
+            raise ValueError("every ClassicBridge in a scenario must have the same nats_prefix setting")
         self.conn.bridges[self.node.name] = self
 
     def handle_packet(self, event: RecvClassicPacket) -> bool:

@@ -5,6 +5,7 @@ from tap import Tap
 
 from mqns.network.builder import EprTypeLiteral, NetworkBuilder, tap_configure
 from mqns.network.fw import Forwarder, ForwarderCounters
+from mqns.network.protocol.classicbridge import ClassicBridge
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
@@ -14,6 +15,7 @@ SIMULATOR_ACCURACY = 1000000
 
 
 class Args(Tap):
+    nats_prefix: str = ClassicBridge.DEFAULT_NATS_PREFIX  # prefix of NATS subjects
     seed: int | None = None  # random seed
     mode: Literal["P", "R"] = "P"  # choose proactive or reactive mode
     epr_type: EprTypeLiteral  # network-wide EPR type
@@ -46,7 +48,7 @@ def run_simulation(args: Args) -> dict[str, ForwarderCounters]:
         case "R":
             b.reactive_centralized()
 
-    b.external_controller()
+    b.external_controller(nats_prefix=args.nats_prefix)
 
     net = b.make_network()
     del b

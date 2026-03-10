@@ -26,7 +26,7 @@ In this example, the external program is written in Rust as a Cargo binary crate
 It contains the simplified logic of a centralized controller application comparable to `ProactiveRoutingController` or `ReactiveRoutingController`.
 This program connects to the NATS Messaging service, and can then communicate with quantum nodes using the JSON-based message formats defined by these applications.
 
-The simulation clock is maintained in Python, but is synchronized with the external program through PDES (Parallel Discrete Event Simulation) technique.
+The simulation clock is maintained in Python, but is synchronized with the external program through Conservative PDES (Parallel Discrete Event Simulation) technique.
 See `ClassicBridge` and `ClassicConnector` class documentation for details.
 
 ## Example Usage

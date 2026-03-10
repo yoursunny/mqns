@@ -456,9 +456,16 @@ class NetworkBuilder:
         self._assert_can_add_apps()
         raise NotImplementedError
 
-    def external_controller(self) -> Self:
+    def external_controller(
+        self,
+        *,
+        nats_prefix=ClassicBridge.DEFAULT_NATS_PREFIX,
+    ) -> Self:
         """
         Replace the controller application with ``ClassicBridge``.
+
+        Args:
+            nats_prefix: Prefix of NATS subjects.
 
         This must be called after ``proactive_centralized`` or ``reactive_centralized``.
         The internal controller application is deleted and replaced with ``ClassicBridge``, which allows
@@ -468,7 +475,7 @@ class NetworkBuilder:
         Instead, routing paths should be defined in the external controller.
         """
         self.controller_apps.clear()
-        self.controller_apps.append(ClassicBridge())
+        self.controller_apps.append(ClassicBridge(nats_prefix=nats_prefix))
         return self
 
     def _assert_can_add_paths(self) -> None:

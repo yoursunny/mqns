@@ -28,6 +28,9 @@ for A in "$@"; do
     info '----------------------------------------------------------------'
     info Python flags:
     python extctrl_dp.py --help
+    info '----------------------------------------------------------------'
+    info Rust flags:
+    cargo run -q -- --help
     exit 0
   fi
   if [[ $ARGS_SPLIT -eq 0 ]]; then
@@ -41,7 +44,7 @@ for A in "$@"; do
 done
 
 export NATS_URL=${NATS_URL:-nats://127.0.0.1:4222}
-export MQNS_NATS_PREFIX=${MQNS_NATS_PREFIX:-mqns.classicbridge}
+NATS_PREFIX=${MQNS_NATS_PREFIX:-mqns.classicbridge}
 STREAM=${MQNS_NATS_STREAM:-MQNS_CLASSIC_BRIDGE}
 
 if ! command -v nats &>/dev/null; then
@@ -56,7 +59,7 @@ nats stream rm $STREAM -f || true
 
 info Defining NATS stream
 nats stream add $STREAM \
-  --subjects "$MQNS_NATS_PREFIX.*.*" \
+  --subjects "$NATS_PREFIX.*.*" \
   --storage memory \
   --retention limits \
   --discard old \
@@ -68,10 +71,10 @@ nats stream add $STREAM \
 trap 'info Stopping; kill $(jobs -p) 2>/dev/null || true' EXIT
 
 info Launching data plane '(Python)'
-python extctrl_dp.py "${PY_ARGS[@]}" &
+python extctrl_dp.py --nats_prefix=$NATS_PREFIX "${PY_ARGS[@]}" &
 
 info Launching control plane '(Rust)'
-cargo run -- "${RS_ARGS[@]}"
+cargo run -- --nats_prefix=$NATS_PREFIX "${RS_ARGS[@]}"
 
 info Control plane stopped, giving the data plane a chance to finish and print statistics
 sleep 1
