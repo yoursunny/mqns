@@ -55,7 +55,7 @@ def Print():
 
 
 def test_event_simple():
-    te = func_to_event(Time.from_sec(1, accuracy=1000), Print, name="test event")
+    te = func_to_event(Time.from_sec(1, accuracy=1000), Print)
     print(te)
 
     te.invoke()
