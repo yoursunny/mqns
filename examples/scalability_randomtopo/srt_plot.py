@@ -18,13 +18,16 @@ See ``scalability_randomtopo.sh`` for how to run these scripts.
 
 import json
 import os.path
+import sys
 
 import numpy as np
 import pandas as pd
 from tap import Tap
 
+from srt_detail.defs import RunResult
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from examples_common.plotting import plt, plt_save
-from examples_common.scalability_randomtopo import RunResult
 
 
 class Args(Tap):

@@ -1,12 +1,13 @@
 #!/bin/bash
 set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
 
 # This bash script demonstrates how to invoke the Python scripts related to scalability_randomtopo experiment.
 # If invoked as is, the whole process would take multiple days.
 # To speed up the evaluation, you can arrange scalability_randomtopo_run.py to run in parallel
 # with proper CPU isolation, and then run scalability_randomtopo_plot.py to plot the diagrams.
 
-OUTDIR=examples/scalability_randomtopo
+OUTDIR=output
 mkdir -p $OUTDIR
 echo '*' >$OUTDIR/.gitignore
 
@@ -32,15 +33,15 @@ run_simulator() {
   run_seeds $1 512 640
 }
 
-run_simulator examples/scalability_randomtopo_run.py
+run_simulator srt_mqns.py
 if [[ $ENABLE_SEQUENCE -ne 0 ]]; then
-  run_simulator examples/sequence/scalability_randomtopo_run.py
+  run_simulator srt_sequence.py
   SEQUENCE_FLAG=--sequence
 else
   SEQUENCE_FLAG=''
 fi
 
-python examples/scalability_randomtopo_plot.py \
+python srt_plot.py \
   --indir $OUTDIR $SEQUENCE_FLAG \
   --runs $RUNS --qchannel_capacity $QC --time_limit $TL \
   --csv $OUTDIR/$QC.csv --plt $OUTDIR/$QC.png

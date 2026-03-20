@@ -9,7 +9,7 @@ from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Simulator
 from mqns.utils import WallClockTimeout, json_default, log
 
-from examples_common.scalability_randomtopo import RequestStats, RunArgs, RunResult, build_network, parse_run_args
+from srt_detail.defs import RequestStats, RunArgs, RunResult, build_network, parse_run_args
 
 """
 This script is typically invoked as part of scalability_randomtopo experiment.

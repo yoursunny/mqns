@@ -2,7 +2,6 @@ import configparser
 import itertools
 import json
 import os.path
-import sys
 import time
 from typing import cast
 
@@ -14,21 +13,10 @@ from sequence.topology.router_net_topo import RouterNetTopo
 from mqns.network.network import QuantumNetwork, Request
 from mqns.utils import WallClockTimeout
 
-from sequence_detail.resource_reservation import create_rules
-from sequence_detail.scalability_randomtopo import (
-    EntanglementRequestApp,
-    ResetApp,
-    set_parameters,
-)
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from examples_common.scalability_randomtopo import (
-    RequestStats,
-    RunArgs,
-    RunResult,
-    parse_run_args,
-)
-from examples_common.scalability_randomtopo import build_network as mqns_build_network
+from srt_detail.defs import RequestStats, RunArgs, RunResult, parse_run_args
+from srt_detail.defs import build_network as mqns_build_network
+from srt_detail.resource_reservation import create_rules
+from srt_detail.sequence_app import EntanglementRequestApp, ResetApp, set_parameters
 
 """
 This script is part of scalability_randomtopo experiment for comparison with SeQUeNCe simulator.
