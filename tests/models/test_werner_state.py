@@ -80,18 +80,19 @@ def test_swap_failure(monkeypatch: pytest.MonkeyPatch):
     ne = Entanglement.swap(e1, e2, now=now, ps=0.5)
 
     assert ne is None
-    assert e1.is_decohered
-    assert e2.is_decohered
 
 
-def test_swap_decohered_inputs():
+def test_swap_decohered_inputs(monkeypatch: pytest.MonkeyPatch):
     now = micros(0)
     decohere = now + 1.0
     e1 = WernerStateEntanglement(fidelity=0.9, fidelity_time=now, decohere_time=decohere)
     e2 = WernerStateEntanglement(fidelity=0.8, fidelity_time=now, decohere_time=decohere)
     e1.is_decohered = True
 
-    assert Entanglement.swap(e1, e2, now=now) is None
+    monkeypatch.setattr(rng, "random", lambda: 0.1)
+    ne = Entanglement.swap(e1, e2, now=now)
+    assert ne is not None
+    assert ne.is_decohered
 
 
 def test_purify_success(monkeypatch: pytest.MonkeyPatch):

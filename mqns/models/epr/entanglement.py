@@ -182,26 +182,16 @@ class Entanglement(QuantumModel):
         assert type(epr0) is type(epr1)
         assert epr0.dst == epr1.src  # it's okay for src and dst to be None
 
-        if epr0.is_decohered or epr1.is_decohered:
-            # XXX setting .is_decohered may leak information faster-than-light
-            epr0.is_decohered = True
-            epr1.is_decohered = True
-            return None
-
         if ps < 1.0 and rng.random() >= ps:  # swap failed
-            # XXX setting .is_decohered may leak information faster-than-light
-            epr0.is_decohered = True
-            epr1.is_decohered = True
             return None
 
         orig_eprs: list[E] = []
         for epr in (epr0, epr1):
             epr.apply_store_decays(now)
-
-            if epr.ch_index > -1:
-                orig_eprs.append(epr)
+            if epr.orig_eprs:
+                orig_eprs.extend(cast(list[E], epr.orig_eprs))
             else:
-                orig_eprs.extend(cast(list[E], epr.orig_eprs or []))
+                orig_eprs.append(epr)
 
         orig_names = "-".join((e.name for e in orig_eprs))
         name = hashlib.sha256(orig_names.encode()).hexdigest()[:32]  # same length as `uuid.uuid4().hex`
@@ -219,6 +209,7 @@ class Entanglement(QuantumModel):
             ),
         )
         ne.orig_eprs = orig_eprs
+        ne.is_decohered = epr0.is_decohered or epr1.is_decohered
         return ne
 
     @staticmethod
@@ -247,8 +238,6 @@ class Entanglement(QuantumModel):
         assert (self.src, self.dst) == (epr1.src, epr1.dst)  # it's okay for src and dst to be None
 
         if self.is_decohered or epr1.is_decohered:
-            self.is_decohered = True
-            epr1.is_decohered = True
             return False
 
         _ = now
