@@ -217,7 +217,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         1. Start processing elementary entanglements that arrived during EXTERNAL phase.
         """
         if event.phase is TimingPhase.EXTERNAL:
-            self.swap.remote_swapped_eprs.clear()
+            self.swap.remote_swapped.clear()
         elif event.phase is TimingPhase.INTERNAL:
             log.debug(f"{self.node}: there are {len(self.waiting_etg)} etg qubits to process")
             for etg_event in self.waiting_etg:
