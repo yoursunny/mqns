@@ -1,17 +1,36 @@
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from mqns.entity.memory import MemoryQubit, QuantumMemory, QubitState
 from mqns.entity.node import QNode
+from mqns.models.delay import DelayModel
 from mqns.models.epr import Entanglement
+from mqns.models.error import ErrorModel
 from mqns.network.fw.fib import FibEntry
 from mqns.network.fw.message import SwapUpdateMsg
 from mqns.network.fw.mux import MuxScheme
 from mqns.network.network import QuantumNetwork
-from mqns.simulator import Simulator
+from mqns.simulator import Simulator, func_to_event
 from mqns.utils import log
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
+
+
+@dataclass
+class SwapArm:
+    partner: QNode
+    """Partner node."""
+    index: int
+    """Partner node index within FIB entry."""
+    rank: int
+    """Partner node swap rank within FIB entry."""
+    qubit: MemoryQubit
+    """Local qubit entangled with partner."""
+    epr: Entanglement
+    """Logical EPR with partner."""
+    # phy: Entanglement
+    # """Physical EPR with partner."""
 
 
 class ForwarderSwapProc:
@@ -27,10 +46,14 @@ class ForwarderSwapProc:
     memory: QuantumMemory
     mux: MuxScheme
 
-    def __init__(self, *, ps: float):
+    def __init__(self, *, ps: float, delay: DelayModel, error: ErrorModel):
         self.ps = ps
         """Probability of successful entanglement swapping."""
         assert 0.0 <= self.ps <= 1.0
+        self.delay = delay
+        """Swapping delay model."""
+        self.error = error
+        """Swapping error model."""
 
         self.waiting_su: dict[int, tuple[SwapUpdateMsg, FibEntry]] = {}
         """
@@ -70,6 +93,21 @@ class ForwarderSwapProc:
         self.memory = fw.memory
         self.mux = fw.mux
 
+    def _retrieve_arm(self, mq: MemoryQubit, fib_entry: FibEntry) -> SwapArm:
+        assert mq.state is QubitState.ELIGIBLE
+        qubit, epr = self.memory.read(mq.addr, has=self.epr_type, remove=True)
+
+        if epr.dst is self.node:
+            partner = epr.src
+        elif epr.src is self.node:
+            partner = epr.dst
+        else:
+            raise RuntimeError(f"{self.node}: not in {epr} stored at {mq}")
+        assert partner is not None
+        index, rank = fib_entry.find_index_and_swap_rank(partner.name)
+
+        return SwapArm(partner, index, rank, qubit, epr)
+
     def start(self, mq0: MemoryQubit, mq1: MemoryQubit, fib_entry: FibEntry):
         """
         Start swapping between two qubits at an intermediate node.
@@ -77,75 +115,71 @@ class ForwarderSwapProc:
         Partners are notified with SWAP_UPDATE messages.
         """
         assert mq0.addr != mq1.addr
-        assert mq0.state == QubitState.ELIGIBLE
-        assert mq1.state == QubitState.ELIGIBLE
 
         # Read both qubits and remove them from memory.
         #
         # One of these qubits must be entangled with a partner node to the left of the current node.
         # This is determined by epr.dst==self.node condition, because LinkLayer establishes elementary
         # entanglements from left to right, and swapping maintains this condition.
-        # This qubit and related objects are assigned to prev_* variables.
+        # This qubit and related objects are assigned to `prev`.
         #
-        # Likewise, the other qubit entangled with a partner node to the right is assigned to next_*.
-        prev_tuple: tuple[QNode, MemoryQubit, Entanglement] | None = None
-        next_tuple: tuple[QNode, MemoryQubit, Entanglement] | None = None
-        for addr in (mq0.addr, mq1.addr):
-            qubit, epr = self.memory.read(addr, has=self.epr_type, remove=True)
-            if epr.dst == self.node:
-                assert epr.src is not None
-                prev_tuple = epr.src, qubit, epr
-            elif epr.src == self.node:
-                assert epr.dst is not None
-                next_tuple = epr.dst, qubit, epr
-            else:
-                raise Exception(f"Unexpected: swapping EPRs {mq0} x {mq1}")
-
-        # Make sure both partners are found.
-        assert prev_tuple is not None
-        assert next_tuple is not None
-        _, prev_qubit, prev_epr = prev_tuple
-        _, next_qubit, next_epr = next_tuple
+        # Likewise, the other qubit entangled with a partner node to the right is assigned to `next`.
+        prev = self._retrieve_arm(mq0, fib_entry)
+        next = self._retrieve_arm(mq1, fib_entry)
+        if prev.index > next.index:
+            next, prev = prev, next
 
         # Save ch_index metadata field onto elementary EPR.
-        if not prev_epr.orig_eprs:
-            prev_epr.ch_index = fib_entry.own_idx - 1
-        if not next_epr.orig_eprs:
-            next_epr.ch_index = fib_entry.own_idx
+        if not prev.epr.orig_eprs:
+            prev.epr.ch_index = fib_entry.own_idx - 1
+        if not next.epr.orig_eprs:
+            next.epr.ch_index = fib_entry.own_idx
 
         # Attempt the swap.
-        new_epr = Entanglement.swap(prev_epr, next_epr, now=self.simulator.tc, ps=self.ps)
-        log.debug(f"{self.node}: SWAP {'SUCC' if new_epr else 'FAILED'} | {prev_qubit} x {next_qubit} = {new_epr}")
+        new_epr = Entanglement.swap(prev.epr, next.epr, now=self.simulator.tc, ps=self.ps)
+        if new_epr:
+            new_epr.apply_error(self.error)
+
+        self.simulator.add_event(
+            func_to_event(self.simulator.tc + self.delay.calculate(), self.after_swap, prev, next, fib_entry, new_epr)
+        )
+
+    def after_swap(self, prev: SwapArm, next: SwapArm, fib_entry: FibEntry, new_epr: Entanglement | None):
+        log.debug(f"{self.node}: SWAP {'SUCC' if new_epr else 'FAILED'} | {prev.qubit} x {next.qubit} = {new_epr}")
+
+        # Release old qubit.
+        for mq in prev.qubit, next.qubit:
+            self.fw.release_qubit(mq)
 
         if new_epr is not None:  # swapping succeeded
             self.fw.cnt.n_swapped_s += 1
 
             # Inform multiplexing scheme.
-            self.mux.swapping_succeeded(prev_epr, next_epr, new_epr)
+            self.mux.swapping_succeeded(prev.epr, next.epr, new_epr)
 
-        for (a_partner, a_qubit, a_epr), (b_partner, _, b_epr) in ((prev_tuple, next_tuple), (next_tuple, prev_tuple)):
-            if new_epr is not None:
-                # Keep records to support potential parallel swapping.
-                _, a_rank = fib_entry.find_index_and_swap_rank(a_partner.name)
-                if fib_entry.own_swap_rank == a_rank:
-                    self.parallel_swappings[a_epr.name] = (a_epr, b_epr, new_epr)
+        # Send heralding.
+        self.herald_to(prev, next, fib_entry, new_epr)
+        self.herald_to(next, prev, fib_entry, new_epr)
 
-                # Deposit swapped EPR at the partner.
-                self._deposit_remote_swapped_epr(a_partner, new_epr)
+    def herald_to(self, target: SwapArm, opposite: SwapArm, fib_entry: FibEntry, new_epr: Entanglement | None):
+        if new_epr is not None:
+            # Keep records to support potential parallel swapping.
+            if fib_entry.own_swap_rank == target.rank:
+                self.parallel_swappings[target.epr.name] = (target.epr, opposite.epr, new_epr)
 
-            # Send SWAP_UPDATE to the partner.
-            su_msg: SwapUpdateMsg = {
-                "cmd": "SWAP_UPDATE",
-                "path_id": fib_entry.path_id,
-                "swapping_node": self.node.name,
-                "partner": b_partner.name,
-                "epr": a_epr.name,
-                "new_epr": None if new_epr is None else new_epr.name,
-            }
-            self.fw.send_msg(a_partner, su_msg, fib_entry)
+            # Deposit swapped EPR at the partner.
+            self._deposit_remote_swapped_epr(target.partner, new_epr)
 
-            # Release old qubit.
-            self.fw.release_qubit(a_qubit)
+        # Send SWAP_UPDATE to the partner.
+        su_msg: SwapUpdateMsg = {
+            "cmd": "SWAP_UPDATE",
+            "path_id": fib_entry.path_id,
+            "swapping_node": self.node.name,
+            "partner": opposite.partner.name,
+            "epr": target.epr.name,
+            "new_epr": None if new_epr is None else new_epr.name,
+        }
+        self.fw.send_msg(target.partner, su_msg, fib_entry)
 
     def pop_waiting_su(self, qubit: MemoryQubit):
         su_args = self.waiting_su.pop(qubit.addr, None)

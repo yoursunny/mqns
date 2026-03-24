@@ -6,7 +6,8 @@ import itertools
 
 import pytest
 
-from mqns.models.epr import Entanglement
+from mqns.entity.timer import Timer
+from mqns.models.epr import Entanglement, MixedStateEntanglement
 from mqns.network.fw import (
     Fib,
     Forwarder,
@@ -57,6 +58,41 @@ def test_3_disabled():
     assert f2.cnt.n_consumed == 2
     assert f3.cnt.n_consumed == 1
     assert f2.cnt.n_swapped == 0
+
+
+def test_3_delayed():
+    """Test swap delay model and error model in 3-node topology."""
+    net, simulator = build_linear_network(
+        3,
+        epr_type=MixedStateEntanglement,
+        fw={
+            "ps": 1.0,
+            "swap_delay": 0.050,
+            "swap_error": "DEPOLAR:0.3",
+        },
+    )
+    f1 = net.get_node("n1").get_app(ProactiveForwarder)
+    f2 = net.get_node("n2").get_app(ProactiveForwarder)
+    f3 = net.get_node("n3").get_app(ProactiveForwarder)
+
+    f2_n_swapped_values: list[int] = []
+
+    def save_counter():
+        f2_n_swapped_values.append(f2.cnt.n_swapped)
+
+    timer = Timer("save_counters", start_time=1.015, end_time=1.065, step_time=0.010, trigger_func=save_counter)
+    timer.install(simulator)
+
+    install_path(net, RoutingPathSingle("n1", "n3", swap=[1, 0, 1]))
+    provide_entanglements(
+        (1.000, f1, f2),
+        (1.010, f2, f3),
+    )
+    simulator.run()
+    print_fw_counters(net)
+
+    assert f1.cnt.consumed_avg_fidelity <= 0.7
+    assert f2_n_swapped_values == [0, 0, 0, 0, 0, 1]
 
 
 @pytest.mark.parametrize(
@@ -297,7 +333,7 @@ def test_tree2_dynepr(t_edge_etg: float, selected_path: tuple[int, int], n_consu
             chosen = (rp0.path_id, rp1.path_id)[selected_path[1]]
         return chosen
 
-    net, simulator = build_tree_network(ps=1.0, mux=MuxSchemeDynamicEpr(select_path=select_path))
+    net, simulator = build_tree_network(fw={"ps": 1.0, "mux": MuxSchemeDynamicEpr(select_path=select_path)})
     f1, f2, f3, f4, f5, f6, f7 = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
     # n4-n2-n1-n3-n6
@@ -393,7 +429,7 @@ def test_tree2_statistical(
         return chosen
 
     net, simulator = build_tree_network(
-        ps=1.0, mux=MuxSchemeStatistical(select_swap_qubit=select_qubit, select_path=select_path)
+        fw={"ps": 1.0, "mux": MuxSchemeStatistical(select_swap_qubit=select_qubit, select_path=select_path)}
     )
     f1, f2, f3, f4, f5, f6, f7 = (node.get_app(ProactiveForwarder) for node in net.nodes)
 

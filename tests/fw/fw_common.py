@@ -1,3 +1,4 @@
+import copy
 from typing import Literal, TypedDict, Unpack
 
 from mqns.entity.cchannel import ClassicChannelInitKwargs
@@ -5,7 +6,7 @@ from mqns.entity.memory import QubitState
 from mqns.entity.node import Application, Controller, QNode
 from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk, QuantumChannelInitKwargs
 from mqns.models.epr import Entanglement, WernerStateEntanglement
-from mqns.network.fw import Forwarder, MuxScheme, RoutingPath
+from mqns.network.fw import Forwarder, ForwarderInitKwargs, RoutingPath
 from mqns.network.network import QuantumNetwork, TimingMode, TimingModeAsync
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
 from mqns.network.protocol.event import QubitEntangledEvent
@@ -32,8 +33,8 @@ class BuildNetworkArgs(TypedDict, total=False):
     qchannel_capacity: int  # quantum channel capacity, defaults to 1
     qchannel_args: QuantumChannelInitKwargs
     cchannel_args: ClassicChannelInitKwargs
+    fw: ForwarderInitKwargs  # forwarder parameters
     ps: float  # probability of successful swap, defaults to 0.5
-    mux: MuxScheme  # multiplexing scheme, defaults to buffer-space
     end_time: float  # simulation end time, defaults to 10.0 seconds
     timing: TimingMode  # network timing mode, defaults to ASYNC
     epr_type: type[Entanglement]  # entanglement type, defaults to werner state
@@ -48,11 +49,13 @@ def _make_topo_args(d: BuildNetworkArgs, *, memory_capacity_factor: int) -> Topo
     if d.get("has_link_layer", False):
         nodes_apps.append(LinkLayer(init_fidelity=d.get("init_fidelity", 0.99)))
 
+    fw_args = copy.copy(d.get("fw")) or {}
+    fw_args.setdefault("ps", d.get("ps", 0.5))
     match d.get("mode", "P"):
         case "P":
-            nodes_apps.append(ProactiveForwarder(ps=d.get("ps", 0.5), mux=d.get("mux")))
+            nodes_apps.append(ProactiveForwarder(**fw_args))
         case "R":
-            nodes_apps.append(ReactiveForwarder(ps=d.get("ps", 0.5), mux=d.get("mux")))
+            nodes_apps.append(ReactiveForwarder(**fw_args))
 
     return TopologyInitKwargs(
         nodes_apps=nodes_apps,

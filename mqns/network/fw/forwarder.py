@@ -24,7 +24,10 @@ import numpy as np
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import Application, QNode
 from mqns.entity.qchannel import QuantumChannel
+from mqns.models.delay import DelayInput, parse_delay
 from mqns.models.epr import Entanglement
+from mqns.models.error import PerfectErrorModel
+from mqns.models.error.input import ErrorModelInputBasic, parse_error
 from mqns.network.fw.cutoff import CutoffScheme, CutoffSchemeWaitTime
 from mqns.network.fw.fib import Fib, FibEntry
 from mqns.network.fw.fw_classic import ForwarderClassicMixin, fw_control_cmd_handler, fw_signaling_cmd_handler
@@ -49,6 +52,10 @@ from mqns.utils import json_encodable, log
 class ForwarderInitKwargs(TypedDict, total=False):
     ps: float
     """Probability of successful entanglement swapping, default is 1.0."""
+    swap_delay: DelayInput
+    """Swapping delay model, default is zero."""
+    swap_error: ErrorModelInputBasic
+    """Swapping error model, default is perfect."""
     cutoff: CutoffScheme | None
     """EPR age cut-off scheme, default is wait-time."""
     mux: MuxScheme | None
@@ -161,7 +168,11 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         self.fib = Fib()
         """FIB structure."""
         self.purif = ForwarderPurifProc()
-        self.swap = ForwarderSwapProc(ps=kwargs.get("ps", 1.0))
+        self.swap = ForwarderSwapProc(
+            ps=kwargs.get("ps", 1.0),
+            delay=parse_delay(kwargs.get("swap_delay", 0)),
+            error=parse_error(kwargs.get("swap_error"), PerfectErrorModel, -1),
+        )
 
         self.add_handler(self.handle_sync_phase, TimingPhaseEvent)
         self.add_handler(self.qubit_is_entangled, QubitEntangledEvent)
