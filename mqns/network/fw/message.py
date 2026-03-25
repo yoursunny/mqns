@@ -139,9 +139,19 @@ class PurifResponseMsg(PurifMsgBase):
 
 
 class SwapUpdateMsg(TypedDict):
+    """Heralding message after swapping."""
+
     cmd: Literal["SWAP_UPDATE"]
     path_id: int
+    """FIB entry path_id."""
     swapping_node: str
+    """Node that performed the swap, which is the sender of this message."""
+    old_epr: str
+    """Entanglement name shared between swapping_node and the recipient."""
     partner: str
-    epr: str
-    new_epr: str | None  # None means swapping failed
+    """Node that shares an extended entanglement with the recipient, if the swap succeeded."""
+    expiry: int
+    """
+    If zero, indicates swapping failure.
+    If positive, time slot of qubit decoherence based on heralded knowledge.
+    """
