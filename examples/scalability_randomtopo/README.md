@@ -56,3 +56,14 @@ pip install -r requirements.txt
 # run the short demo sequentially
 bash run-sequential.sh params-short.toml ./output-short
 ```
+
+## Parallel Execution
+
+The **run-docker.sh** script orchestrates Docker based parallel execution.
+To use this script:
+
+1. You must have a multi-core system with CPU isolation, so that some cores are exclusively reserved for the experiments, while other cores are unreserved for background services and general usage.
+2. You must have Docker installed and authorized to use reserved cores.
+3. Write the reserved cores in the *parameters file* `cpuset_cpus` list.
+   There must be at least `runs` cores.
+4. Run the script within virtual environment: `bash run-docker.sh params-full.toml ./output-full`

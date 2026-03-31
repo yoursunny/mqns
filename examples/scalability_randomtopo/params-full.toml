@@ -22,3 +22,6 @@ network_sizes = [
     { nodes = 256, edges = 320 },
     { nodes = 512, edges = 640 },
 ]
+
+# CPU cores for parallel execution
+cpuset_cpus = [2, 3, 4, 5, 6]

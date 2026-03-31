@@ -11,3 +11,4 @@ if __name__ == "__main__":
     print(f"ENABLE_SEQUENCE={int(args.params['enable_sequence'])}")
     print(f"NS_NODES=({' '.join([str(s['nodes']) for s in args.params['network_sizes']])})")
     print(f"NS_EDGES=({' '.join([str(s['edges']) for s in args.params['network_sizes']])})")
+    print(f"CPUSET_CPUS=({' '.join([str(c) for c in args.params.get('cpuset_cpus', [])])})")

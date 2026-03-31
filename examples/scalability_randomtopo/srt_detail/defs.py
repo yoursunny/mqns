@@ -5,7 +5,7 @@ Both MQNS and SeQUeNCe simulation scripts can use these definitions.
 
 import time
 import tomllib
-from typing import Any, TypedDict, cast, override
+from typing import Any, NotRequired, TypedDict, cast, override
 
 from tap import Tap
 
@@ -31,6 +31,7 @@ class Params(TypedDict):
     time_limit: float
     enable_sequence: bool
     network_sizes: list[NetworkSize]
+    cpuset_cpus: NotRequired[list[int]]
 
 
 def load_params(filename: str) -> Params:
