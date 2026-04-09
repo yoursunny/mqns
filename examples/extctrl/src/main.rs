@@ -1,5 +1,5 @@
 use anyhow::Result;
-use async_nats::{self, jetstream};
+use async_nats;
 use bpaf::Bpaf;
 use mqns_example_extctrl::{
     LinkStateEntry, LinkStateMsg, MultiplexingVectorElem, PathInstructions, Southbound,
@@ -8,7 +8,6 @@ use mqns_example_extctrl::{
 use std::{
     collections::{HashMap, HashSet},
     env,
-    time::Duration,
 };
 use tokio::sync::mpsc;
 
@@ -135,9 +134,7 @@ async fn main() -> Result<()> {
     let args = args().run();
 
     let nc = async_nats::connect(nats_url).await?;
-    let js = jetstream::new(nc);
-
-    let sb = Southbound::new(js, &args.nats_prefix);
+    let sb = Southbound::new(nc, &args.nats_prefix).await?;
 
     match args.mode {
         Mode::PCA => tx_loop_pca(&args, &sb).await,
@@ -198,10 +195,9 @@ async fn tx_loop_pca(args: &Args, sb: &Southbound) -> Result<()> {
 
         if args.sim_duration == sec {
             sb.stop(t).await?;
+        } else {
+            sb.update_gate(t).await?;
         }
-
-        sb.update_gate(t).await?;
-        tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
     Ok(())
@@ -284,7 +280,6 @@ async fn tx_loop_rcs(
 
         println!("Simulation Time: {} / {}", t, t_stop);
         sb.update_gate(t).await?;
-        tokio::time::sleep(Duration::from_millis(1000)).await;
 
         tls.clear();
         while let Ok(msg) = link_state_ch.try_recv() {
@@ -319,7 +314,6 @@ async fn tx_loop_rcs(
     }
 
     sb.stop(t_stop).await?;
-    sb.update_gate(t_stop).await?;
 
     Ok(())
 }
