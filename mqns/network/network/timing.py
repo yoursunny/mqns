@@ -98,7 +98,11 @@ class TimingModeAsync(TimingMode):
 
     def __init__(self, *, name="ASYNC"):
         super().__init__(name)
-        log.info(f"TIME_SYNC: using {name} mode")
+
+    @override
+    def install(self, network: "QuantumNetwork"):
+        super().install(network)
+        log.info(f"TIME_SYNC: using {self.name} mode")
 
     @override
     def is_async(self) -> bool:

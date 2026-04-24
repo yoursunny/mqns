@@ -89,8 +89,8 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
             fib_entry = selected_path if type(selected_path) is FibEntry else self.fib.get(selected_path)
             epr.tmp_path_ids = frozenset([fib_entry.path_id])
         else:
-            assert len(epr.tmp_path_ids) == 1
-            fib_entry = self.fib.get(next(epr.tmp_path_ids.__iter__()))
+            (path_id,) = epr.tmp_path_ids
+            fib_entry = self.fib.get(path_id)
 
         log.debug(f"{self.node}: qubit {qubit} has selected path_id {fib_entry.path_id}")
 

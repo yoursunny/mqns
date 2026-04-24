@@ -100,7 +100,7 @@ class RoutingPath(ABC):
             They will be installed into the nodes.
         """
 
-    def _query_routes(self, net: QuantumNetwork) -> Iterator[list[str]]:
+    def _query_routes(self, net: QuantumNetwork) -> list[list[str]]:
         """
         Query routes from source node to destination node.
         """
@@ -109,8 +109,7 @@ class RoutingPath(ABC):
         route_result = net.query_route(src, dst)
         if len(route_result) == 0:
             raise RuntimeError(f"ROUTING: No route from {src} to {dst}")
-        for _, _, route_nodes in route_result:
-            yield [node.name for node in route_nodes]
+        return [[node.name for node in route_nodes] for _, _, route_nodes in route_result]
 
     def _make_path_instructions(
         self,
@@ -176,7 +175,7 @@ class RoutingPathSingle(RoutingPath):
 
     @override
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
-        route = next(self._query_routes(net))
+        route = self._query_routes(net)[0]
         log.debug(f"ROUTING: Computed path #{self.path_id}: {route}")
         yield self._make_path_instructions(net, route, _compute_mv(net, route, self.qubit_allocation))
 
@@ -202,7 +201,7 @@ class RoutingPathMulti(RoutingPath):
     @override
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
         # Get all shortest paths (M ≥ 1)
-        routes = list(self._query_routes(net))
+        routes = self._query_routes(net)
 
         # Count usage of each quantum channel across all paths
         qchannel_use_count = defaultdict[str, int](lambda: 0)

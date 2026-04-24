@@ -373,12 +373,13 @@ def test_tree2_statistical(
             chosen = candidates[0]
         elif fw is f2:  # n2-n1 choosing between n4-n2 and n5-n2
             partner = (f4, f5)[selected_qubit[0]]
-            chosen = next((mt1 for mt1 in candidates if mt1[1].src is partner.node))
+            chosen = next((mt1 for mt1 in candidates if mt1[1].src is partner.node), None)
         elif fw is f3:  # n1-n3 choosing between n3-n6 and n3-n7
             partner = (f6, f7)[selected_qubit[1]]
-            chosen = next((mt1 for mt1 in candidates if mt1[1].dst is partner.node))
+            chosen = next((mt1 for mt1 in candidates if mt1[1].dst is partner.node), None)
         else:
             raise RuntimeError()
+        assert chosen is not None
         return chosen
 
     def select_path(fw: Forwarder, epr0: Entanglement, epr1: Entanglement, path_ids: list[int]) -> int:

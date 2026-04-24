@@ -84,12 +84,18 @@ class ReactiveForwarder(Forwarder):
                 self.memory.deallocate(*(qubit.addr for qubit, _ in self.memory.find(lambda q, _: q.path_id is not None)))
 
     @override
-    def handle_path_change(self, **_):
+    def handle_path_change(self, *, path_id: int, uninstall: bool, **_):
         """
         Process LinkLayer changes after a path has been installed or uninstalled.
 
         This does nothing because LinkLayer is always running based on topology.
         """
+        if uninstall:
+            raise ValueError("ReactiveForwarder should not receive UNINSTALL_PATH command")
+        if not self.node.timing.is_routing():
+            log.warning(
+                f"{self.node}: received INSTALL_PATH message for path {path_id} outside of ROUTING phase; t_rtg is too short?"
+            )
 
     def send_link_state(self):
         """

@@ -138,6 +138,9 @@ class Simulator:
                 profile.runcall(self._run)
             else:
                 self._run()
+        except BaseException as e:
+            log.error(f"Simulator exception {type(e)} occurred: {e}")
+            raise RuntimeError(f"simulation aborted at [{self.tc}] by exception: {e}") from e
         finally:
             self.stop()  # ensure s.running is False
 

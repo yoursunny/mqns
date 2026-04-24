@@ -108,7 +108,7 @@ struct Args {
     #[bpaf(argument("MODE"), fallback(Mode::PCA))]
     mode: Mode,
 
-    #[bpaf(external, fallback(SyncTiming{_sync_timing:(), t_ext:0.024995, t_rtg:0.000010, t_int:0.024995}))]
+    #[bpaf(external, fallback(SyncTiming{_sync_timing:(), t_ext:0.024990, t_rtg:0.000020, t_int:0.024990}))]
     sync_timing: SyncTiming,
 
     /// S1-D1 path enablement and swap order (asap|l2r|r2l|disabled)

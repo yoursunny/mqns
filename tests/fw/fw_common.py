@@ -236,7 +236,8 @@ def provide_entanglements(
 
         key = f"provide_entanglements.key:{uuid.uuid4().hex}"
         for node, neighbor, d_notify in (src, dst, d_notify_a), (dst, src, d_notify_b):
-            q, _ = next(node.memory.find(lambda _, v: v is None, qchannel=ch))
+            q, _ = next(node.memory.find(lambda _, v: v is None, qchannel=ch), (None, None))
+            assert q is not None, f"insufficient qubits assigned to {ch}"
             node.memory.write(q.addr, epr)
             q.active = key
             q._state = QubitState.ENTANGLED0

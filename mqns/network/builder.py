@@ -412,7 +412,7 @@ class NetworkBuilder:
             self.timing = TimingModeAsync()
         else:
             if len(timing) == 0:
-                timing = (self.t_cohere / 2 - CTRL_DELAY, 2 * CTRL_DELAY, self.t_cohere / 2 - CTRL_DELAY)
+                timing = (self.t_cohere / 2 - 2 * CTRL_DELAY, 4 * CTRL_DELAY, self.t_cohere / 2 - 2 * CTRL_DELAY)
             self.timing = TimingModeSync(durations=timing)
 
     def _add_link_layer(self):
