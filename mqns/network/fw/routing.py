@@ -46,7 +46,7 @@ class RoutingPathInitArgs(TypedDict, total=False):
     path_id: int
     """Path identifier for the first path, defaults to auto-assignment."""
     swap: SwapSequenceInput
-    """Predefined or explicitly specified swapping order, defaults to ASAP."""
+    """Swap sequence or swap policy, defaults to ASAP."""
     swap_cutoff: list[float] | None
     """Swap cut-off times in seconds."""
     purif: dict[str, int] | None
@@ -55,7 +55,7 @@ class RoutingPathInitArgs(TypedDict, total=False):
 
 class RoutingPath(ABC):
     """
-    Compute routing path(s) for installing through ProactiveRoutingController.
+    Compute routing path(s) for installing through RoutingController.
     """
 
     def __init__(self, src: str, dst: str, **kwargs: Unpack[RoutingPathInitArgs]):
@@ -100,7 +100,7 @@ class RoutingPath(ABC):
             They will be installed into the nodes.
         """
 
-    def _query_routes(self, net: QuantumNetwork) -> Iterator[list[str]]:
+    def _query_routes(self, net: QuantumNetwork) -> list[list[str]]:
         """
         Query routes from source node to destination node.
         """
@@ -109,8 +109,7 @@ class RoutingPath(ABC):
         route_result = net.query_route(src, dst)
         if len(route_result) == 0:
             raise RuntimeError(f"ROUTING: No route from {src} to {dst}")
-        for _, _, route_nodes in route_result:
-            yield [node.name for node in route_nodes]
+        return [[node.name for node in route_nodes] for _, _, route_nodes in route_result]
 
     def _make_path_instructions(
         self,
@@ -138,7 +137,7 @@ class RoutingPath(ABC):
 
 class RoutingPathStatic(RoutingPath):
     """
-    Define a static routing path for installing through ProactiveRoutingController.
+    Define a static routing path for installing through RoutingController.
     """
 
     def __init__(
@@ -160,7 +159,7 @@ class RoutingPathStatic(RoutingPath):
 
 class RoutingPathSingle(RoutingPath):
     """
-    Compute a single shortest path for installing through ProactiveRoutingController.
+    Compute a single shortest path for installing through RoutingController.
     """
 
     def __init__(
@@ -176,14 +175,14 @@ class RoutingPathSingle(RoutingPath):
 
     @override
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
-        route = next(self._query_routes(net))
+        route = self._query_routes(net)[0]
         log.debug(f"ROUTING: Computed path #{self.path_id}: {route}")
         yield self._make_path_instructions(net, route, _compute_mv(net, route, self.qubit_allocation))
 
 
 class RoutingPathMulti(RoutingPath):
     """
-    Compute multiple shortest paths for installing through ProactiveRoutingController.
+    Compute multiple shortest paths for installing through RoutingController.
 
     This should be used with YenRouteAlgorithm in the QuantumNetwork.
     The number of paths for each request is determined by the routing algorithm.
@@ -202,7 +201,7 @@ class RoutingPathMulti(RoutingPath):
     @override
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
         # Get all shortest paths (M ≥ 1)
-        routes = list(self._query_routes(net))
+        routes = self._query_routes(net)
 
         # Count usage of each quantum channel across all paths
         qchannel_use_count = defaultdict[str, int](lambda: 0)
