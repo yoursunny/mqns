@@ -114,17 +114,17 @@ class ForwarderSwapProc:
             next_epr.ch_index = fib_entry.own_idx
 
         # Attempt the swap.
-        new_epr = Entanglement.swap(prev_epr, next_epr, now=self.simulator.tc, ps=self.ps)
-        log.debug(f"{self.node}: SWAP {'SUCC' if new_epr else 'FAILED'} | {prev_qubit} x {next_qubit} = {new_epr}")
+        new_epr, local_success = Entanglement.swap(prev_epr, next_epr, now=self.simulator.tc, ps=self.ps)
+        log.debug(f"{self.node}: SWAP {'SUCC' if local_success else 'FAILED'} | {prev_qubit} x {next_qubit} = {new_epr}")
 
-        if new_epr is not None:  # swapping succeeded
+        if local_success:  # swapping succeeded
             self.fw.cnt.n_swapped_s += 1
 
             # Inform multiplexing scheme.
             self.mux.swapping_succeeded(prev_epr, next_epr, new_epr)
 
         for (a_partner, a_qubit, a_epr), (b_partner, _, b_epr) in ((prev_tuple, next_tuple), (next_tuple, prev_tuple)):
-            if new_epr is not None:
+            if local_success:
                 # Keep records to support potential parallel swapping.
                 _, a_rank = fib_entry.find_index_and_swap_rank(a_partner.name)
                 if fib_entry.own_swap_rank == a_rank:
@@ -140,7 +140,7 @@ class ForwarderSwapProc:
                 "swapping_node": self.node.name,
                 "partner": b_partner.name,
                 "epr": a_epr.name,
-                "new_epr": None if new_epr is None else new_epr.name,
+                "new_epr": new_epr.name if local_success else None,
             }
             self.fw.send_msg(a_partner, su_msg, fib_entry)
 
@@ -287,11 +287,11 @@ class ForwarderSwapProc:
         # Merge the two swaps (physically already happened).
         new_epr.read = True
         if other_epr.dst == self.node:  # destination is to the left of own node
-            merged_epr = Entanglement.swap(other_epr, new_epr, now=self.simulator.tc)
+            merged_epr, _ = Entanglement.swap(other_epr, new_epr, now=self.simulator.tc)
             partner = cast(QNode, new_epr.dst)
             destination = cast(QNode, other_epr.src)
         else:  # destination is to the right of own node
-            merged_epr = Entanglement.swap(new_epr, other_epr, now=self.simulator.tc)
+            merged_epr, _ = Entanglement.swap(new_epr, other_epr, now=self.simulator.tc)
             partner = cast(QNode, new_epr.src)
             destination = cast(QNode, other_epr.dst)
         assert partner.name == msg["partner"]

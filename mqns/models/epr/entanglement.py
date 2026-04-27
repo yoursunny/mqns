@@ -36,7 +36,7 @@ import numpy as np
 from mqns.models.core import QuantumModel
 from mqns.models.core.operator import OPERATOR_PAULI_I, Operator
 from mqns.models.core.state import QUBIT_STATE_P, QubitRho, build_qubit_state, qubit_state_to_rho
-from mqns.models.error import TimeDecayFunc, time_decay_nop
+from mqns.models.error import ErrorModel, PerfectErrorModel, TimeDecayFunc, time_decay_nop
 from mqns.models.qubit import QState, Qubit
 from mqns.models.qubit.gate import CNOT, H, U, X, Y, Z
 from mqns.simulator import Time
@@ -165,25 +165,25 @@ class Entanglement(QuantumModel):
         *,
         now: Time,
         ps=1.0,
-    ) -> E | None:
+        error: ErrorModel = PerfectErrorModel(),
+    ) -> tuple[E, bool]:
         """
         Perform swapping between ``epr0`` and ``epr1``, and distribute a new entanglement.
 
         Args:
-            epr0: left entanglement.
-            epr1: right entanglement.
-            now: current timestamp.
-            ps: probability of successful swapping.
+            epr0: Left entanglement.
+            epr1: Right entanglement.
+            now: Current timestamp.
+            ps: Probability of successful swapping.
+            error: BSA error model.
 
         Returns:
-            New entanglement, or None if swap failed.
+            [0]: New entanglement.
+            [1]: Whether success from local point of view.
         """
 
         assert type(epr0) is type(epr1)
         assert epr0.dst == epr1.src  # it's okay for src and dst to be None
-
-        if ps < 1.0 and rng.random() >= ps:  # swap failed
-            return None
 
         orig_eprs: list[E] = []
         for epr in (epr0, epr1):
@@ -209,8 +209,12 @@ class Entanglement(QuantumModel):
             ),
         )
         ne.orig_eprs = orig_eprs
-        ne.is_decohered = epr0.is_decohered or epr1.is_decohered
-        return ne
+
+        local_failure = ps < 1.0 and rng.random() >= ps
+        ne.is_decohered = epr0.is_decohered or epr1.is_decohered or local_failure
+        if not ne.is_decohered:
+            ne.apply_error(error)
+        return ne, not local_failure
 
     @staticmethod
     @abstractmethod
