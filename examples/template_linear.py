@@ -119,7 +119,7 @@ FREQUENCY = 1e6  # entanglement source / memory frequency
 SWAP: SwapSequenceInput = "l2r"
 
 # p_swap:
-#   - Swapping success probability used by ProactiveForwarder(ps=p_swap)
+#   - Swapping success probability used by ProactiveForwarder(p_swap=p_swap)
 P_SWAP = 0.5
 
 

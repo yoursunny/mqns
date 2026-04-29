@@ -49,8 +49,7 @@ class BuildNetworkArgs(TypedDict, total=False):
     qchannel_args: QuantumChannelInitKwargs
     cchannel_args: ClassicChannelInitKwargs
     ctrl: RoutingController  # replacing controller application
-    fw: ForwarderInitKwargs  # forwarder parameters
-    ps: float  # probability of successful swap, defaults to 0.5
+    fw: ForwarderInitKwargs  # forwarder parameters (`p_swap` defaults to 0.5)
     end_time: float  # simulation end time, defaults to 10.0 seconds
     timing: TimingMode  # network timing mode, defaults to ASYNC
     epr_type: type[Entanglement]  # entanglement type, defaults to werner state
@@ -68,7 +67,7 @@ def _make_topo_args(d: BuildNetworkArgs, *, memory_capacity_factor: int) -> Topo
         nodes_apps.append(QubitReleaseLoggerApp())
 
     fw_args = copy.copy(d.get("fw")) or {}
-    fw_args.setdefault("ps", d.get("ps", 0.5))
+    fw_args.setdefault("p_swap", 0.6)
     match d.get("mode", "P"):
         case "P":
             nodes_apps.append(ProactiveForwarder(**fw_args))

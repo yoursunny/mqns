@@ -50,7 +50,7 @@ from mqns.utils import json_encodable, log
 
 
 class ForwarderInitKwargs(TypedDict, total=False):
-    ps: float
+    p_swap: float
     """Probability of successful entanglement swapping, default is 1.0."""
     swap_delay: DelayInput
     """Swapping delay model, default is zero."""
@@ -169,7 +169,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         """FIB structure."""
         self.purif = ForwarderPurifProc()
         self.swap = ForwarderSwapProc(
-            ps=kwargs.get("ps", 1.0),
+            ps=kwargs.get("p_swap", 1.0),
             delay=parse_delay(kwargs.get("swap_delay", 0)),
             error=parse_error(kwargs.get("swap_error"), PerfectErrorModel, -1),
         )

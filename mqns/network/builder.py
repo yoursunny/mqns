@@ -449,7 +449,7 @@ class NetworkBuilder:
         self._add_link_layer()
         self.qnode_apps.append(
             ProactiveForwarder(
-                ps=self.p_swap,
+                p_swap=self.p_swap,
                 mux=mux,
             )
         )
@@ -484,7 +484,7 @@ class NetworkBuilder:
         self._add_link_layer()
         self.qnode_apps.append(
             ReactiveForwarder(
-                ps=self.p_swap,
+                p_swap=self.p_swap,
                 mux=mux,
             ),
         )
