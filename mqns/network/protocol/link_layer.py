@@ -243,7 +243,6 @@ class LinkLayer(Application[QNode]):
             init_fidelity=self.init_fidelity,
             t0=self.simulator.tc,
             store_decays=(self.memory.time_decay, neighbor.memory.time_decay),
-            bsa_error=None,
         )
 
         epr_tpl, t_notify_a, t_notify_b = qchannel.link_arch.make_epr(

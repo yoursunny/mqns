@@ -178,9 +178,10 @@ def run_simulation(
             eta_d=ETA_D,
             eta_s=ETA_S,
             frequency=FREQUENCY,
+        )
+        .proactive_centralized(
             p_swap=P_SWAP,
         )
-        .proactive_centralized()
         .request("S-D", swap=swap)
         .make_network()
     )
