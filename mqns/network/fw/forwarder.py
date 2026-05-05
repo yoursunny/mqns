@@ -213,7 +213,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
 
         Upon exiting INTERNAL phase:
 
-        1. Clear ``self.swap.remote_swapped``.
+        1. Clear state in the swap module.
            All memory qubits are being discarded by LinkLayer, so that these have become useless.
         """
         match event.action:
@@ -223,7 +223,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
                     self.qubit_is_entangled(etg_event)
                 self.waiting_etg.clear()
             case TimingPhase.INTERNAL, False:
-                self.swap.remote_swapped.clear()
+                self.swap.exit_internal_phase()
 
     @fw_control_cmd_handler("INSTALL_PATH")
     def handle_install_path(self, msg: InstallPathMsg):

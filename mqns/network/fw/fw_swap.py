@@ -90,6 +90,14 @@ class ForwarderSwapProc:
         self.memory = fw.memory
         self.mux = fw.mux
 
+    def exit_internal_phase(self):
+        """
+        Called when the forwarder in SYNC timing mode exits an internal phase.
+        """
+        assert len(self.waiting_su) == 0
+        self.parallel_swappings.clear()
+        self.remote_swapped.clear()
+
     def _deposit_remote_swapped(self, target: QNode, epr: Entanglement):
         target.get_app(type(self.fw)).swap.remote_swapped[epr.name] = epr
 
