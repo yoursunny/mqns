@@ -22,6 +22,7 @@ from mqns.models.error import (
     DepolarErrorModel,
     DissipationErrorModel,
     ErrorModel,
+    PauliErrorModel,
     PerfectErrorModel,
     TimeDecayFunc,
     parse_time_decay,
@@ -225,7 +226,7 @@ def test_measure_error(error: ErrorModelInputBasic, success: int, success_atol: 
     ("error", "rho_input"),
     [
         (None, [[0.5, 0.5], [0.5, 0.5]]),
-        ({"p_error": 0.18}, [[0.5, 0.38], [0.38, 0.5]]),
+        ({"p_error": 0.18}, [[0.5, 0.41], [0.41, 0.5]]),
     ],
 )
 def test_operate_error(error: ErrorModelInputBasic, rho_input: np.typing.ArrayLike):
@@ -253,6 +254,28 @@ def test_entanglement(
         if q0.measure() == q1.measure():
             cnt += 1
     assert np.isclose(cnt, success, atol=success_atol)
+
+
+@pytest.mark.parametrize(
+    ("error", "probv", "match_werner"),
+    [
+        ((DepolarErrorModel, {"p_error": 1}), [0.25, 0.25, 0.25, 0.25], True),
+        ((DephaseErrorModel, {"p_error": 1}), [0.5, 0.5, 0, 0], False),
+        ((BitFlipErrorModel, {"p_error": 1}), [0.5, 0, 0.5, 0], False),
+        (PauliErrorModel(z=2, x=2).set(p_error=1), [1 / 3, 1 / 3, 1 / 3, 0], False),
+    ],
+)
+def test_pauli_1(error: ErrorModelInputBasic, probv: list[float], match_werner: bool):
+    error = parse_error(error, PerfectErrorModel, -1)
+    me = MixedStateEntanglement()
+    me.apply_error(error)
+    print(me.probv)
+    assert me.probv == pytest.approx(probv)
+
+    if match_werner:
+        we = WernerStateEntanglement()
+        we.apply_error(error)
+        assert me.fidelity == pytest.approx(we.fidelity)
 
 
 @pytest.mark.parametrize(
@@ -321,4 +344,4 @@ def test_chain():
 
     me = MixedStateEntanglement()
     me.apply_error(chain)
-    assert me.probv == pytest.approx([0.813333, 0.12, 0.033333, 0.033333], abs=1e-6)
+    assert me.probv == pytest.approx([0.880, 0.070, 0.025, 0.025], abs=1e-6)

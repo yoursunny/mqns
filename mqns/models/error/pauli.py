@@ -60,7 +60,10 @@ class PauliErrorModelBase(ErrorModel):
 
 class PauliErrorModel(PauliErrorModelBase):
     """
-    Pauli error model: one of Z,X,Y gates may be randomly applied with ``p_error`` total probability.
+    Pauli error model that maps channel degradation into a combination of stochastic Pauli gates.
+
+    This model interprets ``p_survival`` and ``p_error`` to scale individual gate application
+    probabilities (Z, X, Y) toward an asymptotic mixed-state baseline as noise accumulates.
     """
 
     def __init__(self, name="pauli", *, z=0.0, x=0.0, y=0.0):
@@ -69,24 +72,30 @@ class PauliErrorModel(PauliErrorModelBase):
 
         Args:
             name: name of this error model.
-            z: ratio of Z-gate application within ``p_error``.
-            x: ratio of X-gate application within ``p_error``.
-            y: ratio of Y-gate application within ``p_error``.
+            z: relative weight of Z-gate noise component.
+            x: relative weight of X-gate noise component.
+            y: relative weight of Y-gate noise component.
         """
         super().__init__(name)
 
-        self.ratios: np.ndarray[tuple[Literal[3]], np.dtype[np.float64]] = np.array([z, x, y], dtype=np.float64)
-        """Ratio of Z,X,Y gate application, sum is 1."""
-        total = np.sum(self.ratios)
+        ratios: np.ndarray[tuple[Literal[3]], np.dtype[np.float64]] = np.array([z, x, y], dtype=np.float64)
+        total = np.sum(ratios)
         if total > ATOL:
-            self.ratios /= total
+            ratios /= total
         else:
-            self.ratios.fill(1 / 3)
+            ratios.fill(1 / 3)
+
+        # Determine the mixed-state baseline reachable if p_error is 1.
+        active_axes = np.count_nonzero(ratios)
+        p_i_floor = 1.0 / (1.0 + active_axes) if active_axes > 0 else 1.0
+        error_floor = ratios * (1.0 - p_i_floor)
+        self._asymptotic_floor = make_bell_diagonal_probv(p_i_floor, *error_floor)
 
     @override
     def _prepare(self) -> None:
-        z, x, y = self.ratios * self.p_error
-        self._set_probv(make_bell_diagonal_probv(self.p_survival, z, x, y))
+        probv = self.p_error * self._asymptotic_floor
+        probv[0] += self.p_survival
+        self._set_probv(probv)
 
         try:
             del self._stochastic_ops
@@ -114,7 +123,11 @@ class PauliErrorModel(PauliErrorModelBase):
 
 class DepolarErrorModel(PauliErrorModel):
     """
-    Depolarizing error model: one of Z,X,Y gates may be randomly applied with ``p_error`` probability.
+    Depolarizing error model representing isotropic channel degradation.
+
+    As ``p_error`` approaches 1, the gate probabilities scale uniformly to drive
+    single-qubit states toward the maximally mixed state, distributed evenly
+    across Z, X, and Y operations.
     """
 
     def __init__(self, name="depolarizing"):
@@ -123,7 +136,12 @@ class DepolarErrorModel(PauliErrorModel):
 
 class DephaseErrorModel(PauliErrorModel):
     """
-    Dephasing error model: Z gate may be randomly applied with ``p_error`` probability.
+    Dephasing error model representing pure phase-damping noise.
+
+    Isolates degradation along the longitudinal axis. As ``p_error`` approaches 1,
+    the probabilities of the identity (I) and phase-flip (Z) operations scale to
+    converge at an equal 50/50 split, completely destroying off-diagonal coherence
+    without causing state oscillations.
     """
 
     def __init__(self, name="dephasing"):
@@ -132,7 +150,12 @@ class DephaseErrorModel(PauliErrorModel):
 
 class BitFlipErrorModel(PauliErrorModel):
     """
-    Bit flip error model: X gate may be randomly applied with ``p_error`` probability.
+    Bit-flip error model representing amplitude inversion noise.
+
+    Isolates degradation along the transversal axis. As ``p_error`` approaches 1,
+    the probabilities of the identity (I) and bit-flip (X) operations scale to
+    converge at an equal 50/50 split, completely mixing populations without causing
+    deterministic state inversions.
     """
 
     def __init__(self, name="bit-flip"):

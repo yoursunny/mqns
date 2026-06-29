@@ -144,15 +144,15 @@ def test_perfect_error(LA: type[LinkArch], E: type[Entanglement]):
     ("LA", "w_or_probv"),
     [
         (LinkArchDimBk, 0.877971),
-        (LinkArchDimBk, (0.880156, 0.045599, 0.037122, 0.037122)),
+        (LinkArchDimBk, (0.910693, 0.032721, 0.028292, 0.028292)),
         (LinkArchDimBkSeq, 0.869235),
-        (LinkArchDimBkSeq, (0.871841, 0.053913, 0.037122, 0.037122)),
+        (LinkArchDimBkSeq, (0.906325, 0.037089, 0.028292, 0.028292)),
         (LinkArchDimDual, 0.937001),
-        (LinkArchDimDual, (0.937468, 0.023918, 0.019306, 0.019306)),
+        (LinkArchDimDual, (0.953930, 0.016928, 0.014570, 0.014570)),
         (LinkArchSr, 0.982592),
-        (LinkArchSr, (0.982636, 0.010696, 0.003333, 0.003333)),
+        (LinkArchSr, (0.988796, 0.006203, 0.002500, 0.002500)),
         (LinkArchSim, 0.927650),
-        (LinkArchSim, (0.928317, 0.026917, 0.022382, 0.022382)),
+        (LinkArchSim, (0.946900, 0.019249, 0.016925, 0.016925)),
     ],
 )
 def test_realistic_error(LA: type[LinkArch], w_or_probv: float | tuple[float, float, float, float]):

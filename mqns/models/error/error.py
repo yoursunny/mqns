@@ -21,12 +21,23 @@ class ErrorModel(ABC):
 
     @property
     def p_survival(self) -> float:
-        """Survival probability."""
+        """
+        Survival probability or channel damping parameter.
+
+        For time or length based continuous decay, this represents the raw exponential damping factor ``exp(-rate * x)``.
+        For discrete processes, it represents the baseline probability that the system escapes
+        the configured noise channel entirely.
+        """
         return self._p_survival
 
     @property
     def p_error(self) -> float:
-        """Error probability."""
+        """
+        Error probability or channel degradation parameter.
+
+        This quantifies the overall scaling, magnitude, or activation probability of the configured noise channel.
+        Specific subclasses interpret this parameter to derive their internal state-transformation mappings.
+        """
         return 1 - self._p_survival
 
     @overload

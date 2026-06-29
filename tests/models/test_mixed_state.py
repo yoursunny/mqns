@@ -127,8 +127,8 @@ def test_to_qubits_maximal(i: float, z: float, x: float, y: float, state: QubitS
 @pytest.mark.parametrize(
     ("error", "probv", "classify_noise"),
     [
-        ((DephaseErrorModel, {"p_error": 0.1}), [0.9, 0.1, 0, 0], "DEPHASE"),
-        ((DepolarErrorModel, {"p_error": 0.1}), [0.9, 0.1 / 3, 0.1 / 3, 0.1 / 3], "DEPOLAR"),
+        ((DephaseErrorModel, {"p_error": 0.2}), [0.9, 0.1, 0, 0], "DEPHASE"),
+        ((DepolarErrorModel, {"p_error": 0.2}), [0.85, 0.05, 0.05, 0.05], "DEPOLAR"),
         # twirling makes dissipation noise look like dephasing
         ((DissipationErrorModel, {"p_error": 0.1}), [0.95, 0.05, 0, 0], "DEPHASE"),
     ],

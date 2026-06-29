@@ -347,7 +347,7 @@ def test_4_delayed(
     req_cnt = RequestCounters.of(net, rp)
     assert req_cnt.n_consumed == n_consumed
     if n_consumed > 0:
-        assert 0.5 < req_cnt.consumed_avg_fidelity <= 0.75
+        assert 0.750 < req_cnt.consumed_avg_fidelity <= 0.875
 
     assert list(fw.node.get_app(QubitReleaseReset).last_t for fw in (fwA, fwB, fwC, fwD)) == [
         simulator.time(sec=t) for t in t_release
