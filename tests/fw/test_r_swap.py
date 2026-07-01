@@ -44,10 +44,11 @@ def test_tree2_one():
     net, simulator = build_tree_network(
         2,
         mode="R",
+        ctrl=ctrl,
         fw={"p_swap": 1.0},
         end_time=0.010,
         timing=TimingModeSync(t_ext=0.006, t_rtg=0.001, t_int=0.003),
-        ctrl=ctrl,
+        has_consumer=False,
     )
     fwA, fwB, fwC, fwD, _, fwF, _ = (node.get_app(ReactiveForwarder) for node in net.nodes)
 
@@ -78,10 +79,11 @@ def test_tree2_two():
         2,
         mode="R",
         qchannel_capacity=2,
+        ctrl=ctrl,
         fw={"p_swap": 1.0},
         end_time=0.010,
         timing=TimingModeSync(t_ext=0.006, t_rtg=0.001, t_int=0.003),
-        ctrl=ctrl,
+        has_consumer=False,
     )
     fwA, fwB, fwC, fwD, fwE, fwF, fwG = (node.get_app(ReactiveForwarder) for node in net.nodes)
 
@@ -122,7 +124,7 @@ def test_tree2_two():
 
 
 @pytest.mark.parametrize(
-    ("req_active", "etg12", "etg23", "cnt"),
+    ("req_active", "etgAB", "etgBC", "cnt"),
     [
         # Request is active in both slots, EPRs arrive in first slot, request satisfied.
         ((0, 0.020), [0.001], [0.002], (3, 1)),
@@ -138,7 +140,7 @@ def test_tree2_two():
         ((0, 0.010), [0.001, 0.003], [0.002, 0.004], (3, 2)),
     ],
 )
-def test_3_minimal(req_active: tuple[float, float], etg12: list[float], etg23: list[float], cnt: tuple[int, int]):
+def test_3_minimal(req_active: tuple[float, float], etgAB: list[float], etgBC: list[float], cnt: tuple[int, int]):
     """Test 3-node minimal swap, two time slots."""
     net, simulator = build_linear_network(
         3,
@@ -147,6 +149,7 @@ def test_3_minimal(req_active: tuple[float, float], etg12: list[float], etg23: l
         fw={"p_swap": 1.0},
         end_time=0.020,
         timing=TimingModeSync(t_ext=0.006, t_rtg=0.001, t_int=0.003),
+        has_consumer=False,
     )
     ctrl = net.get_controller().get_app(ReactiveRoutingController)
     fwA, fwB, fwC = (node.get_app(ReactiveForwarder) for node in net.nodes)
@@ -154,8 +157,8 @@ def test_3_minimal(req_active: tuple[float, float], etg12: list[float], etg23: l
     simulator.add_event(func_to_event(simulator.time(sec=req_active[0]), lambda: net.add_request(fwA.node, fwC.node)))
     simulator.add_event(func_to_event(simulator.time(sec=req_active[1]), net.requests.clear))
     provide_entanglements(
-        *((t, fwA, fwB) for t in etg12),
-        *((t, fwB, fwC) for t in etg23),
+        *((t, fwA, fwB) for t in etgAB),
+        *((t, fwB, fwC) for t in etgBC),
     )
     simulator.run()
     print(ctrl.cnt)

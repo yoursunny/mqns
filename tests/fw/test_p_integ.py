@@ -8,12 +8,13 @@ import pytest
 
 from mqns.entity.timer import Timer
 from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
-from mqns.network.fw import ForwarderConsumeCounters, RoutingPathSingle, RoutingPathStatic, SwapSequenceInput
+from mqns.network.fw import RoutingPathSingle, RoutingPathStatic, SwapSequenceInput
 from mqns.network.network import TimingModeAsync, TimingModeSync
 from mqns.network.proactive import ProactiveForwarder
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 
-from .fw_common import build_linear_network, build_rect_network, install_path, print_fw_counters
+from .fw_common import build_linear_network, build_rect_network, install_path, print_node_counters
 
 
 @pytest.mark.parametrize(
@@ -34,17 +35,16 @@ def test_4_swap(epr_type: type[Entanglement], timing_mode: str, swap: SwapSequen
     )
     _, fwB, fwC, _ = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    install_path(net, RoutingPathSingle("A", "D", swap=swap))
+    rp = install_path(net, RoutingPathSingle("A", "D", swap=swap))
     simulator.run()
-    print_fw_counters(net)
+    print_node_counters(net)
 
     # The main purpose of integrated test is to verify that the forwarder can return released qubits back to LinkLayer
     # for re-generating elementary entanglements.
     # Hence, these numeric bounds are much smaller than usual values, but must be greater than the memory capacity.
     assert fwB.cnt.n_swapped >= 16
     assert fwC.cnt.n_swapped >= 16
-    consume_cnt = ForwarderConsumeCounters.of_path(net, "A", "D")
-    assert consume_cnt.n_consumed >= 16
+    assert RequestCounters.of(net, rp).n_consumed >= 16
 
 
 def test_rect_uninstall_path():
@@ -59,7 +59,7 @@ def test_rect_uninstall_path():
     counters: list[tuple[int, int, int, int, int]] = []
 
     def save_counters():
-        print_fw_counters(net)
+        print_node_counters(net)
         counters.append(
             (
                 fwB.cnt.n_swapped,

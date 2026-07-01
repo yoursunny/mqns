@@ -6,14 +6,14 @@ import pytest
 
 from mqns.network.fw import RoutingPathSingle
 from mqns.network.proactive import ProactiveForwarder
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.utils import rng
 
 from .fw_common import (
     build_linear_network,
     check_fw_counters,
-    check_path_counters,
     install_path,
-    print_fw_counters,
+    print_node_counters,
     provide_entanglements,
 )
 
@@ -57,11 +57,11 @@ def test_link_rounds(monkeypatch: pytest.MonkeyPatch, n_rounds: int, purif_succe
     fwA = net.get_node("A").get_app(ProactiveForwarder)
     fwB = net.get_node("B").get_app(ProactiveForwarder)
 
-    install_path(net, RoutingPathSingle("A", "B", swap=[0, 0], purif={"A-B": n_rounds}))
+    rp = install_path(net, RoutingPathSingle("A", "B", swap=[0, 0], purif={"A-B": n_rounds}))
     provide_entanglements(*((1.001 + i / 1000, fwA, fwB) for i in range(n_etg)))
     force_purify_outcome(monkeypatch, *(True if i > 0 else False for i in purif_success))
     simulator.run()
-    print_fw_counters(net)
+    print_node_counters(net)
 
     assert fwA.cnt.n_purif == n_purif == fwB.cnt.n_purif
     n_eligible = 0 if len(n_purif) < n_rounds else n_purif[-1]
@@ -70,7 +70,7 @@ def test_link_rounds(monkeypatch: pytest.MonkeyPatch, n_rounds: int, purif_succe
         n_entg=(n_etg, n_etg),
         n_eligible=(n_eligible, n_eligible),
     )
-    check_path_counters(net, n_consumed=n_eligible)
+    assert RequestCounters.of(net, rp).n_consumed == n_eligible
 
 
 def test_4_l2r(monkeypatch: pytest.MonkeyPatch):
@@ -78,7 +78,7 @@ def test_4_l2r(monkeypatch: pytest.MonkeyPatch):
     net, simulator = build_linear_network(4, qchannel_capacity=8, fw={"p_swap": 1.0})
     fwA, fwB, fwC, fwD = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    install_path(
+    rp = install_path(
         net,
         RoutingPathSingle("A", "D", swap=[2, 0, 1, 2], purif={"A-B": 1, "B-C": 1, "C-D": 1, "A-C": 1, "A-D": 1}),
     )
@@ -106,7 +106,7 @@ def test_4_l2r(monkeypatch: pytest.MonkeyPatch):
     )
     force_purify_outcome(monkeypatch, *[True] * 19)
     simulator.run()
-    print_fw_counters(net)
+    print_node_counters(net)
 
     assert fwA.cnt.n_purif == [4 + 2 + 1]  # 4 with fwB, 2 with fwC, 1 with fwD
     assert fwB.cnt.n_purif == [4 + 4]  # 4 with fwA, 4 with fwC
@@ -123,4 +123,4 @@ def test_4_l2r(monkeypatch: pytest.MonkeyPatch):
         # fwD: 1 with fwA
         n_eligible=(1, 4 + 4, 2 + 2, 1),
     )
-    check_path_counters(net, n_consumed=1)
+    assert RequestCounters.of(net, rp).n_consumed == 1

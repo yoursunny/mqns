@@ -45,7 +45,8 @@ from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
 from mqns.network.fw.select import SelectPurifQubit, call_select_purif_qubit
 from mqns.network.network import QuantumNetwork, TimingPhase, TimingPhaseEvent
-from mqns.network.protocol.event import QubitEntangledEvent, QubitReleasedEvent
+from mqns.network.protocol.consumer import Consumer
+from mqns.network.protocol.event import EntanglementReadyEvent, QubitEntangledEvent, QubitReleasedEvent
 from mqns.simulator import Time, event_handler
 from mqns.utils import json_encodable, log
 
@@ -214,13 +215,15 @@ class ForwarderCounters(ForwarderConsumeCounters):
             self.n_cutoff += [0] * (minlen - len(self.n_cutoff))
         self.n_cutoff[2 * round + (0 if local else 1)] += 1
 
-    def __repr__(self) -> str:
+    def repr_without_consume(self) -> str:
         return (
             f"entg={self.n_entg} purif={self.n_purif} eligible={self.n_eligible} "
             f"swapped={self.n_swapped} swap-fail={self.n_swap_fail} "
-            f"su-lower={self.n_su_lower} su-same={self.n_su_same} cutoff-discard={self.n_cutoff} "
-            f"{ForwarderConsumeCounters.__repr__(self)}"
+            f"su-lower={self.n_su_lower} su-same={self.n_su_same} cutoff-discard={self.n_cutoff}"
         )
+
+    def __repr__(self) -> str:
+        return f"{self.repr_without_consume()} {ForwarderConsumeCounters.__repr__(self)}"
 
 
 class Forwarder(ForwarderClassicMixin, Application[QNode]):
@@ -560,8 +563,12 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
             return
 
         _, epr = self.memory.read(qubit.addr, has=self.epr_type)
-        if self.can_consume(fib_entry, epr):
-            self.consume_and_release(qubit)
+        if (req_id := self.can_consume(fib_entry, epr)) >= 0:
+            if self.node.get_apps(Consumer):
+                self.simulator.add_event(EntanglementReadyEvent(self.node, qubit, epr, t=self.simulator.tc, req_id=req_id))
+            else:
+                # legacy code path until all examples and tests have Consumer app
+                self.consume_and_release(qubit)
             return
 
         swap_candidates = self.memory.find(
@@ -578,14 +585,18 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         else:
             self.cutoff.before_store_eligible(qubit, PathDirection.L if epr.src is self.node else PathDirection.R, fib_entry)
 
-    def can_consume(self, fib_entry: FibEntry | None, epr: Entanglement) -> bool:
+    def can_consume(self, fib_entry: FibEntry | None, epr: Entanglement) -> int:
         if fib_entry is None:
             assert epr.src is not None
             assert epr.dst is not None
             src, dst = epr.src.name, epr.dst.name
-            return next(self.fib.find_request(lambda g: g.src == src and g.dst == dst), None) is not None
+            for req in self.fib.find_request(lambda g: g.src == src and g.dst == dst):
+                return req.req_id
+            return -1
 
-        return fib_entry.is_swap_disabled or fib_entry.own_idx in (0, len(fib_entry.route) - 1)
+        if fib_entry.is_swap_disabled or fib_entry.own_idx in (0, len(fib_entry.route) - 1):
+            return fib_entry.req_id
+        return -1
 
     def consume_and_release(self, qubit: MemoryQubit):
         """
