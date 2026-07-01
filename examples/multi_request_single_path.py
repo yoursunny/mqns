@@ -38,7 +38,7 @@ log.set_default_level("CRITICAL")
 
 class Args(Tap):
     workers: int = 1  # number of workers for parallel execution
-    runs: int = 3  # number of trials per parameter set
+    runs: int = 10  # number of trials per parameter set
     sim_duration: float = 3  # simulation duration in seconds
     json: str = ""  # save results as JSON file
     plt: str = ""  # save plot as image file
@@ -48,14 +48,6 @@ SEED_BASE = 100
 PATH_TITLES = ("S1-D1", "S2-D2")
 N_PATHS = len(PATH_TITLES)
 
-# Quantum channel lengths
-ch_S1_R1 = 10
-ch_R1_R2 = 10
-ch_R2_R3 = 10
-ch_R3_D1 = 10
-ch_S2_R2 = 10
-ch_R3_D2 = 10
-
 
 def run_simulation(seed: int, args: Args, mux: MuxScheme, t_cohere: float):
     rng.reseed(seed)
@@ -64,12 +56,13 @@ def run_simulation(seed: int, args: Args, mux: MuxScheme, t_cohere: float):
         NetworkBuilder()
         .topo(
             channels=[
-                ("S1-R1", ch_S1_R1),
-                ("R1-R2", ch_R1_R2),
-                ("R2-R3", ch_R2_R3),
-                ("R3-D1", ch_R3_D1),
-                ("S2-R2", ch_S2_R2),
-                ("R3-D2", ch_R3_D2),
+                ("S1-R1", 10),
+                ("R1-R2", 10),
+                ("R2-R3", 10),
+                ("R3-D1", 10),
+                ("S2-R4", 10),
+                ("R4-R2", 15),
+                ("R3-D2", 15),
             ],
             t_cohere=t_cohere,
         )
