@@ -18,7 +18,9 @@ on end-to-end throughput and average state fidelity for both paths, outputting c
 and JSON data summaries.
 """
 
+import itertools
 import json
+from multiprocessing import Pool, freeze_support
 from typing import NamedTuple, cast
 
 import numpy as np
@@ -35,6 +37,7 @@ log.set_default_level("CRITICAL")
 
 
 class Args(Tap):
+    workers: int = 1  # number of workers for parallel execution
     runs: int = 3  # number of trials per parameter set
     sim_duration: float = 3  # simulation duration in seconds
     json: str = ""  # save results as JSON file
@@ -164,7 +167,7 @@ def plot(results: dict[str, list[list[PathStats]]], *, save_plt: str):
 
     axs[1, -1].legend(title="Strategy", loc="lower right")
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    plt_save(args.plt)
+    plt_save(save_plt)
 
 
 # Simulation constants
@@ -176,15 +179,19 @@ STRATEGIES: dict[str, MuxScheme] = {
 T_COHERE_VALUES = [5e-3, 10e-3, 20e-3]
 
 if __name__ == "__main__":
+    freeze_support()
     args = Args().parse_args()
 
-    results: dict[str, list[list[PathStats]]] = {}  # strategy->path->t_cohere_index
-    for strategy in STRATEGIES:
-        results[strategy] = [[] for _ in PATH_TITLES]
-        for t_cohere in T_COHERE_VALUES:
-            row = run_row(args, strategy, t_cohere)
-            for path, stats in enumerate(row):
-                results[strategy][path].append(stats)
+    with Pool(processes=args.workers) as pool:
+        rows = pool.starmap(run_row, itertools.product([args], STRATEGIES, T_COHERE_VALUES))
+
+    results: dict[str, list[list[PathStats]]] = {
+        strategy: [[] for _ in PATH_TITLES] for strategy in STRATEGIES
+    }  # strategy->path->t_cohere_index
+    for (strategy, t_cohere), row in zip(itertools.product(STRATEGIES, T_COHERE_VALUES), rows, strict=True):
+        _ = t_cohere
+        for path, stats in enumerate(row):
+            results[strategy][path].append(stats)
 
     if args.json:
         with open(args.json, "w") as file:
