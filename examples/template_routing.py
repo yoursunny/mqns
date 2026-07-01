@@ -49,7 +49,6 @@ from tap import Tap
 
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
 from mqns.network.fw import (
-    ForwarderConsumeCounters,
     MultiplexingVector,
     MuxScheme,
     MuxSchemeBufferSpace,
@@ -62,6 +61,7 @@ from mqns.network.fw import (
 )
 from mqns.network.network import QuantumNetwork
 from mqns.network.network.timing import TimingModeSync
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.route import DijkstraRouteAlgorithm, YenRouteAlgorithm
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
@@ -300,7 +300,7 @@ def run_one(t_cohere: float, seed: int) -> dict[str, tuple[float, float]]:
     # Collect stats for selected requests
     out: dict[str, tuple[float, float]] = {}
     for rp, label in zip(SC.install_paths, SC.measured_labels, strict=True):
-        consume_cnt = ForwarderConsumeCounters.of_path(net, rp.src, rp.dst)
+        consume_cnt = RequestCounters.of(net, rp)
         out[label] = consume_cnt.get_rate(SIM_DURATION), consume_cnt.consumed_avg_fidelity
 
     return out

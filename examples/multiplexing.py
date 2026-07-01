@@ -7,7 +7,6 @@ from tap import Tap
 
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
 from mqns.network.fw import (
-    ForwarderConsumeCounters,
     MultiplexingVector,
     MuxScheme,
     MuxSchemeBufferSpace,
@@ -16,6 +15,7 @@ from mqns.network.fw import (
     RoutingPathStatic,
 )
 from mqns.network.proactive import ProactiveForwarder
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
@@ -39,7 +39,8 @@ RX_QUBITS = 32
 
 
 class FlowDef:
-    def __init__(self, route: Sequence[str], color: str):
+    def __init__(self, req_id: int, route: Sequence[str], color: str):
+        self.req_id = req_id
         self.route = list(route)
         self.label = f"{self.route[0]}{self.route[-1]}"
         self.color = color
@@ -47,11 +48,11 @@ class FlowDef:
 
 
 FLOWS = [
-    FLOW_AK := FlowDef("AEFJK", "tab:blue"),
-    FLOW_BL := FlowDef("BEFJL", "tab:orange"),
-    FLOW_CI := FlowDef("CEFI", "tab:green"),
-    FLOW_DH := FlowDef("DEFH", "tab:red"),
-    FLOW_GM := FlowDef("GFJM", "tab:purple"),
+    FLOW_AK := FlowDef(1, "AEFJK", "tab:blue"),
+    FLOW_BL := FlowDef(2, "BEFJL", "tab:orange"),
+    FLOW_CI := FlowDef(3, "CEFI", "tab:green"),
+    FLOW_DH := FlowDef(4, "DEFH", "tab:red"),
+    FLOW_GM := FlowDef(5, "GFJM", "tab:purple"),
 ]
 N_FLOWS = len(FLOWS)
 for i, flow in enumerate(FLOWS):
@@ -182,11 +183,15 @@ def build_network(mux: MuxScheme, active_flows: Sequence[FlowDef]):
         # Explicit static paths with per-hop MVs
         active_flows_set = set(f.label for f in active_flows)
         for flow in active_flows:
-            b.request(RoutingPathStatic(flow.route, m_v=_mv_for_flow(flow.label, flow.route, active_flows_set), swap="asap"))
+            b.request(
+                RoutingPathStatic(
+                    flow.route, req_id=flow.req_id, m_v=_mv_for_flow(flow.label, flow.route, active_flows_set), swap="asap"
+                )
+            )
     else:
         # Statistical: best-effort usage; no pre-split
         for flow in active_flows:
-            b.request(RoutingPathStatic(flow.route, m_v=QubitAllocationType.DISABLED, swap="asap"))
+            b.request(RoutingPathStatic(flow.route, req_id=flow.req_id, m_v=QubitAllocationType.DISABLED, swap="asap"))
 
     return b.make_network()
 
@@ -201,7 +206,7 @@ def run_simulation(seed: int, args: Args, mux: MuxScheme, active_flows: list[Flo
 
     # Collect per-source stats in fixed order [AK, BL, CI, DH, GM]
     def _get_rate_fid(flow: FlowDef):
-        consume_cnt = ForwarderConsumeCounters.of_path(net, flow.route[0], flow.route[-1])
+        consume_cnt = RequestCounters.of(net, flow.req_id, (flow.route[0], flow.route[-1]))
         return consume_cnt.get_rate(args.sim_duration), consume_cnt.consumed_avg_fidelity
 
     stats: list[tuple[float, float]] = []  # [(AK), (BL), (CI), (DH), (GM)] # disabled flows have zero stats

@@ -21,7 +21,7 @@ from tap import Tap
 
 from mqns.entity.qchannel import LinkArch, LinkArchDimBk, LinkArchSim, LinkArchSr
 from mqns.network.builder import CTRL_DELAY, ChannelParam, NetworkBuilder
-from mqns.network.fw import ForwarderConsumeCounters
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
@@ -72,7 +72,7 @@ def run_simulation(
     s.run()
 
     #### get stats
-    consume_cnt = ForwarderConsumeCounters.of_path(net, "S", "D")
+    consume_cnt = RequestCounters.of(net, 0, "S-D")
     return consume_cnt.get_rate(sim_duration), consume_cnt.consumed_avg_fidelity
 
 

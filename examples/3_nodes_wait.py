@@ -47,8 +47,9 @@ from mqns.entity.base_channel import default_light_speed
 from mqns.models.error import TimeDecayInput
 from mqns.models.error.input import ErrorModelInputBasic, ErrorModelInputLength
 from mqns.network.builder import CTRL_DELAY, EprTypeLiteral, LinkArchLiteral, NetworkBuilder, tap_configure
-from mqns.network.fw import CutoffSchemeWaitTime, ForwarderConsumeCounters
+from mqns.network.fw import CutoffSchemeWaitTime
 from mqns.network.proactive import ProactiveForwarder
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
 from mqns.utils import json_default, log, rng
 
@@ -115,7 +116,7 @@ def run_simulation(seed: int, args: Args, t_cohere: float, t_wait: float):
         .make_network()
     )
 
-    ForwarderConsumeCounters.enable_collect_all_on_path(net, "S", "D")
+    RequestCounters.enable_collect_all(net, 0, "S-D")
     fwR = net.get_node("R").get_app(ProactiveForwarder)
     waitR = CutoffSchemeWaitTime.of(fwR)
     waitR.cnt.enable_collect_all()
@@ -124,12 +125,12 @@ def run_simulation(seed: int, args: Args, t_cohere: float, t_wait: float):
     s.run()
     log.install(None)
 
-    consume_cnt = ForwarderConsumeCounters.of_path(net, "S", "D")
-    rate = consume_cnt.get_rate(args.sim_duration)
+    req_cnt = RequestCounters.of(net, 0, "S-D")
+    rate = req_cnt.get_rate(args.sim_duration)
     discard = fwR.cnt.n_cutoff[0] / args.sim_duration
-    assert consume_cnt.consumed_fidelity_values is not None
+    assert req_cnt.consumed_fidelity_values is not None
     assert waitR.cnt.wait_values is not None
-    return [rate], [discard], consume_cnt.consumed_fidelity_values, waitR.cnt.wait_values
+    return [rate], [discard], req_cnt.consumed_fidelity_values, waitR.cnt.wait_values
 
 
 class Stats(TypedDict):

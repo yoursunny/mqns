@@ -1,10 +1,10 @@
 from collections import defaultdict
-from typing import Protocol, override
+from typing import Protocol, overload, override
 
 import numpy as np
 
 from mqns.entity.memory import QubitState
-from mqns.entity.node import Application, QNode
+from mqns.entity.node import Application, NodePair, QNode, split_node_pair
 from mqns.network.network import QuantumNetwork
 from mqns.network.protocol.event import EntanglementReadyEvent, QubitReleasedEvent
 from mqns.simulator import event_handler
@@ -39,7 +39,14 @@ class RequestCounters:
     """
 
     @staticmethod
-    def of(net: QuantumNetwork, req: RequestLike) -> "RequestCounters":
+    def _parse_req(arg1: RequestLike | int, np: NodePair) -> tuple[int, str, str]:
+        if isinstance(arg1, int):
+            return arg1, *split_node_pair(np)
+        return arg1.req_id, arg1.src, arg1.dst
+
+    @staticmethod
+    @overload
+    def of(net: QuantumNetwork, req: RequestLike, /) -> "RequestCounters":
         """
         Obtain consumption counters of a request.
 
@@ -49,8 +56,26 @@ class RequestCounters:
 
         Returns: ConsumerPathCounters for the request, aggregated from src and dst nodes.
         """
-        a = net.get_node(req.src).get_app(Consumer).cnt.get(req.req_id, RequestCounters())
-        b = net.get_node(req.dst).get_app(Consumer).cnt.get(req.req_id, RequestCounters())
+
+    @staticmethod
+    @overload
+    def of(net: QuantumNetwork, req_id: int, np: NodePair, /) -> "RequestCounters":
+        """
+        Obtain consumption counters of a request.
+
+        Args:
+            net: Quantum network.
+            req_id: Request ID.
+            np: Two node names.
+
+        Returns: ConsumerPathCounters for the request, aggregated from src and dst nodes.
+        """
+
+    @staticmethod
+    def of(net: QuantumNetwork, arg1: RequestLike | int, np: NodePair = "") -> "RequestCounters":
+        req_id, src, dst = RequestCounters._parse_req(arg1, np)
+        a = net.get_node(src).get_app(Consumer).cnt.get(req_id, RequestCounters())
+        b = net.get_node(dst).get_app(Consumer).cnt.get(req_id, RequestCounters())
 
         g = RequestCounters()
         g.n_consumed = a.n_consumed + b.n_consumed
@@ -60,16 +85,33 @@ class RequestCounters:
         return g
 
     @staticmethod
-    def enable_collect_all(net: QuantumNetwork, req: RequestLike) -> None:
+    @overload
+    def enable_collect_all(net: QuantumNetwork, req: RequestLike, /) -> None:
         """
-        Enable collecting all values for histogram generation.
+        Enable collection of all fidelity values.
 
         Args:
             net: Quantum network.
             req: ``RoutingPath`` instance.
         """
-        a = net.get_node(req.src).get_app(Consumer).cnt[req.req_id]
-        b = net.get_node(req.dst).get_app(Consumer).cnt[req.req_id]
+
+    @staticmethod
+    @overload
+    def enable_collect_all(net: QuantumNetwork, req_id: int, np: NodePair, /) -> None:
+        """
+        Enable collection of all fidelity values.
+
+        Args:
+            net: Quantum network.
+            req_id: Request ID.
+            np: Two node names.
+        """
+
+    @staticmethod
+    def enable_collect_all(net: QuantumNetwork, arg1: RequestLike | int, np: NodePair = "") -> None:
+        req_id, src, dst = RequestCounters._parse_req(arg1, np)
+        a = net.get_node(src).get_app(Consumer).cnt[req_id]
+        b = net.get_node(dst).get_app(Consumer).cnt[req_id]
 
         assert a.consumed_fidelity_values is None
         assert b.consumed_fidelity_values is None

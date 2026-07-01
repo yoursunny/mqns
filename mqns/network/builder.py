@@ -6,7 +6,7 @@ from typing import Literal, NotRequired, Self, TypedDict, Unpack, cast, overload
 from tap import Tap
 
 from mqns.entity.memory import QuantumMemoryInitKwargs
-from mqns.entity.node import Application, QNode
+from mqns.entity.node import Application, NodePair, QNode, split_node_pair
 from mqns.entity.qchannel import (
     LinkArch,
     LinkArchDimBk,
@@ -32,17 +32,12 @@ from mqns.network.fw import (
 from mqns.network.network import QuantumNetwork, TimingMode, TimingModeAsync, TimingModeSync
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
 from mqns.network.protocol.classicbridge import ClassicBridge
+from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.network.reactive import ReactiveForwarder, ReactiveRoutingController
 from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm, YenRouteAlgorithm
 from mqns.network.topology import ClassicTopology, Topology
 from mqns.network.topology.customtopo import CustomTopology, Topo, TopoController, TopoQChannel, TopoQNode
-
-type NodePair = str | tuple[str, str]
-"""
-Two node names on a channel or routing path.
-This could be either a tuple of two node names, or a string delimited by hyphen (``-``).
-"""
 
 type EprTypeLiteral = Literal["W", "M"]
 """
@@ -214,6 +209,10 @@ class AppsCommonArgs(TypedDict, total=False):
     Network timing mode, defaults to ASYNC.
     If specified as three floats, construct ``TimingModeSync`` with these durations.
     """
+    has_consumer: bool
+    """
+    Whether to include ``Consumer`` application, defaults to true.
+    """
 
 
 class AppsForwarderArgs(AppsCommonArgs, ForwarderInitKwargs):
@@ -223,15 +222,6 @@ class AppsForwarderArgs(AppsCommonArgs, ForwarderInitKwargs):
     Args:
         p_swap: Probability of successful entanglement swapping in forwarder, defaults to ``0.5``.
     """
-
-
-def _split_node_pair(np: NodePair) -> tuple[str, str]:
-    if isinstance(np, str):
-        tokens = np.split("-")
-        if len(tokens) != 2:
-            raise ValueError(f"expect two node names in '{np}'")
-        return cast(tuple[str, str], tuple(tokens))
-    return np
 
 
 class NetworkBuilder:
@@ -380,7 +370,7 @@ class NetworkBuilder:
                 if opt_capacity:
                     (capacity,) = opt_capacity
                 d = None
-            self._add_qchannel(*_split_node_pair(np), d, length, capacity)
+            self._add_qchannel(*split_node_pair(np), d, length, capacity)
 
         return self
 
@@ -462,6 +452,8 @@ class NetworkBuilder:
                 timing = (t_cohere / 2 - 2 * CTRL_DELAY, 4 * CTRL_DELAY, t_cohere / 2 - 2 * CTRL_DELAY)
             self.timing = TimingModeSync(durations=timing)
 
+        self.has_consumer = d.pop("has_consumer", True)
+
     def _add_link_layer(self):
         self.qnode_apps.append(
             LinkLayer(
@@ -472,6 +464,10 @@ class NetworkBuilder:
                 tau_0=self.d.get("tau_0", 0.0),
             )
         )
+
+    def _add_consumer(self):
+        if self.has_consumer:
+            self.qnode_apps.append(Consumer())
 
     def proactive_centralized(
         self,
@@ -497,6 +493,7 @@ class NetworkBuilder:
         self.qnode_apps.append(
             ProactiveForwarder(**kwargs),
         )
+        self._add_consumer()
         self.controller_apps.append(
             ProactiveRoutingController(),
         )
@@ -529,6 +526,7 @@ class NetworkBuilder:
         self.qnode_apps.append(
             ReactiveForwarder(**kwargs),
         )
+        self._add_consumer()
         self.controller_apps.append(
             ReactiveRoutingController(swap=swap),
         )
@@ -564,8 +562,8 @@ class NetworkBuilder:
         if isinstance(arg1, RoutingPath):
             return arg1
         if isinstance(self.route, YenRouteAlgorithm):
-            return RoutingPathMulti(*_split_node_pair(arg1), **d)
-        return RoutingPathSingle(*_split_node_pair(arg1), **d, qubit_allocation=self.qubit_allocation)
+            return RoutingPathMulti(*split_node_pair(arg1), **d)
+        return RoutingPathSingle(*split_node_pair(arg1), **d, qubit_allocation=self.qubit_allocation)
 
     @functools.singledispatchmethod
     def _add_request(self, ctrl: Application, arg1: RoutingPath | NodePair, d: RoutingPathInitArgs) -> None:
@@ -581,7 +579,7 @@ class NetworkBuilder:
         _ = d
         if isinstance(arg1, RoutingPath):
             raise TypeError(f"{type(ctrl)} does not support .request(RoutingPath)")
-        self.requests.append(_split_node_pair(arg1))
+        self.requests.append(split_node_pair(arg1))
 
     @overload
     def request(self, src_dst: NodePair, /, **kwargs: Unpack[RoutingPathInitArgs]) -> Self:

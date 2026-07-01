@@ -27,7 +27,8 @@ import numpy as np
 from tap import Tap
 
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
-from mqns.network.fw import ForwarderConsumeCounters, MuxScheme, MuxSchemeDynamicEpr, MuxSchemeStatistical
+from mqns.network.fw import MuxScheme, MuxSchemeDynamicEpr, MuxSchemeStatistical
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
@@ -66,9 +67,9 @@ def run_simulation(seed: int, args: Args, mux: MuxScheme, t_cohere: float):
             ],
             t_cohere=t_cohere,
         )
-        .proactive_centralized(mux=mux)
-        .request("S1-D1")
-        .request("S2-D2")
+        .proactive_centralized(has_consumer=True, mux=mux)
+        .request("S1-D1", req_id=1)
+        .request("S2-D2", req_id=2)
         .make_network()
     )
 
@@ -78,8 +79,8 @@ def run_simulation(seed: int, args: Args, mux: MuxScheme, t_cohere: float):
     #### get stats: e2e_rate and mean_fidelity
     # [(path 1), (path 2), ...]
     consume_cnts = [
-        ForwarderConsumeCounters.of_path(net, "S1", "D1"),
-        ForwarderConsumeCounters.of_path(net, "S2", "D2"),
+        RequestCounters.of(net, 1, "S1-D1"),
+        RequestCounters.of(net, 2, "S2-D2"),
     ]
     return [(c.get_rate(args.sim_duration), c.consumed_avg_fidelity) for c in consume_cnts]
 
