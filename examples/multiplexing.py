@@ -1,3 +1,42 @@
+"""
+Simulate a multi-tenant quantum network to evaluate multiplexing strategies.
+
+This script benchmarks different link-sharing methodologies across a 13-node tree/star
+topology characterized by two highly contested central backbone routing links: ``E-F`` and ``F-J``.
+
+.. figure:: /_static/examples/multiplexing.svg
+   :alt: topology diagram
+   :align: center
+   :width: 100%
+
+Five competing end-to-end data flows share segments of this backbone infrastructure:
+
+* ``AK``: A -> E -> F -> J -> K
+* ``BL``: B -> E -> F -> J -> L
+* ``CI``: C -> E -> F -> I
+* ``DH``: D -> E -> F -> H
+* ``GM``: G -> F -> J -> M
+
+Evaluated Multiplexing Strategies (``STRATEGIES``):
+
+1.  **Statistical Multiplexing (``MuxSchemeStatistical``):** Flows access link-level entanglement on a competitive,
+    best-effort basis without advance hardware reservations.
+2.  **Buffer-Space Multiplexing (``MuxSchemeBufferSpace``):** Enforces a strict, proactive partitioning of
+    available channel memories per active flow along contested trunks.
+
+Experimental Protocol:
+The script systematically executes a matrix of multi-flow loading scenarios (from isolated
+single flows up to full 5-way traffic saturation) across both routing schemes.
+It collects source-destination throughput rates (eps), state fidelities, memory decoherence
+counts, and swap scheduling contentions.
+
+Outputs:
+
+* **JSON Report (``--json``):** Scenario metrics per run including rate and fidelity.
+* **Stacked Bar Charts (``--plt_stat``, ``--plt_buff``):** Visual summaries breaking down
+  aggregate network throughput by individual flow contributions relative to uncontested baselines.
+"""
+
 import json
 from collections.abc import Sequence
 from typing import NamedTuple
@@ -140,18 +179,6 @@ def _mv_for_flow(flow: str, route: list[str], active_flows: set[str]):
 
 def build_network(mux: MuxScheme, active_flows: Sequence[FlowDef]):
     b = NetworkBuilder()
-    # ------------------------------
-    # 13-node topology (A..M) with shared trunks EF and FJ
-    # All quantum links 30 km
-    #
-    # A                         K
-    #  \                       /
-    # B-\                     /
-    #    +E--------F--------J+--L
-    # C-/         /|\         \
-    #  /         / | \         \
-    # D         G  H  I         M
-    # ------------------------------
     b.topo(
         channels=[
             # left spokes -> E

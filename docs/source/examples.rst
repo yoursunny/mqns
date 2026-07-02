@@ -33,6 +33,11 @@ multi_request_single_path example
 
 .. automodule:: multi_request_single_path
 
+multiplexing example
+--------------------
+
+.. automodule:: multiplexing
+
 single_request_multipath example
 --------------------------------
 
