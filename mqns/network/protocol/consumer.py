@@ -6,7 +6,7 @@ import numpy as np
 from mqns.entity.memory import QubitState
 from mqns.entity.node import Application, NodePair, QNode, split_node_pair
 from mqns.network.network import QuantumNetwork
-from mqns.network.protocol.event import EntanglementReadyEvent, QubitReleasedEvent
+from mqns.network.protocol.event import QubitConsumeEvent, QubitReleasedEvent
 from mqns.simulator import event_handler
 from mqns.utils import json_encodable, log
 
@@ -169,7 +169,7 @@ class Consumer(Application[QNode]):
         """Quantum memory of the node."""
 
     @event_handler
-    def handle_ready(self, event: EntanglementReadyEvent) -> None:
+    def handle_ready(self, event: QubitConsumeEvent) -> None:
         qubit = event.qubit
         epr = event.epr
         req_id = event.req_id

@@ -1,0 +1,90 @@
+<svg width="450" height="400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="35" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" />
+    </marker>
+  </defs>
+  <style>
+    text, tspan {
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }
+  </style>
+  <g transform="translate(50 50)">
+    <line x1="100" y1="100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <line x2="100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#AAAAAA"/>
+    <text font-size="12">RAW</text>
+  </g>
+  <g transform="translate(150 50)">
+    <line x2="100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#39CCCC"/>
+    <text font-size="12">ACTIVE</text>
+  </g>
+  <g transform="translate(250 50)">
+    <line y2="100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#39CCCC"/>
+    <text font-size="12">RESERVED</text>
+  </g>
+  <g transform="translate(250 150)">
+    <line y2="100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <line x2="-100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#F012BE"/>
+    <text y="-10" font-size="9">ENTANGLED0</text>
+    <line x1="-30" x2="30" stroke="#111"/>
+    <text y="10" font-size="9">ENTANGLED1</text>
+  </g>
+  <g transform="translate(250 250)">
+    <line x2="100" marker-start="url(#arrow)" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <line y2="100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <line x2="-100" y2="-100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#F012BE"/>
+    <text font-size="12">PURIF</text>
+  </g>
+  <g transform="translate(350 250)">
+    <line x2="-200" y2="-100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#F012BE"/>
+    <text font-size="12">PENDING</text>
+  </g>
+  <g transform="translate(250 350)">
+    <line x2="-100" y2="-200" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <line x2="-200" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <line x2="-100" y2="-100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#F012BE"/>
+    <text font-size="12">ELIGIBLE</text>
+  </g>
+  <g transform="translate(150 250)">
+    <line y2="-100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#F012BE"/>
+    <text font-size="12">SWAPPING</text>
+  </g>
+  <g transform="translate(50 350)">
+    <line x2="100" y2="-200" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#FF851B"/>
+    <text font-size="12">CONSUME</text>
+  </g>
+  <g transform="translate(150 150)">
+    <circle r="30" fill="#AAAAAA"/>
+    <text font-size="12">RELEASE</text>
+  </g>
+  <g transform="translate(350 20)">
+    <rect x="-10" width="100" height="125" stroke="#DDD" fill="#FFF"/>
+    <text x="40" y="10" font-size="12" font-weight="bold">OWNER LEGEND</text>
+    <g transform="translate(0 25)">
+      <rect width="80" height="20" fill="#AAAAAA"/>
+      <text x="40" y="10" font-size="12">unused</text>
+    </g>
+    <g transform="translate(0 50)">
+      <rect width="80" height="20" fill="#39CCCC"/>
+      <text x="40" y="10" font-size="12">LinkLayer</text>
+    </g>
+    <g transform="translate(0 75)">
+      <rect width="80" height="20" fill="#F012BE"/>
+      <text x="40" y="10" font-size="12">Forwarder</text>
+    </g>
+    <g transform="translate(0 100)">
+      <rect width="80" height="20" fill="#FF851B"/>
+      <text x="40" y="10" font-size="12">Consumer</text>
+    </g>
+  </g>
+</svg>

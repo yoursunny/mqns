@@ -108,7 +108,7 @@ class QubitEntangledEvent(Event):
 
 
 @final
-class EntanglementReadyEvent(Event):
+class QubitConsumeEvent(Event):
     """
     Event sent by Forwarder to notify Consumer about end-to-end entanglement.
     """
@@ -127,18 +127,18 @@ class EntanglementReadyEvent(Event):
         self.qubit = qubit
         self.epr = epr
         self.req_id = req_id
-        assert qubit.state is QubitState.ELIGIBLE, f"unexpected state {qubit.state}"
+        assert qubit.state is QubitState.CONSUME, f"unexpected state {qubit.state}"
 
     @override
     def invoke(self) -> None:
-        assert self.qubit.state is QubitState.ELIGIBLE, f"unexpected state {self.qubit.state}"
+        assert self.qubit.state is QubitState.CONSUME, f"unexpected state {self.qubit.state}"
         self.node.handle(self)
 
 
 @final
 class QubitReleasedEvent(Event):
     """
-    Event sent by Forwarder to inform LinkLayer about a released (no longer needed) qubit.
+    Event sent by Forwarder/Consumer to inform LinkLayer about a released (no longer needed) qubit.
     """
 
     def __init__(

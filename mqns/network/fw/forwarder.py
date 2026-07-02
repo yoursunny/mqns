@@ -43,7 +43,7 @@ from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
 from mqns.network.fw.select import SelectPurifQubit, call_select_purif_qubit
 from mqns.network.network import TimingPhase, TimingPhaseEvent
-from mqns.network.protocol.event import EntanglementReadyEvent, QubitEntangledEvent, QubitReleasedEvent
+from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
 from mqns.simulator import Time, event_handler
 from mqns.utils import json_encodable, log
 
@@ -500,7 +500,8 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         else:
             return False
 
-        self.simulator.add_event(EntanglementReadyEvent(self.node, qubit, epr, t=self.simulator.tc, req_id=req_id))
+        qubit.state = QubitState.CONSUME
+        self.simulator.add_event(QubitConsumeEvent(self.node, qubit, epr, t=self.simulator.tc, req_id=req_id))
         return True
 
     @event_handler
