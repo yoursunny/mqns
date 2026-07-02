@@ -6,9 +6,13 @@ from mqns.entity.node import QNode
 class RequestAttr(TypedDict, total=False):
     """
     Request attributes.
+    """
 
-    This is currently empty.
-    In the future, it may contain properties such as minimum fidelity and desired throughput.
+    req_id: int
+    """
+    Request identifier, identifies source-destination pair.
+    Default is auto-generated.
+    Specifying this value allows retrieving consumer counters.
     """
 
 
@@ -20,10 +24,16 @@ class Request:
         Args:
             src: Left node to receive one of the entangled qubits.
             dst: Right node to receive one of the entangled qubits.
+            attr: Request attributes.
         """
         self.src = src
         self.dst = dst
-        _ = attr
+        self.attr = attr
+
+    @property
+    def req_id(self) -> int:
+        """Return ``req_id`` attribute, defaults to ``-1``."""
+        return self.attr.get("req_id", -1)
 
     def __repr__(self) -> str:
         return f"<Request {self.src}-{self.dst}>"

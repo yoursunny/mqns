@@ -25,7 +25,7 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import cast, overload
+from typing import Unpack, cast, overload
 
 from mqns.entity.base_channel import BaseChannel
 from mqns.entity.cchannel import ClassicChannel
@@ -268,16 +268,16 @@ class QuantumNetwork:
         """
         return self.route.query(src, dest)
 
-    def add_request(self, src: QNode, dst: QNode, attr: RequestAttr | None = None):
+    def add_request(self, src: QNode, dst: QNode, **kwargs: Unpack[RequestAttr]):
         """
         Add a request (src, dst) pair to the network, placed in ``self.requests`` list.
 
         Args:
             src: Source node.
             dst: Destination node.
-            attr: Other attributes.
+            kwargs: Other attributes.
         """
-        req = Request(src, dst, **(attr or {}))
+        req = Request(src, dst, **kwargs)
         self.requests.append(req)
 
     def random_requests(
@@ -288,7 +288,7 @@ class QuantumNetwork:
         allow_overlay=False,
         min_hops=1,
         max_hops=10,
-        attr: RequestAttr | None = None,
+        attr: RequestAttr = {},
         forbid_endpoint_internal=True,  # reject endpoint-vs-internal conflicts
     ):
         """
@@ -367,5 +367,5 @@ class QuantumNetwork:
                 if not allow_overlay:
                     used_nodes.extend([src_idx, dst_idx])
 
-                self.add_request(src, dst, attr)
+                self.add_request(src, dst, **attr)
                 break

@@ -71,13 +71,13 @@ class RoutingPath(ABC):
         """
         Request identifier.
 
-        If unspecified, the controller will assign the next unused value before calling ``compute_paths``.
+        If negative, the controller will assign the next unused value before calling ``compute_paths``.
         """
         self.path_id = kwargs.get("path_id", -1)
         """
         Path identifier for the first path.
 
-        If unspecified, the controller will assign the next unused value before calling ``compute_paths``.
+        If negative, the controller will assign the next unused value before calling ``compute_paths``.
 
         When ``compute_paths`` yields multiple paths, this is the path_id on the first path,
         while subsequent paths are given consecutive path_ids.

@@ -88,7 +88,6 @@ class BuildNetworkArgs(TypedDict, total=False):
     end_time: float  # simulation end time, defaults to 10.0 seconds
     timing: TimingMode  # network timing mode, defaults to ASYNC
     epr_type: type[Entanglement]  # entanglement type, defaults to werner state
-    has_consumer: bool  # whether to include Consumer application, defaults to True
     has_link_layer: bool  # whether to include full LinkLayer application, defaults to False
 
 
@@ -107,8 +106,7 @@ def _make_topo_args(d: BuildNetworkArgs, *, memory_capacity_factor: int) -> Topo
         case "R":
             nodes_apps.append(ReactiveForwarder(**fw_args))
 
-    if d.get("has_consumer", True):
-        nodes_apps.append(Consumer())
+    nodes_apps.append(Consumer())
 
     qchannel_capacity = d.get("qchannel_capacity", 1)
     return TopologyInitKwargs(
