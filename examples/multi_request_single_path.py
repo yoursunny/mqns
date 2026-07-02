@@ -67,7 +67,7 @@ def run_simulation(seed: int, args: Args, mux: MuxScheme, t_cohere: float):
             ],
             t_cohere=t_cohere,
         )
-        .proactive_centralized(has_consumer=True, mux=mux)
+        .proactive_centralized(mux=mux)
         .request("S1-D1", req_id=1)
         .request("S2-D2", req_id=2)
         .make_network()

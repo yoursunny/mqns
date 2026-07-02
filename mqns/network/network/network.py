@@ -288,7 +288,7 @@ class QuantumNetwork:
         allow_overlay=False,
         min_hops=1,
         max_hops=10,
-        attr: RequestAttr = {},
+        attr: RequestAttr = RequestAttr(),
         forbid_endpoint_internal=True,  # reject endpoint-vs-internal conflicts
     ):
         """
@@ -301,6 +301,7 @@ class QuantumNetwork:
             min_hops: Minimum number of hops (inclusive).
             max_hops: Maximum number of hops (inclusive).
             attr: Request attributes.
+                ``req_id`` is overwritten as 0-based index.
             forbid_endpoint_internal: If True, eliminate requests that
                 would fail the rank-based endpoint-vs-internal check in SWAP-ASAP.
         """
@@ -338,7 +339,7 @@ class QuantumNetwork:
                         return True
             return False
 
-        for _ in range(n):
+        for i in range(n):
             while True:
                 src_idx = rng.integers(0, nnodes, dtype=int)
                 dst_idx = rng.integers(0, nnodes, dtype=int)
@@ -367,5 +368,6 @@ class QuantumNetwork:
                 if not allow_overlay:
                     used_nodes.extend([src_idx, dst_idx])
 
+                attr["req_id"] = i
                 self.add_request(src, dst, **attr)
                 break

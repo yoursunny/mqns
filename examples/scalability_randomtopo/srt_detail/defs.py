@@ -13,6 +13,7 @@ from mqns.entity.node import Controller
 from mqns.network.fw import MuxSchemeStatistical
 from mqns.network.network import QuantumNetwork
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
+from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.network.topology import ClassicTopology, RandomTopology
 from mqns.utils import rng
@@ -111,6 +112,7 @@ def build_network(args: RunArgs) -> QuantumNetwork:
                 frequency=frequency,
             ),
             ProactiveForwarder(p_swap=p_swap, mux=MuxSchemeStatistical()),
+            Consumer(),
         ],
     )
     topo.controller = Controller("ctrl", apps=[ProactiveRoutingController()])

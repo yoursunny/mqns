@@ -2,9 +2,10 @@ import json
 import os.path
 
 from mqns.entity.node import QNode
-from mqns.network.fw import ForwarderConsumeCounters, QubitAllocationType, RoutingPathSingle
+from mqns.network.fw import QubitAllocationType, RoutingPathSingle
 from mqns.network.network import Request
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Simulator
 from mqns.utils import WallClockTimeout, json_default, log
@@ -26,7 +27,7 @@ def run_simulation(args: RunArgs) -> RunResult:
     ctrl = net.get_controller().get_app(ProactiveRoutingController)
     for req in net.requests:
         ctrl.install_path(
-            RoutingPathSingle(req.src.name, req.dst.name, qubit_allocation=QubitAllocationType.DISABLED, swap="asap")
+            RoutingPathSingle(req.src.name, req.dst.name, req_id=req.req_id, qubit_allocation=QubitAllocationType.DISABLED)
         )
 
     # Run the simulation.
@@ -37,16 +38,13 @@ def run_simulation(args: RunArgs) -> RunResult:
 
     # Collect results.
     def gather_request_stats(req: Request) -> RequestStats:
-        consume_cnt = ForwarderConsumeCounters.of_path(net, req.src.name, req.dst.name)
-        return consume_cnt.get_rate(sim_duration), consume_cnt.consumed_avg_fidelity
+        req_cnt = RequestCounters.of(net, req.req_id, (req.src.name, req.dst.name))
+        return req_cnt.get_rate(sim_duration), req_cnt.consumed_avg_fidelity
 
     def gather_node_stats(node: QNode):
         fw = node.get_app(ProactiveForwarder)
         ll = node.get_app(LinkLayer)
-        return [
-            ll.cnt,
-            fw.cnt,
-        ]
+        return [ll.cnt, fw.cnt]
 
     return RunResult(
         time_spent=s.time_spend,

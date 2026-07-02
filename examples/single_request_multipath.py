@@ -62,7 +62,7 @@ def run_simulation(seed: int, args: Args):
             ],
             t_cohere=0.01,
         )
-        .proactive_centralized(has_consumer=True)
+        .proactive_centralized()
         .request("S-D", swap="r2l")
         .make_network()
     )

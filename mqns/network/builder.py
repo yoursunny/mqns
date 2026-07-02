@@ -209,10 +209,6 @@ class AppsCommonArgs(TypedDict, total=False):
     Network timing mode, defaults to ASYNC.
     If specified as three floats, construct ``TimingModeSync`` with these durations.
     """
-    has_consumer: bool
-    """
-    Whether to include ``Consumer`` application, defaults to true.
-    """
 
 
 class AppsForwarderArgs(AppsCommonArgs, ForwarderInitKwargs):
@@ -261,7 +257,7 @@ class NetworkBuilder:
         self.controller_apps: list[Application] = []
 
         self.qubit_allocation = QubitAllocationType.DISABLED
-        self.requests: list[tuple[str, str]] = []
+        self.requests: list[tuple[str, str, int]] = []
 
     def _save_topo_args(self, d: TopoCommonArgs) -> None:
         self.d = d
@@ -452,8 +448,6 @@ class NetworkBuilder:
                 timing = (t_cohere / 2 - 2 * CTRL_DELAY, 4 * CTRL_DELAY, t_cohere / 2 - 2 * CTRL_DELAY)
             self.timing = TimingModeSync(durations=timing)
 
-        self.has_consumer = d.pop("has_consumer", True)
-
     def _add_link_layer(self):
         self.qnode_apps.append(
             LinkLayer(
@@ -466,8 +460,7 @@ class NetworkBuilder:
         )
 
     def _add_consumer(self):
-        if self.has_consumer:
-            self.qnode_apps.append(Consumer())
+        self.qnode_apps.append(Consumer())
 
     def proactive_centralized(
         self,
@@ -579,7 +572,7 @@ class NetworkBuilder:
         _ = d
         if isinstance(arg1, RoutingPath):
             raise TypeError(f"{type(ctrl)} does not support .request(RoutingPath)")
-        self.requests.append(split_node_pair(arg1))
+        self.requests.append((*split_node_pair(arg1), d.get("req_id", -1)))
 
     @overload
     def request(self, src_dst: NodePair, /, **kwargs: Unpack[RoutingPathInitArgs]) -> Self:
@@ -642,8 +635,8 @@ class NetworkBuilder:
             timing=self.timing,
             epr_type=self.epr_type,
         )
-        for src, dst in self.requests:
-            net.add_request(net.get_node(src), net.get_node(dst))
+        for src, dst, req_id in self.requests:
+            net.add_request(net.get_node(src), net.get_node(dst), req_id=req_id)
 
         if connect_controller and topo.controller:
             topo.connect_controller(net.nodes, delay=CTRL_DELAY)

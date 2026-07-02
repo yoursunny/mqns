@@ -32,7 +32,7 @@ import pandas as pd
 from tap import Tap
 
 from mqns.network.builder import CTRL_DELAY, ChannelParam, EprTypeLiteral, LinkArchLiteral, NetworkBuilder, tap_configure
-from mqns.network.fw import ForwarderConsumeCounters
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayerCounters
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
@@ -120,27 +120,27 @@ def run_simulation(seed: int, args: Args, t_cohere: float) -> Stats:
     match args.mode:
         case "PCA":
             total_duration += CTRL_DELAY
-            b.proactive_centralized(has_consumer=False)
+            b.proactive_centralized()
         case "PCS":
-            b.proactive_centralized(has_consumer=False, timing=args.sync_timing)
+            b.proactive_centralized(timing=args.sync_timing)
         case "RCS":
-            b.reactive_centralized(has_consumer=False, timing=args.sync_timing)
+            b.reactive_centralized(timing=args.sync_timing)
 
-    b.request("S-D")
+    b.request("S-D", req_id=0)
     net = b.make_network()
     del b
 
     s = Simulator(0, total_duration, accuracy=1000000, install_to=(log, net))
     s.run()
 
-    consume_cnt = ForwarderConsumeCounters.of_path(net, "S", "D")
+    req_cnt = RequestCounters.of(net, 0, "S-D")
     ll_cnt = LinkLayerCounters.aggregate(net.nodes)
     stats = Stats(
         t_cohere=t_cohere,
-        throughput_eps=consume_cnt.get_rate(args.sim_duration),
-        mean_fidelity=consume_cnt.consumed_avg_fidelity,
+        throughput_eps=req_cnt.get_rate(args.sim_duration),
+        mean_fidelity=req_cnt.consumed_avg_fidelity,
         expired_ratio=ll_cnt.decoh_ratio,
-        expired_per_e2e=consume_cnt.get_per_consumed(ll_cnt.n_decoh),
+        expired_per_e2e=req_cnt.get_per_consumed(ll_cnt.n_decoh),
     )
     return stats
 

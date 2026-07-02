@@ -45,7 +45,7 @@ def run_simulation(seed: int, args: Args):
             channels=[(32, (4, 3)), (18, (1, 2)), (10, (2, 4))],
             t_cohere=0.01,
         )
-        .proactive_centralized(has_consumer=True)
+        .proactive_centralized()
         .request("S-D", swap="l2r")
         .make_network()
     )

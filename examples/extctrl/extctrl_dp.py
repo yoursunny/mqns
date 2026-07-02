@@ -1,4 +1,6 @@
 import math
+from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Literal, override
 
 from tap import Tap
@@ -6,6 +8,7 @@ from tap import Tap
 from mqns.network.builder import EprTypeLiteral, NetworkBuilder, tap_configure
 from mqns.network.fw import Forwarder, ForwarderCounters
 from mqns.network.protocol.classicbridge import ClassicBridge
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
@@ -30,7 +33,24 @@ class Args(Tap):
         self.add_argument("--M", metavar=("M_edge", "M_center"))
 
 
-def run_simulation(args: Args) -> dict[str, ForwarderCounters]:
+@dataclass
+class Stats:
+    path1: RequestCounters
+    path2: RequestCounters
+    fw: dict[str, ForwarderCounters]
+
+    def _describe(self) -> Iterable[str]:
+        yield f"PATH1: {self.path1}"
+        yield f"PATH2: {self.path2}"
+        yield "fw:"
+        for node_name in "S1", "D1", "S2", "D2", "R1", "R2":
+            yield f"  {node_name}: {self.fw[node_name].repr_without_consume()}"
+
+    def __repr__(self) -> str:
+        return "\n".join(self._describe())
+
+
+def run_simulation(args: Args) -> Stats:
     rng.reseed(args.seed)
 
     b = NetworkBuilder(
@@ -61,16 +81,19 @@ def run_simulation(args: Args) -> dict[str, ForwarderCounters]:
     s = Simulator(0, math.inf, accuracy=args.sim_accuracy, install_to=(log, net))
     s.run()
 
-    results: dict[str, ForwarderCounters] = {}
+    stats = Stats(
+        path1=RequestCounters.of(net, 10, "S1-D1"),
+        path2=RequestCounters.of(net, 20, "S2-D2"),
+        fw={},
+    )
     for node in net.nodes:
-        results[node.name] = node.get_app(Forwarder).cnt
-    return results
+        stats.fw[node.name] = node.get_app(Forwarder).cnt
+    return stats
 
 
 if __name__ == "__main__":
     args = Args().parse_args()
-    results = run_simulation(args)
+    stats = run_simulation(args)
     print("")
-    print("---- RESULTS ----")
-    for node_name in ("S1", "D1", "S2", "D2", "R1", "R2"):
-        print(f"[{node_name}] {results[node_name]}")
+    print("---- STATS ----")
+    print(stats)
