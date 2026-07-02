@@ -12,7 +12,7 @@ from mqns.entity.memory import QubitState
 from mqns.entity.node import Application, Controller, Node, QNode
 from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk, QuantumChannelInitKwargs
 from mqns.models.epr import Entanglement, WernerStateEntanglement
-from mqns.network.fw import Forwarder, ForwarderConsumeCounters, ForwarderInitKwargs, RoutingController, RoutingPath
+from mqns.network.fw import Forwarder, ForwarderInitKwargs, RoutingController, RoutingPath
 from mqns.network.fw.fw_swap import ForwarderSwapProc
 from mqns.network.network import QuantumNetwork, TimingMode, TimingModeAsync, TimingPhase, TimingPhaseEvent
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
@@ -252,15 +252,9 @@ def print_node_counters(net: QuantumNetwork):
     for node in net.nodes:
         fw = node.get_app(Forwarder)
         cons = node.get_app(Consumer)
-        print(f"{node.name} {fw.cnt.repr_without_consume()}")
+        print(f"{node.name} {fw.cnt}")
         for req_id, pcnt in cons.cnt.items():
             print(f"    #{req_id}: {pcnt}")
-
-
-def print_fw_counters(net: QuantumNetwork):
-    for node in net.nodes:
-        fw = node.get_app(Forwarder)
-        print(node.name, fw.cnt)
 
 
 def check_fw_counters(net: QuantumNetwork, **kwargs: Iterable[int | Iterable[int]]) -> None:
@@ -297,15 +291,6 @@ def install_path(
         simulator.add_event(func_to_event(simulator.time(sec=t_uninstall), ctrl.uninstall_path, rp))
 
     return rp
-
-
-def check_path_counters(net: QuantumNetwork, rp: RoutingPath | None = None, *, n_consumed: int):
-    """Check path consumption counter with ``ForwarderConsumeCounters``."""
-    if rp is None:
-        cnt = ForwarderConsumeCounters.of_path(net, net.nodes[0].name, net.nodes[-1].name)
-    else:
-        cnt = ForwarderConsumeCounters.of_path(net, rp.src, rp.dst)
-    assert cnt.n_consumed == n_consumed
 
 
 _provide_entanglements_autoid = AutoIncrementIdentifier("Tpe_")

@@ -44,7 +44,7 @@ class Stats:
         yield f"PATH2: {self.path2}"
         yield "fw:"
         for node_name in "S1", "D1", "S2", "D2", "R1", "R2":
-            yield f"  {node_name}: {self.fw[node_name].repr_without_consume()}"
+            yield f"  {node_name}: {self.fw[node_name]}"
 
     def __repr__(self) -> str:
         return "\n".join(self._describe())
