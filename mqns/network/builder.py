@@ -6,7 +6,7 @@ from typing import Literal, NotRequired, Self, TypedDict, Unpack, cast, overload
 from tap import Tap
 
 from mqns.entity.memory import QuantumMemoryInitKwargs
-from mqns.entity.node import Application, QNode
+from mqns.entity.node import Application, NodePair, QNode, split_node_pair
 from mqns.entity.qchannel import (
     LinkArch,
     LinkArchDimBk,
@@ -32,17 +32,12 @@ from mqns.network.fw import (
 from mqns.network.network import QuantumNetwork, TimingMode, TimingModeAsync, TimingModeSync
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
 from mqns.network.protocol.classicbridge import ClassicBridge
+from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.network.reactive import ReactiveForwarder, ReactiveRoutingController
 from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm, YenRouteAlgorithm
 from mqns.network.topology import ClassicTopology, Topology
 from mqns.network.topology.customtopo import CustomTopology, Topo, TopoController, TopoQChannel, TopoQNode
-
-type NodePair = str | tuple[str, str]
-"""
-Two node names on a channel or routing path.
-This could be either a tuple of two node names, or a string delimited by hyphen (``-``).
-"""
 
 type EprTypeLiteral = Literal["W", "M"]
 """
@@ -225,15 +220,6 @@ class AppsForwarderArgs(AppsCommonArgs, ForwarderInitKwargs):
     """
 
 
-def _split_node_pair(np: NodePair) -> tuple[str, str]:
-    if isinstance(np, str):
-        tokens = np.split("-")
-        if len(tokens) != 2:
-            raise ValueError(f"expect two node names in '{np}'")
-        return cast(tuple[str, str], tuple(tokens))
-    return np
-
-
 class NetworkBuilder:
     """
     Orchestrator of quantum network simulation with LinkLayer and forwarder.
@@ -271,7 +257,7 @@ class NetworkBuilder:
         self.controller_apps: list[Application] = []
 
         self.qubit_allocation = QubitAllocationType.DISABLED
-        self.requests: list[tuple[str, str]] = []
+        self.requests: list[tuple[str, str, int]] = []
 
     def _save_topo_args(self, d: TopoCommonArgs) -> None:
         self.d = d
@@ -380,7 +366,7 @@ class NetworkBuilder:
                 if opt_capacity:
                     (capacity,) = opt_capacity
                 d = None
-            self._add_qchannel(*_split_node_pair(np), d, length, capacity)
+            self._add_qchannel(*split_node_pair(np), d, length, capacity)
 
         return self
 
@@ -473,6 +459,9 @@ class NetworkBuilder:
             )
         )
 
+    def _add_consumer(self):
+        self.qnode_apps.append(Consumer())
+
     def proactive_centralized(
         self,
         **kwargs: Unpack[AppsForwarderArgs],
@@ -497,6 +486,7 @@ class NetworkBuilder:
         self.qnode_apps.append(
             ProactiveForwarder(**kwargs),
         )
+        self._add_consumer()
         self.controller_apps.append(
             ProactiveRoutingController(),
         )
@@ -529,6 +519,7 @@ class NetworkBuilder:
         self.qnode_apps.append(
             ReactiveForwarder(**kwargs),
         )
+        self._add_consumer()
         self.controller_apps.append(
             ReactiveRoutingController(swap=swap),
         )
@@ -564,8 +555,8 @@ class NetworkBuilder:
         if isinstance(arg1, RoutingPath):
             return arg1
         if isinstance(self.route, YenRouteAlgorithm):
-            return RoutingPathMulti(*_split_node_pair(arg1), **d)
-        return RoutingPathSingle(*_split_node_pair(arg1), **d, qubit_allocation=self.qubit_allocation)
+            return RoutingPathMulti(*split_node_pair(arg1), **d)
+        return RoutingPathSingle(*split_node_pair(arg1), **d, qubit_allocation=self.qubit_allocation)
 
     @functools.singledispatchmethod
     def _add_request(self, ctrl: Application, arg1: RoutingPath | NodePair, d: RoutingPathInitArgs) -> None:
@@ -581,7 +572,7 @@ class NetworkBuilder:
         _ = d
         if isinstance(arg1, RoutingPath):
             raise TypeError(f"{type(ctrl)} does not support .request(RoutingPath)")
-        self.requests.append(_split_node_pair(arg1))
+        self.requests.append((*split_node_pair(arg1), d.get("req_id", -1)))
 
     @overload
     def request(self, src_dst: NodePair, /, **kwargs: Unpack[RoutingPathInitArgs]) -> Self:
@@ -644,8 +635,8 @@ class NetworkBuilder:
             timing=self.timing,
             epr_type=self.epr_type,
         )
-        for src, dst in self.requests:
-            net.add_request(net.get_node(src), net.get_node(dst))
+        for src, dst, req_id in self.requests:
+            net.add_request(net.get_node(src), net.get_node(dst), req_id=req_id)
 
         if connect_controller and topo.controller:
             topo.connect_controller(net.nodes, delay=CTRL_DELAY)

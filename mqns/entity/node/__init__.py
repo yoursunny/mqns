@@ -28,14 +28,19 @@
 from mqns.entity.node.app import Application
 from mqns.entity.node.controller import Controller
 from mqns.entity.node.node import Node
+from mqns.entity.node.pair import NodePair, split_node_pair
 from mqns.entity.node.qnode import QNode
 
 __all__ = [
     "Application",
     "Controller",
     "Node",
+    "NodePair",
     "QNode",
+    "split_node_pair",
 ]
 
 for name in __all__:
+    if name in ("NodePair",):
+        continue
     globals()[name].__module__ = __name__

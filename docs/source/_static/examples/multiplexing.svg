@@ -1,0 +1,70 @@
+<svg width="500" height="400" xmlns="http://www.w3.org/2000/svg">
+  <style>text, tspan {
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }</style>
+  <g transform="translate(50 50)">
+    <line x2="100" y2="150" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#7FDBFF"/>
+    <text font-size="20">A</text>
+  </g>
+  <g transform="translate(50 150)">
+    <line x2="100" y2="50" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#7FDBFF"/>
+    <text font-size="20">B</text>
+  </g>
+  <g transform="translate(50 250)">
+    <line x2="100" y2="-50" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#7FDBFF"/>
+    <text font-size="20">C</text>
+  </g>
+  <g transform="translate(50 350)">
+    <line x2="100" y2="-150" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#7FDBFF"/>
+    <text font-size="20">D</text>
+  </g>
+  <g transform="translate(150 300)">
+    <line x2="100" y2="-100" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#7FDBFF"/>
+    <text font-size="20">G</text>
+  </g>
+  <g transform="translate(250 300)">
+    <line y2="-100" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#7FDBFF"/>
+    <text font-size="20">H</text>
+  </g>
+  <g transform="translate(350 300)">
+    <line x2="-100" y2="-100" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#7FDBFF"/>
+    <text font-size="20">I</text>
+  </g>
+  <g transform="translate(450 100)">
+    <line x2="-100" y2="100" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#7FDBFF"/>
+    <text font-size="20">K</text>
+  </g>
+  <g transform="translate(450 200)">
+    <line x2="-100" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#7FDBFF"/>
+    <text font-size="20">L</text>
+  </g>
+  <g transform="translate(450 300)">
+    <line x2="-100" y2="-100" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#7FDBFF"/>
+    <text font-size="20">M</text>
+  </g>
+  <g transform="translate(150 200)">
+    <line x2="100" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#7FDBFF"/>
+    <text font-size="20">E</text>
+  </g>
+  <g transform="translate(250 200)">
+    <line x2="100" stroke="#111" stroke-width="2"/>
+    <circle r="30" fill="#7FDBFF"/>
+    <text font-size="20">F</text>
+  </g>
+  <g transform="translate(350 200)">
+    <circle r="30" fill="#7FDBFF"/>
+    <text font-size="20">J</text>
+  </g>
+</svg>

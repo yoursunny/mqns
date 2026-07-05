@@ -18,14 +18,17 @@ on end-to-end throughput and average state fidelity for both paths, outputting c
 and JSON data summaries.
 """
 
+import itertools
 import json
+from multiprocessing import Pool, freeze_support
 from typing import NamedTuple, cast
 
 import numpy as np
 from tap import Tap
 
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
-from mqns.network.fw import ForwarderConsumeCounters, MuxScheme, MuxSchemeDynamicEpr, MuxSchemeStatistical
+from mqns.network.fw import MuxScheme, MuxSchemeDynamicEpr, MuxSchemeStatistical
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
@@ -35,7 +38,8 @@ log.set_default_level("CRITICAL")
 
 
 class Args(Tap):
-    runs: int = 3  # number of trials per parameter set
+    workers: int = 1  # number of workers for parallel execution
+    runs: int = 10  # number of trials per parameter set
     sim_duration: float = 3  # simulation duration in seconds
     json: str = ""  # save results as JSON file
     plt: str = ""  # save plot as image file
@@ -45,14 +49,6 @@ SEED_BASE = 100
 PATH_TITLES = ("S1-D1", "S2-D2")
 N_PATHS = len(PATH_TITLES)
 
-# Quantum channel lengths
-ch_S1_R1 = 10
-ch_R1_R2 = 10
-ch_R2_R3 = 10
-ch_R3_D1 = 10
-ch_S2_R2 = 10
-ch_R3_D2 = 10
-
 
 def run_simulation(seed: int, args: Args, mux: MuxScheme, t_cohere: float):
     rng.reseed(seed)
@@ -61,18 +57,19 @@ def run_simulation(seed: int, args: Args, mux: MuxScheme, t_cohere: float):
         NetworkBuilder()
         .topo(
             channels=[
-                ("S1-R1", ch_S1_R1),
-                ("R1-R2", ch_R1_R2),
-                ("R2-R3", ch_R2_R3),
-                ("R3-D1", ch_R3_D1),
-                ("S2-R2", ch_S2_R2),
-                ("R3-D2", ch_R3_D2),
+                ("S1-R1", 10),
+                ("R1-R2", 10),
+                ("R2-R3", 10),
+                ("R3-D1", 10),
+                ("S2-R4", 10),
+                ("R4-R2", 15),
+                ("R3-D2", 15),
             ],
             t_cohere=t_cohere,
         )
         .proactive_centralized(mux=mux)
-        .request("S1-D1")
-        .request("S2-D2")
+        .request("S1-D1", req_id=1)
+        .request("S2-D2", req_id=2)
         .make_network()
     )
 
@@ -82,8 +79,8 @@ def run_simulation(seed: int, args: Args, mux: MuxScheme, t_cohere: float):
     #### get stats: e2e_rate and mean_fidelity
     # [(path 1), (path 2), ...]
     consume_cnts = [
-        ForwarderConsumeCounters.of_path(net, "S1", "D1"),
-        ForwarderConsumeCounters.of_path(net, "S2", "D2"),
+        RequestCounters.of(net, 1, "S1-D1"),
+        RequestCounters.of(net, 2, "S2-D2"),
     ]
     return [(c.get_rate(args.sim_duration), c.consumed_avg_fidelity) for c in consume_cnts]
 
@@ -164,7 +161,7 @@ def plot(results: dict[str, list[list[PathStats]]], *, save_plt: str):
 
     axs[1, -1].legend(title="Strategy", loc="lower right")
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    plt_save(args.plt)
+    plt_save(save_plt)
 
 
 # Simulation constants
@@ -176,15 +173,19 @@ STRATEGIES: dict[str, MuxScheme] = {
 T_COHERE_VALUES = [5e-3, 10e-3, 20e-3]
 
 if __name__ == "__main__":
+    freeze_support()
     args = Args().parse_args()
 
-    results: dict[str, list[list[PathStats]]] = {}  # strategy->path->t_cohere_index
-    for strategy in STRATEGIES:
-        results[strategy] = [[] for _ in PATH_TITLES]
-        for t_cohere in T_COHERE_VALUES:
-            row = run_row(args, strategy, t_cohere)
-            for path, stats in enumerate(row):
-                results[strategy][path].append(stats)
+    with Pool(processes=args.workers) as pool:
+        rows = pool.starmap(run_row, itertools.product([args], STRATEGIES, T_COHERE_VALUES))
+
+    results: dict[str, list[list[PathStats]]] = {
+        strategy: [[] for _ in PATH_TITLES] for strategy in STRATEGIES
+    }  # strategy->path->t_cohere_index
+    for (strategy, t_cohere), row in zip(itertools.product(STRATEGIES, T_COHERE_VALUES), rows, strict=True):
+        _ = t_cohere
+        for path, stats in enumerate(row):
+            results[strategy][path].append(stats)
 
     if args.json:
         with open(args.json, "w") as file:

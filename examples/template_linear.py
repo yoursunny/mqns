@@ -22,7 +22,8 @@ from tap import Tap
 
 from mqns.entity.qchannel import LinkArchDimBk, LinkArchSim, LinkArchSr
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
-from mqns.network.fw import ForwarderConsumeCounters, SwapSequenceInput
+from mqns.network.fw import SwapSequenceInput
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayerCounters
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
@@ -173,7 +174,7 @@ def run_simulation(
         .proactive_centralized(
             p_swap=P_SWAP,
         )
-        .request("S-D", swap=swap)
+        .request("S-D", req_id=0, swap=swap)
         .make_network()
     )
 
@@ -184,18 +185,18 @@ def run_simulation(
     # ── Extract metrics ───────────────────────────────────────────────────────
     out: dict[str, float] = {}
 
-    consume_cnt = ForwarderConsumeCounters.of_path(net, "S", "D")
+    req_cnt = RequestCounters.of(net, 0, "S-D")
 
     if "throughput" in MEASURES:
-        out["throughput_eps"] = consume_cnt.get_rate(SIM_DURATION)
+        out["throughput_eps"] = req_cnt.get_rate(SIM_DURATION)
 
     if "mean_fidelity" in MEASURES:
-        out["mean_fidelity"] = consume_cnt.consumed_avg_fidelity
+        out["mean_fidelity"] = req_cnt.consumed_avg_fidelity
 
     if "expired_ratio" in MEASURES:
         ll_cnt = LinkLayerCounters.aggregate(net.nodes)
         out["expired_ratio"] = float(ll_cnt.decoh_ratio)
-        out["expired_per_e2e_safe"] = consume_cnt.get_per_consumed(ll_cnt.n_decoh)
+        out["expired_per_e2e_safe"] = req_cnt.get_per_consumed(ll_cnt.n_decoh)
 
     return out
 

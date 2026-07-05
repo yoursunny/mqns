@@ -3,7 +3,7 @@ import pandas as pd
 from tap import Tap
 
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
-from mqns.network.fw import ForwarderConsumeCounters
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
@@ -45,8 +45,8 @@ def run_simulation(t_cohere: float, seed: int):
     s.run()
 
     #### get stats
-    consume_cnt = ForwarderConsumeCounters.of_path(net, "S", "D")
-    return consume_cnt.get_rate(sim_duration), consume_cnt.consumed_avg_fidelity
+    req_cnt = RequestCounters.of(net, 0, "S-D")
+    return req_cnt.get_rate(sim_duration), req_cnt.consumed_avg_fidelity
 
 
 results = {"T_cohere": [], "Mean Rate": [], "Std Rate": [], "Mean F": [], "Std F": []}

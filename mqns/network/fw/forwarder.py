@@ -19,8 +19,6 @@ import copy
 from abc import abstractmethod
 from typing import Literal, TypedDict, Unpack, override
 
-import numpy as np
-
 from mqns.entity.memory import MemoryDecohereEvent, MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import Application, QNode
 from mqns.entity.qchannel import QuantumChannel
@@ -44,8 +42,8 @@ from mqns.network.fw.message import (
 from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
 from mqns.network.fw.select import SelectPurifQubit, call_select_purif_qubit
-from mqns.network.network import QuantumNetwork, TimingPhase, TimingPhaseEvent
-from mqns.network.protocol.event import QubitEntangledEvent, QubitReleasedEvent
+from mqns.network.network import TimingPhase, TimingPhaseEvent
+from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
 from mqns.simulator import Time, event_handler
 from mqns.utils import json_encodable, log
 
@@ -68,99 +66,7 @@ class ForwarderInitKwargs(TypedDict, total=False):
 
 
 @json_encodable
-class ForwarderConsumeCounters:
-    """
-    Consumption counters of ``Forwarder``.
-
-    Each entangled pair is delivered and consumed by two forwarders, possibly at different times due to
-    heralding timing. However, only the forwarder that measures the second qubit logs the consumption,
-    because the final end-to-end fidelity can only be calculate when memory error models on both sides are applied.
-    """
-
-    n_consumed = 0
-    """How many entanglements were consumed (either end-to-end or in swap-disabled mode)."""
-    consumed_sum_fidelity = 0.0
-    """
-    Sum of fidelity of consumed entanglements.
-    """
-    consumed_fidelity_values: list[float] | None = None
-    """
-    Fidelity values of consumed entanglements, None disables collection.
-    """
-
-    @staticmethod
-    def of_path(net: QuantumNetwork, src: str, dst: str) -> "ForwarderConsumeCounters":
-        """
-        Obtain consumption counters of a path.
-
-        Args:
-            net: Quantum network.
-            src: Left end node, which must belong to exactly one path.
-            dst: Right end node, which must belong to exactly one path.
-        """
-        a = net.get_node(src).get_app(Forwarder).cnt
-        b = net.get_node(dst).get_app(Forwarder).cnt
-
-        g = ForwarderConsumeCounters()
-        g.n_consumed = a.n_consumed + b.n_consumed
-        g.consumed_sum_fidelity = a.consumed_sum_fidelity + b.consumed_sum_fidelity
-        if a.consumed_fidelity_values is b.consumed_fidelity_values:
-            g.consumed_fidelity_values = a.consumed_fidelity_values
-        return g
-
-    @staticmethod
-    def enable_collect_all_on_path(net: QuantumNetwork, src: str, dst: str) -> None:
-        """
-        Enable collecting all values for histogram generation.
-
-        Args:
-            net: Quantum network.
-            src: Left end node, which must belong to exactly one path.
-            dst: Right end node, which must belong to exactly one path.
-        """
-        a = net.get_node(src).get_app(Forwarder).cnt
-        b = net.get_node(dst).get_app(Forwarder).cnt
-
-        assert a.consumed_fidelity_values is None
-        assert b.consumed_fidelity_values is None
-        a.consumed_fidelity_values = b.consumed_fidelity_values = []
-
-    def increment_n_consumed(self, fidelity: float) -> None:
-        self.n_consumed += 1
-        self.consumed_sum_fidelity += fidelity
-        if self.consumed_fidelity_values is not None:
-            self.consumed_fidelity_values.append(fidelity)
-
-    @property
-    def consumed_avg_fidelity(self) -> float:
-        """Average fidelity of consumed entanglements."""
-        if self.consumed_fidelity_values is not None and len(self.consumed_fidelity_values) == self.n_consumed > 0:
-            return np.mean(self.consumed_fidelity_values).item()
-        return self.get_per_consumed(self.consumed_sum_fidelity)
-
-    def get_rate(self, duration: float) -> float:
-        """
-        Calculate entanglement rate.
-
-        Args:
-            duration: How many seconds did the path remain active.
-
-        Returns: Entanglement rate in entanglements per second.
-        """
-        return self.n_consumed / duration
-
-    def get_per_consumed(self, x: float) -> float:
-        """
-        Divide a value by ``n_consumed``, but return zero if ``n_consumed`` is zero.
-        """
-        return x / self.n_consumed if self.n_consumed > 0 else 0.0
-
-    def __repr__(self) -> str:
-        return f"consumed={self.n_consumed} (F={self.consumed_avg_fidelity})"
-
-
-@json_encodable
-class ForwarderCounters(ForwarderConsumeCounters):
+class ForwarderCounters:
     """Counters of ``Forwarder``."""
 
     def __init__(self):
@@ -218,8 +124,7 @@ class ForwarderCounters(ForwarderConsumeCounters):
         return (
             f"entg={self.n_entg} purif={self.n_purif} eligible={self.n_eligible} "
             f"swapped={self.n_swapped} swap-fail={self.n_swap_fail} "
-            f"su-lower={self.n_su_lower} su-same={self.n_su_same} cutoff-discard={self.n_cutoff} "
-            f"{ForwarderConsumeCounters.__repr__(self)}"
+            f"su-lower={self.n_su_lower} su-same={self.n_su_same} cutoff-discard={self.n_cutoff}"
         )
 
 
@@ -560,8 +465,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
             return
 
         _, epr = self.memory.read(qubit.addr, has=self.epr_type)
-        if self.can_consume(fib_entry, epr):
-            self.consume_and_release(qubit)
+        if self._try_consume(qubit, epr, fib_entry):
             return
 
         swap_candidates = self.memory.find(
@@ -578,25 +482,27 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         else:
             self.cutoff.before_store_eligible(qubit, PathDirection.L if epr.src is self.node else PathDirection.R, fib_entry)
 
-    def can_consume(self, fib_entry: FibEntry | None, epr: Entanglement) -> bool:
+    def _try_consume(self, qubit: MemoryQubit, epr: Entanglement, fib_entry: FibEntry | None) -> bool:
+        """
+        If the EPR matches an end-to-end request, inform ``Consumer`` to consume the EPR.
+        """
         if fib_entry is None:
             assert epr.src is not None
             assert epr.dst is not None
             src, dst = epr.src.name, epr.dst.name
-            return next(self.fib.find_request(lambda g: g.src == src and g.dst == dst), None) is not None
+            for req in self.fib.find_request(lambda g: g.src == src and g.dst == dst):
+                req_id = req.req_id
+                break
+            return False
 
-        return fib_entry.is_swap_disabled or fib_entry.own_idx in (0, len(fib_entry.route) - 1)
+        if fib_entry.is_swap_disabled or fib_entry.own_idx in (0, len(fib_entry.route) - 1):
+            req_id = fib_entry.req_id
+        else:
+            return False
 
-    def consume_and_release(self, qubit: MemoryQubit):
-        """
-        Consume an entangled qubit.
-        """
-        _, epr = self.memory.read(qubit.addr, has=self.epr_type, remove=True)
-        log.debug(f"{self}: consume EPR: {epr}")
-        if epr.consume_with_store_decay_side(self.simulator.tc, side=0 if epr.src is self.node else 1):
-            self.cnt.increment_n_consumed(epr.fidelity)
-
-        self.release_qubit(qubit)
+        qubit.state = QubitState.CONSUME
+        self.simulator.add_event(QubitConsumeEvent(self.node, qubit, epr, t=self.simulator.tc, req_id=req_id))
+        return True
 
     @event_handler
     def qubit_is_decohered(self, event: MemoryDecohereEvent):

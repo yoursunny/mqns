@@ -137,7 +137,7 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
             if (qubits := self._try_consume(route)) is None:
                 continue
 
-            self.install_path(RoutingPathStatic(route, m_v=qubits, swap=self.swap))
+            self.install_path(RoutingPathStatic(route, req_id=req.req_id, m_v=qubits, swap=self.swap))
             return True
 
         return False

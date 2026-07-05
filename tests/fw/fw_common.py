@@ -12,10 +12,11 @@ from mqns.entity.memory import QubitState
 from mqns.entity.node import Application, Controller, Node, QNode
 from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk, QuantumChannelInitKwargs
 from mqns.models.epr import Entanglement, WernerStateEntanglement
-from mqns.network.fw import Forwarder, ForwarderConsumeCounters, ForwarderInitKwargs, RoutingController, RoutingPath
+from mqns.network.fw import Forwarder, ForwarderInitKwargs, RoutingController, RoutingPath
 from mqns.network.fw.fw_swap import ForwarderSwapProc
 from mqns.network.network import QuantumNetwork, TimingMode, TimingModeAsync, TimingPhase, TimingPhaseEvent
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
+from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.event import QubitEntangledEvent, QubitReleasedEvent
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.network.reactive import ReactiveForwarder, ReactiveRoutingController
@@ -91,8 +92,6 @@ class BuildNetworkArgs(TypedDict, total=False):
 
 
 def _make_topo_args(d: BuildNetworkArgs, *, memory_capacity_factor: int) -> TopologyInitKwargs:
-    qchannel_capacity = d.get("qchannel_capacity", 1)
-
     nodes_apps: list[Application[QNode]] = []
     if d.get("has_link_layer", False):
         nodes_apps.append(LinkLayer())
@@ -107,6 +106,9 @@ def _make_topo_args(d: BuildNetworkArgs, *, memory_capacity_factor: int) -> Topo
         case "R":
             nodes_apps.append(ReactiveForwarder(**fw_args))
 
+    nodes_apps.append(Consumer())
+
+    qchannel_capacity = d.get("qchannel_capacity", 1)
     return TopologyInitKwargs(
         nodes_naming="A",
         nodes_apps=nodes_apps,
@@ -246,10 +248,13 @@ def collect_cpacket_counts(monkeypatch: pytest.MonkeyPatch, *, inc_controller=Fa
     return d
 
 
-def print_fw_counters(net: QuantumNetwork):
+def print_node_counters(net: QuantumNetwork):
     for node in net.nodes:
         fw = node.get_app(Forwarder)
-        print(node.name, fw.cnt)
+        cons = node.get_app(Consumer)
+        print(f"{node.name} {fw.cnt}")
+        for req_id, pcnt in cons.cnt.items():
+            print(f"    #{req_id}: {pcnt}")
 
 
 def check_fw_counters(net: QuantumNetwork, **kwargs: Iterable[int | Iterable[int]]) -> None:
@@ -286,14 +291,6 @@ def install_path(
         simulator.add_event(func_to_event(simulator.time(sec=t_uninstall), ctrl.uninstall_path, rp))
 
     return rp
-
-
-def check_path_counters(net: QuantumNetwork, rp: RoutingPath | None = None, *, n_consumed: int):
-    if rp is None:
-        cnt = ForwarderConsumeCounters.of_path(net, net.nodes[0].name, net.nodes[-1].name)
-    else:
-        cnt = ForwarderConsumeCounters.of_path(net, rp.src, rp.dst)
-    assert cnt.n_consumed == n_consumed
 
 
 _provide_entanglements_autoid = AutoIncrementIdentifier("Tpe_")

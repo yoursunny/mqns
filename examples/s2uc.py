@@ -16,7 +16,7 @@ from tap import Tap
 from mqns.entity.qchannel import LinkArchDimDual
 from mqns.models.epr import MixedStateEntanglement
 from mqns.network.builder import CTRL_DELAY, ChannelParam, NetworkBuilder, NodeDef, tap_configure
-from mqns.network.fw import ForwarderConsumeCounters
+from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
 from mqns.utils import log, rng
 
@@ -115,16 +115,16 @@ def run_simulation(seed: int, args: Args, ri: RowInput) -> Stats:
         .make_network()
     )
 
-    ForwarderConsumeCounters.enable_collect_all_on_path(net, "S", "D")
+    RequestCounters.enable_collect_all(net, 0, "S-D")
 
     s = Simulator(0, args.sim_duration + CTRL_DELAY, accuracy=SIMULATOR_ACCURACY, install_to=(log, net))
     s.run()
 
-    consume_cnt = ForwarderConsumeCounters.of_path(net, "S", "D")
-    assert consume_cnt.consumed_fidelity_values is not None
+    req_cnt = RequestCounters.of(net, 0, "S-D")
+    assert req_cnt.consumed_fidelity_values is not None
     return Stats(
-        count=consume_cnt.n_consumed,
-        fid=consume_cnt.consumed_fidelity_values,
+        count=req_cnt.n_consumed,
+        fid=req_cnt.consumed_fidelity_values,
     )
 
 

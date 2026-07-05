@@ -38,7 +38,9 @@ pub struct PathInstructions {
     pub req_id: u32,
     pub route: Vec<String>,
     pub swap: Vec<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub swap_cutoff: Option<Vec<i32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub m_v: Option<Vec<MultiplexingVectorElem>>,
     pub purif: HashMap<String, String>,
 }

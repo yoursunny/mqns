@@ -25,6 +25,15 @@ from mqns.simulator import EventHandleSet
 
 
 class QubitState(Enum):
+    """
+    Indicates qubit state following a finite state machine.
+
+    .. figure:: /_static/qubit-state.svg
+       :alt: finite state machine
+       :align: center
+       :width: 100%
+    """
+
     RAW = auto()
     """
     Qubit is unused.
@@ -75,6 +84,10 @@ class QubitState(Enum):
     The forwarder is performing local swapping between this and another memory qubit.
     If the qubit is released from this state, the local swapping would be aborted.
     """
+    CONSUME = auto()
+    """
+    Qubit is part of an end-to-end entangled pair and ready for consumption by application.
+    """
     RELEASE = auto()
     """
     Qubit is not used by the forwarder.
@@ -90,10 +103,14 @@ ALLOWED_STATE_TRANSITIONS: dict[QubitState, tuple[QubitState, ...]] = {
     QubitState.ENTANGLED1: (QubitState.RELEASE, QubitState.PURIF),
     QubitState.PURIF: (QubitState.RELEASE, QubitState.PENDING, QubitState.ELIGIBLE),
     QubitState.PENDING: (QubitState.RELEASE, QubitState.PURIF),
-    QubitState.ELIGIBLE: (QubitState.SWAPPING, QubitState.RELEASE),
+    QubitState.ELIGIBLE: (QubitState.SWAPPING, QubitState.CONSUME, QubitState.RELEASE),
     QubitState.SWAPPING: (QubitState.RELEASE,),
+    QubitState.CONSUME: (QubitState.RELEASE,),
     QubitState.RELEASE: (QubitState.RAW,),
 }
+"""
+Allowed state transitions, mapped from old state to allowed new states.
+"""
 
 
 class PathDirection(Enum):
@@ -154,7 +171,15 @@ class MemoryQubit:
 
     @property
     def state(self) -> QubitState:
-        """State of the qubit according to the FSM."""
+        """
+        Retrieve or set qubit state.
+
+        In the setter:
+
+        * If the state transition is not allowed, raises ValueError,
+        * If the new state is either ``RAW`` or ``RELEASE``, cancel events.
+        * If the new state is ``RAW``, clear LinkLayer and Forwarder related fields.
+        """
         return self._state
 
     @state.setter
@@ -200,5 +225,5 @@ def _describe(mq: MemoryQubit) -> Iterable[str]:
     if mq.epr_path_ids:
         yield f"epr-path-ids={mq.epr_path_ids}"
 
-    if mq._state in (QubitState.PURIF, QubitState.PENDING, QubitState.ELIGIBLE, QubitState.SWAPPING):
+    if mq._state in (QubitState.PURIF, QubitState.PENDING, QubitState.ELIGIBLE, QubitState.SWAPPING, QubitState.CONSUME):
         yield f"purif_rounds={mq.purif_rounds}"

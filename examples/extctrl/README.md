@@ -63,6 +63,9 @@ bash run.sh --mode RCS
 
 # reactive-centralized-sync mode, set coherence time and sync timing (both must be specified)
 bash run.sh --mode RCS --sync_timing 0.026950 0.000050 0.003000 -- --t_cohere 0.030000
+
+# reactive-centralized-sync mode, enable both paths with different swap orders
+bash run.sh --mode RCS -- -- --path1 l2r --path2 asap
 ```
 
 During the scenario execution, you can view NATS messages on a separate console:
