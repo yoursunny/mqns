@@ -1,3 +1,5 @@
+import pytest
+
 from mqns.network.network import QuantumNetwork
 from mqns.network.route import DijkstraRouteAlgorithm, YenRouteAlgorithm
 from mqns.network.topology import CustomTopology, LinearTopology
@@ -12,17 +14,20 @@ def test_dijkstra():
     n3 = net.get_node("n3")
     n4 = net.get_node("n4")
 
-    r11 = net.query_route(n1, n1)
+    with pytest.raises(match="no route"):
+        net.query_route("n1", "n1")
+
+    r11 = net.query_route("n1", "n1", error_on_empty=False)
     assert len(r11) == 0
 
-    r12 = net.query_route(n1, n2)
+    r12 = net.query_route("n1", "n2")
     assert len(r12) == 1
     assert r12[0].metric == 1
     assert r12[0].next_hop is n2
     assert r12[0].nodes == [n1, n2]
     assert r12[0].path == ["n1", "n2"]
 
-    r14 = net.query_route(n1, n4)
+    r14 = net.query_route("n1", "n4")
     assert len(r14) == 1
     assert r14[0].metric == 3
     assert r14[0].nodes == [n1, n2, n3, n4]
@@ -60,10 +65,7 @@ def test_yen():
     net = QuantumNetwork(topo, route=YenRouteAlgorithm(k_paths=3))
     net.build_route()
 
-    node_s = net.get_node("S")
-    node_d = net.get_node("D")
-
-    routes = net.query_route(node_s, node_d)
+    routes = net.query_route("S", "D")
 
     print("\nComputed Yen paths from S to D:")
     for route in routes:

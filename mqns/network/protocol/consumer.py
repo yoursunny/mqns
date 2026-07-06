@@ -12,9 +12,12 @@ from mqns.utils import json_encodable, log
 
 
 class RequestLike(Protocol):
-    req_id: int
-    src: str
-    dst: str
+    @property
+    def req_id(self) -> int: ...
+    @property
+    def src(self) -> str: ...
+    @property
+    def dst(self) -> str: ...
 
 
 @json_encodable
@@ -52,7 +55,7 @@ class RequestCounters:
 
         Args:
             net: Quantum network.
-            req: ``RoutingPath`` instance.
+            req: ``Request`` or ``RoutingPath`` instance.
 
         Returns: ConsumerPathCounters for the request, aggregated from src and dst nodes.
         """

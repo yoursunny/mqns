@@ -25,18 +25,19 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Unpack, cast, overload
+from collections.abc import Iterable
+from typing import cast, overload
 
 from mqns.entity.base_channel import BaseChannel
 from mqns.entity.cchannel import ClassicChannel
 from mqns.entity.node import Controller, Node, QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement, WernerStateEntanglement
-from mqns.network.network.request import Request, RequestAttr
+from mqns.network.network.request import Request, RequestActiveEvent
 from mqns.network.network.timing import TimingMode, TimingModeAsync
 from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm, RouteQueryResult
 from mqns.network.topology import ClassicTopology, Topology
-from mqns.simulator import Simulator
+from mqns.simulator import Simulator, Time
 from mqns.utils import rng
 
 
@@ -54,7 +55,7 @@ def _get_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], q: tup
         for ch in l:
             if ch.name == name:
                 return ch
-        raise LookupError(f"channel {name} does not exist")
+        raise LookupError(f"channel {name} does not exist") from None
 
     a, b = sorted(q)
     try:
@@ -105,7 +106,7 @@ class QuantumNetwork:
         if topo is not None:
             self._populate_from_topo(topo, classic_topo)
 
-        self.route: RouteAlgorithm = DijkstraRouteAlgorithm() if route is None else route
+        self.route: RouteAlgorithm = route or DijkstraRouteAlgorithm()
         """Routing algorithm."""
 
         self.requests: list[Request] = []
@@ -155,6 +156,9 @@ class QuantumNetwork:
 
         for node in self.all_nodes:
             node.install(simulator)
+
+        for req in self.requests:
+            self._sched_request_active_event(req)
 
     def add_node(self, node: QNode):
         """
@@ -257,28 +261,49 @@ class QuantumNetwork:
         """Build static route tables for each nodes"""
         self.route.build(self.nodes, self.qchannels)
 
-    def query_route(self, src: QNode, dest: QNode) -> list[RouteQueryResult[QNode]]:
-        """Query the metric, nexthop and the path
-
-        Args:
-            src: the source node
-            dest: the destination node
-
-        Returns: list of route paths, sorted by priority.
+    def query_route(self, src: str, dst: str, /, error_on_empty=True) -> list[RouteQueryResult[QNode]]:
         """
-        return self.route.query(src, dest)
-
-    def add_request(self, src: QNode, dst: QNode, **kwargs: Unpack[RequestAttr]):
-        """
-        Add a request (src, dst) pair to the network, placed in ``self.requests`` list.
+        Query the routing algorithm.
 
         Args:
             src: Source node.
             dst: Destination node.
-            kwargs: Other attributes.
+            error_on_empty: If true, raise RuntimeError if there's no route.
+
+
+        Returns: list of route paths, sorted by priority.
         """
-        req = Request(src, dst, **kwargs)
+        routes = self.route.query(self.get_node(src), self.get_node(dst))
+        if error_on_empty and not routes:
+            raise RuntimeError(f"no route from {src} to {dst}")
+        return routes
+
+    @property
+    def active_requests(self) -> Iterable[Request]:
+        """
+        List requests that are within active period at current timestamp.
+        """
+        t = self.simulator.tc
+        return (req for req in self.requests if req.in_active_period(t))
+
+    def add_request(self, req: Request):
+        """
+        Add a request pair to the network, placed in ``self.requests`` list.
+        """
         self.requests.append(req)
+
+        if hasattr(self, "simulator"):
+            self._sched_request_active_event(req)
+
+    def _sched_request_active_event(self, req: Request):
+        if not self.controller:
+            return
+
+        t_enter = self.simulator.tc if req.not_before is Time.SENTINEL else req.not_before
+        self.simulator.add_event(RequestActiveEvent(self.controller, req, True, t=t_enter))
+
+        if req.not_after is not Time.SENTINEL:
+            self.simulator.add_event(RequestActiveEvent(self.controller, req, False, t=req.not_after))
 
     def random_requests(
         self,
@@ -288,7 +313,6 @@ class QuantumNetwork:
         allow_overlay=False,
         min_hops=1,
         max_hops=10,
-        attr: RequestAttr = RequestAttr(),
         forbid_endpoint_internal=True,  # reject endpoint-vs-internal conflicts
     ):
         """
@@ -350,7 +374,7 @@ class QuantumNetwork:
 
                 src = self.nodes[src_idx]
                 dst = self.nodes[dst_idx]
-                routes = self.query_route(src, dst)
+                routes = self.query_route(src.name, dst.name, error_on_empty=False)
                 if not routes:
                     continue
 
@@ -368,6 +392,5 @@ class QuantumNetwork:
                 if not allow_overlay:
                     used_nodes.extend([src_idx, dst_idx])
 
-                attr["req_id"] = i
-                self.add_request(src, dst, **attr)
+                self.add_request(Request((src.name, dst.name)).path(req_id=i))
                 break

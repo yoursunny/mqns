@@ -26,9 +26,7 @@ def run_simulation(args: RunArgs) -> RunResult:
     # Install paths for requests.
     ctrl = net.get_controller().get_app(ProactiveRoutingController)
     for req in net.requests:
-        ctrl.install_path(
-            RoutingPathSingle(req.src.name, req.dst.name, req_id=req.req_id, qubit_allocation=QubitAllocationType.DISABLED)
-        )
+        ctrl.install_path(RoutingPathSingle(req.src, req.dst, qubit_allocation=QubitAllocationType.DISABLED, **req.rp_args))
 
     # Run the simulation.
     timeout = WallClockTimeout(args.time_limit, stop=s.stop)
@@ -38,7 +36,7 @@ def run_simulation(args: RunArgs) -> RunResult:
 
     # Collect results.
     def gather_request_stats(req: Request) -> RequestStats:
-        req_cnt = RequestCounters.of(net, req.req_id, (req.src.name, req.dst.name))
+        req_cnt = RequestCounters.of(net, req)
         return req_cnt.get_rate(sim_duration), req_cnt.consumed_avg_fidelity
 
     def gather_node_stats(node: QNode):
@@ -49,7 +47,7 @@ def run_simulation(args: RunArgs) -> RunResult:
     return RunResult(
         time_spent=s.time_spend,
         sim_progress=sim_duration / args.sim_duration,
-        requests={f"{req.src.name}-{req.dst.name}": gather_request_stats(req) for req in net.requests},
+        requests={f"{req.src}-{req.dst}": gather_request_stats(req) for req in net.requests},
         nodes={node.name: gather_node_stats(node) for node in net.nodes},
     )
 

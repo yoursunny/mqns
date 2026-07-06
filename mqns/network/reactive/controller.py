@@ -20,7 +20,7 @@ from itertools import pairwise
 from typing import cast, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
-from mqns.network.fw import RoutingController, RoutingPathStatic, SwapPolicy
+from mqns.network.fw import RoutingController, RoutingPathStatic
 from mqns.network.network import Request, TimingModeSync, TimingPhase, TimingPhaseEvent
 from mqns.network.reactive.message import LinkStateMsg
 from mqns.simulator import event_handler, func_to_event
@@ -50,18 +50,12 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
     It can automatically pick up requests from ``QuantumNetwork.requests`` list.
     """
 
-    def __init__(
-        self,
-        *,
-        swap: SwapPolicy = "asap",
-    ):
+    def __init__(self):
         """
         Args:
             swap: Swapping policy applied to all paths.
         """
         super().__init__()
-
-        self.swap: SwapPolicy = swap
 
         self.cnt = ReactiveRoutingControllerCounters()
         """
@@ -120,7 +114,7 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         some_satisfied = True
         while some_satisfied:
             some_satisfied = False
-            for req in self.net.requests:
+            for req in self.net.active_requests:
                 if self._try_satisfy(req):
                     self.cnt.n_satisfy += 1
                     some_satisfied = True
@@ -130,12 +124,12 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         Attempt to satisfy an active request with available entanglements.
         If the routing algorithm returns multiple routes, they will be tried in order.
         """
-        routes = self.net.query_route(req.src, req.dst)
+        routes = self.net.query_route(req.src, req.dst, error_on_empty=False)
         for route in routes:
             if (qubits := self._try_consume(route.path)) is None:
                 continue
 
-            self.install_path(RoutingPathStatic(route.path, req_id=req.req_id, m_v=qubits, swap=self.swap))
+            self.install_path(RoutingPathStatic(route.path, m_v=qubits, **req.rp_args))
             return True
 
         return False

@@ -88,9 +88,9 @@ def convert_network(net: QuantumNetwork, tlb: TimelineBounds) -> dict:
 
     cchannels: list[dict] = []
     for src, dst in itertools.product(net.nodes, net.nodes):
-        if src == dst:
+        if src is dst:
             continue
-        route = net.query_route(src, dst)[0]
+        route = net.query_route(src.name, dst.name)[0]
         cchannels.append(
             {
                 "source": src.name,
@@ -140,8 +140,8 @@ def convert_request(routers: list[QuantumRouter], request: Request) -> RequestAp
     """
     Convert MQNS src-dst request into a pair of applications in SeQUeNCe.
     """
-    src_node = next((r for r in routers if r.name == request.src.name))
-    dst_node = next((r for r in routers if r.name == request.dst.name))
+    src_node = next((r for r in routers if r.name == request.src))
+    dst_node = next((r for r in routers if r.name == request.dst))
     return (
         EntanglementRequestApp(src_node, dst_node.name),
         ResetApp(dst_node, src_node.name),

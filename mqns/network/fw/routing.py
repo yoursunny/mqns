@@ -5,11 +5,9 @@ from enum import Enum, auto
 from itertools import pairwise
 from typing import TypedDict, Unpack, override
 
-from mqns.entity.node import QNode
 from mqns.network.fw.message import MultiplexingVector, PathInstructions, validate_path_instructions
 from mqns.network.fw.swap_sequence import SwapSequenceInput, parse_swap_sequence
 from mqns.network.network import QuantumNetwork
-from mqns.network.route import RouteQueryResult
 from mqns.simulator import Time
 from mqns.utils import log
 
@@ -102,17 +100,6 @@ class RoutingPath(ABC):
             They will be installed into the nodes.
         """
 
-    def _query_routes(self, net: QuantumNetwork) -> list[RouteQueryResult[QNode]]:
-        """
-        Query routes from source node to destination node.
-        """
-        src = net.get_node(self.src)
-        dst = net.get_node(self.dst)
-        routes = net.query_route(src, dst)
-        if not routes:
-            raise RuntimeError(f"ROUTING: No route from {src} to {dst}")
-        return routes
-
     def _make_path_instructions(
         self,
         net: QuantumNetwork,
@@ -176,7 +163,7 @@ class RoutingPathSingle(RoutingPath):
 
     @override
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
-        route = self._query_routes(net)[0].path
+        route = net.query_route(self.src, self.dst)[0].path
         log.debug(f"ROUTING: Computed path #{self.path_id}: {route}")
         yield self._make_path_instructions(net, route, _compute_mv(net, route, self.qubit_allocation))
 
@@ -202,7 +189,7 @@ class RoutingPathMulti(RoutingPath):
     @override
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
         # Get all shortest paths (M ≥ 1)
-        routes = self._query_routes(net)
+        routes = net.query_route(self.src, self.dst)
 
         # Count usage of each quantum channel across all paths
         qchannel_use_count = defaultdict[str, int](lambda: 0)
