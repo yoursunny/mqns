@@ -37,8 +37,10 @@ Outputs:
   aggregate network throughput by individual flow contributions relative to uncontested baselines.
 """
 
+import itertools
 import json
 from collections.abc import Sequence
+from multiprocessing import Pool, freeze_support
 from typing import NamedTuple
 
 import numpy as np
@@ -65,6 +67,7 @@ log.set_default_level("CRITICAL")
 
 
 class Args(Tap):
+    workers: int = 1  # number of workers for parallel execution
     runs: int = 3  # number of trials per parameter set
     sim_duration: float = 3.0  # simulation duration in seconds
     json: str = ""  # save results as JSON file
@@ -97,7 +100,8 @@ N_FLOWS = len(FLOWS)
 for i, flow in enumerate(FLOWS):
     flow.idx = i
 
-SCENARIOS: list[tuple[str, list[FlowDef]]] = [
+type Scenario = tuple[str, list[FlowDef]]
+SCENARIOS: list[Scenario] = [
     ("AK", [FLOW_AK]),
     ("BL", [FLOW_BL]),
     ("CI", [FLOW_CI]),
@@ -177,7 +181,7 @@ def _mv_for_flow(flow: str, route: list[str], active_flows: set[str]):
     return mv
 
 
-def build_network(mux: MuxScheme, active_flows: Sequence[FlowDef]):
+def build_network(mux: MuxScheme, active_flows: Sequence[FlowDef], active_flows_set: set[str]):
     b = NetworkBuilder()
     b.topo(
         channels=[
@@ -208,7 +212,6 @@ def build_network(mux: MuxScheme, active_flows: Sequence[FlowDef]):
 
     if isinstance(mux, MuxSchemeBufferSpace):
         # Explicit static paths with per-hop MVs
-        active_flows_set = set(f.label for f in active_flows)
         for flow in active_flows:
             b.request(
                 RoutingPathStatic(
@@ -226,7 +229,8 @@ def build_network(mux: MuxScheme, active_flows: Sequence[FlowDef]):
 def run_simulation(seed: int, args: Args, mux: MuxScheme, active_flows: list[FlowDef]):
     rng.reseed(seed)
 
-    net = build_network(mux, active_flows)
+    active_flows_set = set(f.label for f in active_flows)
+    net = build_network(mux, active_flows, active_flows_set)
 
     s = Simulator(0, args.sim_duration + CTRL_DELAY, accuracy=1000000, install_to=(log, net))
     s.run()
@@ -238,7 +242,7 @@ def run_simulation(seed: int, args: Args, mux: MuxScheme, active_flows: list[Flo
 
     stats: list[tuple[float, float]] = []  # [(AK), (BL), (CI), (DH), (GM)] # disabled flows have zero stats
     for flow in FLOWS:
-        if flow in active_flows:
+        if flow.label in active_flows_set:
             stats.append(_get_rate_fid(flow))
         else:
             stats.append((0, 0))
@@ -256,9 +260,9 @@ class FlowStats(NamedTuple):
     fid_std: float
 
 
-def run_row(args: Args, strategy: str, scenario: int) -> list[FlowStats]:
+def run_row(args: Args, strategy: str, scenario: Scenario) -> list[FlowStats]:
     mux = STRATEGIES[strategy]
-    label, flows = SCENARIOS[scenario]
+    label, flows = scenario
 
     flow_rates = [[] for _ in range(N_FLOWS)]
     flow_fids = [[] for _ in range(N_FLOWS)]
@@ -385,14 +389,15 @@ def plot(results: dict[str, list[list[FlowStats]]], args: Args):
 
 
 if __name__ == "__main__":
+    freeze_support()
     args = Args().parse_args()
 
-    results: dict[str, list[list[FlowStats]]] = {}  # strategy->scenario->flow_idx
-    for strategy in STRATEGIES:
-        results[strategy] = []
-        for scenario in range(len(SCENARIOS)):
-            row = run_row(args, strategy, scenario)
-            results[strategy].append(row)
+    with Pool(processes=args.workers) as pool:
+        rows = pool.starmap(run_row, itertools.product([args], STRATEGIES, SCENARIOS))
+
+    results: dict[str, list[list[FlowStats]]] = {strategy: [] for strategy in STRATEGIES}  # strategy->scenario->flow_idx
+    for (strategy, scenario_idx), row in zip(itertools.product(STRATEGIES, SCENARIOS), rows, strict=True):
+        results[strategy].append(row)
 
     if args.json:
         with open(args.json, "w") as file:
