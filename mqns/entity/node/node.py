@@ -150,7 +150,7 @@ class Node(Entity):
         for ch in channels:
             assert isinstance(ch, typ)
             for dst in ch.node_list:
-                if dst != self:
+                if dst is not self:
                     by_neighbor[dst] = ch
             ch.install(self.simulator)
 

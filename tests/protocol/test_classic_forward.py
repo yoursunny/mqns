@@ -24,10 +24,9 @@ class SendApp(Application[Node]):
     def send_packet(self):
         packet = ClassicPacket(msg=f"Hello,world from {self.node}", src=self.node, dest=self.dest)
 
-        route_result = self.route.query(self.node, self.dest)
-        if len(route_result) <= 0 or len(route_result[0]) <= 1:
-            raise RuntimeError("not found next hop")
-        next_hop = route_result[0][1]
+        routes = self.route.query(self.node, self.dest)
+        assert len(routes) > 0
+        next_hop = routes[0].next_hop
 
         # send the classic packet
         self.node.send_cpacket(next_hop, packet)

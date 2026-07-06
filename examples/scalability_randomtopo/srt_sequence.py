@@ -90,12 +90,12 @@ def convert_network(net: QuantumNetwork, tlb: TimelineBounds) -> dict:
     for src, dst in itertools.product(net.nodes, net.nodes):
         if src == dst:
             continue
-        metric, _, _ = net.query_route(src, dst)[0]
+        route = net.query_route(src, dst)[0]
         cchannels.append(
             {
                 "source": src.name,
                 "destination": dst.name,
-                "distance": 30000 * int(metric),
+                "distance": 30000 * int(route.metric),
             }
         )
 

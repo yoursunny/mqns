@@ -130,14 +130,12 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         Attempt to satisfy an active request with available entanglements.
         If the routing algorithm returns multiple routes, they will be tried in order.
         """
-        route_result = self.net.query_route(req.src, req.dst)
-        for _, _, route_nodes in route_result:
-            route = [node.name for node in route_nodes]
-
-            if (qubits := self._try_consume(route)) is None:
+        routes = self.net.query_route(req.src, req.dst)
+        for route in routes:
+            if (qubits := self._try_consume(route.path)) is None:
                 continue
 
-            self.install_path(RoutingPathStatic(route, req_id=req.req_id, m_v=qubits, swap=self.swap))
+            self.install_path(RoutingPathStatic(route.path, req_id=req.req_id, m_v=qubits, swap=self.swap))
             return True
 
         return False

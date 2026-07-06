@@ -44,15 +44,14 @@ class ClassicPacketForwardApp(Application[Node]):
             return False
 
         # If destination is not this node, forward this packet
-        route_result = self.route.query(self.node, dst)
-        if len(route_result) <= 0 or len(route_result[0]) <= 1:
+        routes = self.route.query(self.node, dst)
+        if not routes:
             # no routing result or error format, drop this packet
             return True
-        next_hop = route_result[0][1]
+        next_hop = routes[0].next_hop
         try:
-            cchannel = self.node.get_cchannel(next_hop)
+            self.node.send_cpacket(next_hop, packet)
         except LookupError:
             # not found the classic channel, drop the packet
             return True
-        cchannel.send(packet, next_hop=next_hop)
         return True

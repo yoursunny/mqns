@@ -17,7 +17,6 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import NamedTuple
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -63,10 +62,15 @@ def make_csr[N: Node, C: BaseChannel](
     return csr_matrix((data, (rows, cols)), shape=(n, n))
 
 
-class RouteQueryResult[N: Node](NamedTuple):
-    metric: float
-    next_hop: N
-    route: list[N]
+class RouteQueryResult[N: Node]:
+    def __init__(self, metric: float, nodes: list[N]):
+        self.metric = metric
+        self.nodes = nodes
+        self.path = [node.name for node in nodes]
+
+    @property
+    def next_hop(self) -> N:
+        return self.nodes[1]
 
 
 class RouteAlgorithm[N: Node, C: BaseChannel](ABC):

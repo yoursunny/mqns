@@ -105,8 +105,4 @@ class YenRouteAlgorithm[N: Node, C: BaseChannel](RouteAlgorithm[N, C]):
     @override
     def query(self, src: N, dst: N) -> list[RouteQueryResult]:
         paths = self.route_table.get(src, {}).get(dst, [])
-        results: list[RouteQueryResult] = []
-        for metric, path in paths:
-            if len(path) > 1:
-                results.append(RouteQueryResult(metric, path[1], list(reversed(path))))
-        return results
+        return [RouteQueryResult(metric, list(reversed(path))) for metric, path in paths if len(path) > 1]

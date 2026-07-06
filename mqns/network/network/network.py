@@ -319,9 +319,9 @@ class QuantumNetwork:
         # Track accepted paths
         accepted_paths: list[dict] = []  # each: {"endpoints": set, "edges": set}
 
-        def to_meta(path_nodes: list[QNode]) -> dict:
-            endpoints = {path_nodes[0].name, path_nodes[-1].name}
-            edges = {(path_nodes[i].name, path_nodes[i + 1].name) for i in range(len(path_nodes) - 1)}
+        def to_meta(path_nodes: list[str]) -> dict:
+            endpoints = {path_nodes[0], path_nodes[-1]}
+            edges = {(path_nodes[i], path_nodes[i + 1]) for i in range(len(path_nodes) - 1)}
             return {"endpoints": endpoints, "edges": edges}
 
         def violates_endpoint_internal(candidate_meta: dict) -> bool:
@@ -350,16 +350,16 @@ class QuantumNetwork:
 
                 src = self.nodes[src_idx]
                 dst = self.nodes[dst_idx]
-                route_result = self.query_route(src, dst)
-                if not route_result:
+                routes = self.query_route(src, dst)
+                if not routes:
                     continue
 
-                hops, _, path_nodes = route_result[0]
-                if not (min_hops <= hops <= max_hops):
+                route = routes[0]
+                if not (min_hops <= route.metric <= max_hops):
                     continue
 
                 if forbid_endpoint_internal:
-                    meta = to_meta(path_nodes)
+                    meta = to_meta(route.path)
                     if violates_endpoint_internal(meta):
                         continue
                     accepted_paths.append(meta)
