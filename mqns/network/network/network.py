@@ -38,7 +38,6 @@ from mqns.network.network.timing import TimingMode, TimingModeAsync
 from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm, RouteQueryResult
 from mqns.network.topology import ClassicTopology, Topology
 from mqns.simulator import Simulator, Time
-from mqns.utils import rng
 
 
 def _save_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], ch: C):
@@ -286,14 +285,15 @@ class QuantumNetwork:
         t = self.simulator.tc
         return (req for req in self.requests if req.in_active_period(t))
 
-    def add_request(self, req: Request):
+    def add_request(self, *reqs: Request):
         """
-        Add a request pair to the network, placed in ``self.requests`` list.
+        Add one or more requests to the network.
         """
-        self.requests.append(req)
+        self.requests.extend(reqs)
 
         if hasattr(self, "simulator"):
-            self._sched_request_active_event(req)
+            for req in reqs:
+                self._sched_request_active_event(req)
 
     def _sched_request_active_event(self, req: Request):
         if not self.controller:
@@ -304,93 +304,3 @@ class QuantumNetwork:
 
         if req.not_after is not Time.SENTINEL:
             self.simulator.add_event(RequestActiveEvent(self.controller, req, False, t=req.not_after))
-
-    def random_requests(
-        self,
-        n: int,
-        *,
-        clear=True,
-        allow_overlay=False,
-        min_hops=1,
-        max_hops=10,
-        forbid_endpoint_internal=True,  # reject endpoint-vs-internal conflicts
-    ):
-        """
-        Generate random (src, dst) pairs requests into ``self.requests`` list.
-
-        Args:
-            n: Number of requests to generate.
-            clear: If True, clear existing requests in ``self.requests``.
-            allow_overlay: Allow nodes to be the source or destination in multiple requests.
-            min_hops: Minimum number of hops (inclusive).
-            max_hops: Maximum number of hops (inclusive).
-            attr: Request attributes.
-                ``req_id`` is overwritten as 0-based index.
-            forbid_endpoint_internal: If True, eliminate requests that
-                would fail the rank-based endpoint-vs-internal check in SWAP-ASAP.
-        """
-        used_nodes: list[int] = []
-        nnodes = len(self.nodes)
-
-        if n < 1:
-            raise ValueError("number of requests should be larger than 1")
-        if not allow_overlay and n * 2 > nnodes:
-            raise ValueError("Too many requests")
-
-        if clear:
-            self.requests.clear()
-
-        # Track accepted paths
-        accepted_paths: list[dict] = []  # each: {"endpoints": set, "edges": set}
-
-        def to_meta(path_nodes: list[str]) -> dict:
-            endpoints = {path_nodes[0], path_nodes[-1]}
-            edges = {(path_nodes[i], path_nodes[i + 1]) for i in range(len(path_nodes) - 1)}
-            return {"endpoints": endpoints, "edges": edges}
-
-        def violates_endpoint_internal(candidate_meta: dict) -> bool:
-            cend = candidate_meta["endpoints"]
-            cedges = candidate_meta["edges"]
-            for meta in accepted_paths:
-                pend = meta["endpoints"]
-                pedges = meta["edges"]
-                shared = cedges & pedges
-                if not shared:
-                    continue
-                for u, v in shared:
-                    # one path treats node as endpoint, other as internal
-                    if ((u in cend) != (u in pend)) or ((v in cend) != (v in pend)):
-                        return True
-            return False
-
-        for i in range(n):
-            while True:
-                src_idx = rng.integers(0, nnodes, dtype=int)
-                dst_idx = rng.integers(0, nnodes, dtype=int)
-                if src_idx == dst_idx:
-                    continue
-                if not allow_overlay and (src_idx in used_nodes or dst_idx in used_nodes):
-                    continue
-
-                src = self.nodes[src_idx]
-                dst = self.nodes[dst_idx]
-                routes = self.query_route(src.name, dst.name, error_on_empty=False)
-                if not routes:
-                    continue
-
-                route = routes[0]
-                if not (min_hops <= route.metric <= max_hops):
-                    continue
-
-                if forbid_endpoint_internal:
-                    meta = to_meta(route.path)
-                    if violates_endpoint_internal(meta):
-                        continue
-                    accepted_paths.append(meta)
-
-                # Accept
-                if not allow_overlay:
-                    used_nodes.extend([src_idx, dst_idx])
-
-                self.add_request(Request((src.name, dst.name)).path(req_id=i))
-                break

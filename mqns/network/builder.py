@@ -604,8 +604,7 @@ class NetworkBuilder:
             timing=self.timing,
             epr_type=self.epr_type,
         )
-        for req in self.requests:
-            net.add_request(req)
+        net.add_request(*self.requests)
 
         if connect_controller and topo.controller:
             topo.connect_controller(net.nodes, delay=CTRL_DELAY)

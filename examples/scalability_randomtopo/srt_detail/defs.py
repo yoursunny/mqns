@@ -11,7 +11,7 @@ from tap import Tap
 
 from mqns.entity.node import Controller
 from mqns.network.fw import MuxSchemeStatistical
-from mqns.network.network import QuantumNetwork
+from mqns.network.network import QuantumNetwork, generate_random_requests
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
 from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.link_layer import LinkLayer
@@ -124,12 +124,9 @@ def build_network(args: RunArgs) -> QuantumNetwork:
     for qchannel in net.qchannels:
         qchannel.assign_memory_qubits(capacity=args.qchannel_capacity)
 
-    # Compute routes using Dijkstra with hop count metric.
-    net.build_route()
-
     # Generate random requests, proportional to network size.
     num_requests = max(2, int(args.nodes / 10))
-    net.random_requests(num_requests, min_hops=2, max_hops=5)
+    net.add_request(*generate_random_requests(net, num_requests, metric_min=2, metric_max=5))
 
     return net
 
