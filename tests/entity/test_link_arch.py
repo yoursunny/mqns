@@ -86,7 +86,7 @@ def make_epr(link_arch: LinkArch, t_cohere: Time):
     for node in src, dst:
         node.memory = QuantumMemory("M", capacity=1, t_cohere=t_cohere.sec)
 
-    _ = Simulator(accuracy=ACCURACY, install_to=(src, dst))
+    _ = Simulator(0, 10, accuracy=ACCURACY, install_to=(src, dst))
 
     epr, d_notify_a, d_notify_b = link_arch.make_epr(1, EPR_TIME, src=src, dst=dst, key=None)
     assert epr.src is src
