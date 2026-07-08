@@ -101,7 +101,7 @@ dflt_cchannel_args = ClassicChannelInitKwargs(
 class BuildNetworkArgs(TypedDict, total=False):
     mode: Literal["P", "R"]
     t_cohere: float  # memory dephasing time, defaults to 5.0 seconds
-    qchannel_capacity: int  # quantum channel capacity, defaults to 1
+    ch_capacity: int  # quantum channel capacity, defaults to 1
     qchannel_args: QuantumChannelInitKwargs
     cchannel_args: ClassicChannelInitKwargs
     ctrl: RoutingController  # replacing controller application
@@ -130,7 +130,7 @@ def _make_topo_args(d: BuildNetworkArgs, *, memory_capacity_factor: int) -> Topo
 
     nodes_apps.append(Consumer())
 
-    qchannel_capacity = d.get("qchannel_capacity", 1)
+    ch_capacity = d.get("ch_capacity", 1)
     return TopologyInitKwargs(
         nodes_naming="A",
         nodes_apps=nodes_apps,
@@ -138,7 +138,7 @@ def _make_topo_args(d: BuildNetworkArgs, *, memory_capacity_factor: int) -> Topo
         cchannel_args=d.get("cchannel_args", dflt_cchannel_args),
         memory_args={
             "t_cohere": d.get("t_cohere", 5.0),
-            "capacity": memory_capacity_factor * qchannel_capacity,
+            "capacity": memory_capacity_factor * ch_capacity,
         },
     )
 
@@ -156,7 +156,7 @@ def _build_network_finish(
 
     ForwarderSwapProc.table_leak_tol = d.get("swap_table_leak_tol", 0)
 
-    qchannel_capacity = d.get("qchannel_capacity", 1)
+    ch_capacity = d.get("ch_capacity", 1)
 
     if (ctrl := d.get("ctrl")) is None:
         match d.get("mode", "P"):
@@ -174,7 +174,7 @@ def _build_network_finish(
         epr_type=d.get("epr_type", WernerStateEntanglement),
     )
     for qchannel in net.qchannels:
-        qchannel.assign_memory_qubits(capacity=qchannel_capacity)
+        qchannel.assign_memory_qubits(capacity=ch_capacity)
     topo.connect_controller(net.nodes)
 
     simulator = Simulator(0.0, d.get("end_time", 10.0), install_to=(log, net))

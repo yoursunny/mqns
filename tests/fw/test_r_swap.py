@@ -51,7 +51,7 @@ def test_tree2_one():
     net, simulator = build_tree_network(
         2,
         mode="R",
-        qchannel_capacity=2,
+        ch_capacity=2,
         ctrl=ctrl,
         fw={"p_swap": 1.0},
         end_time=0.020,
@@ -87,7 +87,7 @@ def test_tree2_two():
     net, simulator = build_tree_network(
         2,
         mode="R",
-        qchannel_capacity=4,
+        ch_capacity=4,
         ctrl=ctrl,
         fw={"p_swap": 1.0},
         end_time=0.020,
@@ -158,7 +158,7 @@ def test_3_minimal(req_active: tuple[float, float], etgAB: list[float], etgBC: l
     """Test 3-node minimal swap, two time slots."""
     net, simulator = build_linear_network(
         3,
-        qchannel_capacity=2,
+        ch_capacity=2,
         mode="R",
         fw={"p_swap": 1.0},
         end_time=0.020,

@@ -15,6 +15,7 @@ from mqns.network.fw import (
     Fib,
     Forwarder,
     MemoryEprTuple,
+    MuxSchemeBufferSpace,
     MuxSchemeDynamicEpr,
     MuxSchemeStatistical,
     QubitAllocationType,
@@ -67,6 +68,50 @@ def test_3_disabled():
 
     n_consumed = sum(node.get_app(Consumer).cnt[rp.req_id].n_consumed for node in net.nodes)
     assert n_consumed == 2
+
+
+@pytest.mark.parametrize(
+    ("ssq", "addrs"),
+    [
+        (None, [0, 1, 4, 5]),
+        (MuxSchemeBufferSpace.SelectSwapQubit_random, None),
+        (MuxSchemeBufferSpace.SelectSwapQubit_oldest, [4, 5, 6, 7]),
+        (MuxSchemeBufferSpace.SelectSwapQubit_newest, [1, 0, 7, 6]),
+    ],
+)
+def test_3_ssq(ssq: MuxSchemeBufferSpace.SelectSwapQubit | None, addrs: list[int] | None):
+    """Test SelectSwapQubit in 3-node topology."""
+    net, simulator = build_linear_network(
+        3, t_cohere=0.090, ch_capacity=8, fw={"p_swap": 1.0, "mux": MuxSchemeBufferSpace(select_swap_qubit=ssq)}, end_time=1.120
+    )
+    fwA, fwB, fwC = (node.get_app(ProactiveForwarder) for node in net.nodes)
+
+    install_path(net, RoutingPathStatic("ABC"))
+    provide_entanglements(
+        (1.000, fwA, fwB),  # decohere at 1.090
+        (1.001, fwA, fwB),  # decohere at 1.091
+        (1.002, fwA, fwB),  # decohere at 1.092
+        (1.003, fwA, fwB),  # decohere at 1.093
+        (1.054, fwA, fwB),  # B.addr=4
+        (1.055, fwA, fwB),  # B.addr=5
+        (1.056, fwA, fwB),  # B.addr=6
+        (1.057, fwA, fwB),  # B.addr=7
+        (1.100, fwA, fwB),  # B.addr=0
+        (1.101, fwA, fwB),  # B.addr=1
+        (1.110, fwB, fwC),
+        (1.111, fwB, fwC),
+        (1.112, fwB, fwC),
+        (1.113, fwB, fwC),
+    )
+    simulator.run()
+    print_node_counters(net)
+
+    selected_qubits = [a for a, t in fwB.node.get_app(QubitReleaseReset).history if a < 8 and t.sec >= 1.100]
+    if addrs is None:
+        assert len(selected_qubits) == 4 == len(set(selected_qubits))
+        assert {0, 1, 4, 5, 6, 7}.issuperset(selected_qubits)
+    else:
+        assert selected_qubits == addrs
 
 
 @pytest.mark.parametrize(

@@ -413,8 +413,6 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         )
 
         if qubit.purif_rounds == want_rounds:
-            self.cnt.n_eligible += 1
-            qubit.purif_rounds = 0
             qubit.state = QubitState.ELIGIBLE
             self.qubit_is_eligible(qubit, fib_entry)
             return
@@ -459,6 +457,10 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
             fib_entry: FIB entry (not available with MuxSchemeStatistical).
         """
         assert qubit.state is QubitState.ELIGIBLE, f"unexpected state {qubit.state}"
+        self.cnt.n_eligible += 1
+        qubit.purif_rounds = 0
+        qubit.eligible_time = self.simulator.tc
+
         if not self.node.timing.is_internal():
             log.debug(f"{self}: INT phase is over -> stop swaps")
             return

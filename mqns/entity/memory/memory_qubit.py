@@ -21,7 +21,7 @@ from enum import Enum, auto
 
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
-from mqns.simulator import EventHandleSet
+from mqns.simulator import EventHandleSet, Time
 
 
 class QubitState(Enum):
@@ -161,6 +161,13 @@ class MemoryQubit:
     """
     purif_rounds = 0
     """Number of purification rounds completed by the EPR stored on this qubit."""
+    eligible_time = Time.SENTINEL
+    """
+    Time point when the qubit becomes eligible.
+
+    This is set by ``Forwarder`` upon processing the ELIGIBLE state transition.
+    It is invalid if qubit state is not ELIGIBLE/SWAPPING/CONSUME.
+    """
 
     events: EventHandleSet
     """Events that are canceled upon reaching RELEASE state."""
@@ -203,6 +210,7 @@ class MemoryQubit:
             self.partner = None
             self.epr_path_ids = None
             self.purif_rounds = 0
+            self.eligible_time = Time.SENTINEL
 
     def __repr__(self) -> str:
         return ", ".join(_describe(self)) + ")"

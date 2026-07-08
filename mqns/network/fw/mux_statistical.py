@@ -9,7 +9,14 @@ from mqns.models.epr import Entanglement
 from mqns.network.fw.fib import FibEntry
 from mqns.network.fw.message import PathInstructions, validate_path_instructions
 from mqns.network.fw.mux import MuxScheme
-from mqns.network.fw.select import MemoryEprIterator, MemoryEprTuple, call_select, select_random
+from mqns.network.fw.select import (
+    MemoryEprIterator,
+    MemoryEprTuple,
+    call_select,
+    select_random,
+    select_swap_qubit_newest,
+    select_swap_qubit_oldest,
+)
 from mqns.utils import unwrap_cast
 
 if TYPE_CHECKING:
@@ -79,6 +86,8 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
     type SelectSwapQubit = Callable[[list[MemoryEprTuple], "Forwarder", MemoryEprTuple], MemoryEprTuple]
 
     SelectSwapQubit_random: SelectSwapQubit = select_random
+    SelectSwapQubit_oldest: SelectSwapQubit = select_swap_qubit_oldest
+    SelectSwapQubit_newest: SelectSwapQubit = select_swap_qubit_newest
 
     type SelectPath = Callable[[list[int], "Forwarder", Entanglement, Entanglement], int | FibEntry]
 
