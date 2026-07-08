@@ -33,7 +33,7 @@ import itertools
 import json
 from dataclasses import dataclass
 from multiprocessing import Pool, freeze_support
-from typing import TypedDict, override
+from typing import Literal, TypedDict, override
 
 import numpy as np
 from tap import Tap
@@ -41,6 +41,7 @@ from tap import Tap
 from mqns.entity.qchannel import LinkArchDimDual
 from mqns.models.epr import MixedStateEntanglement
 from mqns.network.builder import CTRL_DELAY, ChannelParam, NetworkBuilder, NodeDef, tap_configure
+from mqns.network.fw import MuxSchemeBufferSpace
 from mqns.network.network import QuantumNetwork
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
@@ -56,6 +57,8 @@ class Args(Tap):
     workers: int = 1  # number of workers for parallel execution
     runs: int = 10  # number of trials per parameter set
     sim_duration: tuple[float, float] = (5.0, 25.0)  # calibration and evaluation duration in seconds
+    M: tuple[int, int] = (1, 1)  # channel capacity
+    ssq: Literal["random", "oldest", "newest"] = "random"  # how to select swap qubit
     json: str = ""  # save report as JSON file
     plt: str = ""  # save plot as image file
 
@@ -68,6 +71,7 @@ class Args(Tap):
         return {
             "runs": self.runs,
             "sim_duration": self.sim_duration,
+            "M": self.M,
         }
 
 
@@ -161,11 +165,15 @@ def run_simulation(seed: int, args: Args, duration: float, w: tuple[float, float
             ],
             t_cohere=1 / 10,
             channels=[
-                ChannelParam(ch_length=32, init_fidelity=convert_fidelity(0.9474, 0.1427, 0.1427, 0.7147)),
-                ChannelParam(ch_length=18, init_fidelity=convert_fidelity(0.9677, 0.1547, 0.1547, 0.6907)),
+                ChannelParam(
+                    ch_length=32, ch_capacity=args.M[0], init_fidelity=convert_fidelity(0.9474, 0.1427, 0.1427, 0.7147)
+                ),
+                ChannelParam(
+                    ch_length=18, ch_capacity=args.M[1], init_fidelity=convert_fidelity(0.9677, 0.1547, 0.1547, 0.6907)
+                ),
             ],
-            fiber_alpha=0.2,
             link_arch=LinkArchDimDual,
+            fiber_alpha=0.2,
             eta_d=0.58,
             eta_s=0.99,
             frequency=80e6,
@@ -176,6 +184,7 @@ def run_simulation(seed: int, args: Args, duration: float, w: tuple[float, float
             swap_delay=340e-6,
             swap_error="PERFECT",  # no error applied by the swap gates
             swap_error_at="f",  # memory decoherence continues during swap
+            mux=MuxSchemeBufferSpace(select_swap_qubit=getattr(MuxSchemeBufferSpace, f"SelectSwapQubit_{args.ssq}")),
         )
         .request(
             "S-D",
