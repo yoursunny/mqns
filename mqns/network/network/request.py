@@ -93,7 +93,7 @@ class Request:
         return self.rp.req_id if self.rp else self.rp_args.get("req_id", -1)
 
     def __repr__(self) -> str:
-        return f"<Request {self.src}-{self.dst}>"
+        return f"Request({self.src}-{self.dst}, active_period={self.not_before}-{self.not_after})"
 
 
 @final

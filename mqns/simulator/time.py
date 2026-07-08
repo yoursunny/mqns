@@ -117,7 +117,7 @@ class Time:
         return Time(time_slot=self.time_slot - time_slot, accuracy=self.accuracy)
 
     def __repr__(self) -> str:
-        return str(self.sec)
+        return "(sentinel)" if self.accuracy == 0 else str(self.sec)
 
 
 Time.SENTINEL = Time(0, accuracy=0)
