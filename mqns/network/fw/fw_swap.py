@@ -381,7 +381,7 @@ class ForwarderSwapProc:
         self.memory = fw.memory
         self.mux = fw.mux
 
-        if self.simulator.te:
+        if not self.simulator.is_continuous:
             event = func_to_event(self.simulator.te, self.check_table_leak)
             event.priority = 0x1FFFFFFF
             self.simulator.add_event(event)

@@ -20,7 +20,7 @@ echo '*' >docker.local/.gitignore
 DOCKER_RUN_ARGS="-u $(id -u):$(id -g) -v $(readlink -f ../..):/app -v $(readlink -f docker.local):/home/user/.local -v $(readlink -f $OUTDIR):/output -w /app --env HOME=/home/user"
 
 if ! [[ -f docker.local/DONE ]]; then
-  docker run --rm $DOCKER_RUN_ARGS python:3.12 bash -c '
+  docker run --rm $DOCKER_RUN_ARGS python:3.13 bash -c '
     pip install --user --no-warn-script-location -r requirements.txt
     pip install --user --no-warn-script-location -e .
     pip install --user --no-warn-script-location -r examples/scalability_randomtopo/requirements.txt
@@ -51,7 +51,7 @@ fi
 
 for I in $(seq 0 $((RUNS-1))); do
   CT=mqns_srt_$I
-  docker run -d $DOCKER_RUN_ARGS --name $CT --env SEED=$((SEED_BASE+I)) --cpuset-cpus "${CPUSET_CPUS[$I]}" --network none python:3.12 bash -c "$CT_CMD"
+  docker run -d $DOCKER_RUN_ARGS --name $CT --env SEED=$((SEED_BASE+I)) --cpuset-cpus "${CPUSET_CPUS[$I]}" --network none python:3.13 bash -c "$CT_CMD"
 done
 
 for I in $(seq 0 $((RUNS-1))); do

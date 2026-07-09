@@ -71,7 +71,7 @@ class Monitor(Entity):
         if self.watch_at_start:
             simulator.add_event(MonitorEvent(simulator.ts, self, name="start watch event"))
 
-        if simulator.te is not None and self.watch_at_finish:
+        if not simulator.is_continuous and self.watch_at_finish:
             simulator.add_event(MonitorEvent(simulator.te, self, name="finish watch event"))
 
         for p in self.watch_period:

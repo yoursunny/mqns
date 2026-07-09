@@ -14,7 +14,7 @@ from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk, QuantumChannelIn
 from mqns.models.epr import Entanglement, WernerStateEntanglement
 from mqns.network.fw import Forwarder, ForwarderInitKwargs, RoutingController, RoutingPath
 from mqns.network.fw.fw_swap import ForwarderSwapProc
-from mqns.network.network import QuantumNetwork, TimingMode, TimingModeAsync, TimingPhase, TimingPhaseEvent
+from mqns.network.network import QuantumNetwork, Request, TimingMode, TimingModeAsync, TimingPhase, TimingPhaseEvent
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
 from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.event import QubitEntangledEvent, QubitReleasedEvent
@@ -275,21 +275,22 @@ def install_path(
     net: QuantumNetwork,
     rp: RoutingPath,
     *,
-    t_install: float | None = 0.0,
+    t_install: float | None = None,
     t_uninstall: float | None = None,
 ) -> RoutingPath:
     """
     Install and/or uninstall a routing path at specific times.
     """
     simulator = net.simulator
-    ctrl = net.get_controller().get_app(ProactiveRoutingController)
-
-    if t_install is not None:
-        simulator.add_event(func_to_event(simulator.time(sec=t_install), ctrl.install_path, rp))
-
-    if t_uninstall is not None:
-        simulator.add_event(func_to_event(simulator.time(sec=t_uninstall), ctrl.uninstall_path, rp))
-
+    net.add_request(
+        Request(
+            (rp.src, rp.dst),
+            active_period=(
+                Time.SENTINEL if t_install is None else simulator.time(sec=t_install),
+                Time.SENTINEL if t_uninstall is None else simulator.time(sec=t_uninstall),
+            ),
+        ).path(rp)
+    )
     return rp
 
 

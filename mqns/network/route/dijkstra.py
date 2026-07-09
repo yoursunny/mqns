@@ -90,21 +90,7 @@ class DijkstraRouteAlgorithm[N: Node, C: BaseChannel](RouteAlgorithm[N, C]):
 
     @override
     def query(self, src: N, dst: N) -> list[RouteQueryResult]:
-        ls = self.route_table.get(src, None)
-        if ls is None:
+        metric, path = self.route_table.get(src, {}).get(dst, (np.inf, []))
+        if len(path) <= 1 or np.isinf(metric):  # unreachable
             return []
-        le = ls.get(dst, None)
-        if le is None:
-            return []
-        try:
-            metric, path = le
-            path = path.copy()
-            path.reverse()
-            if len(path) <= 1 or np.isinf(metric):  # unreachable
-                next_hop = None
-                return []
-            else:
-                next_hop = path[1]
-                return [RouteQueryResult(metric, next_hop, path)]
-        except Exception:
-            return []
+        return [RouteQueryResult(metric, list(reversed(path)))]

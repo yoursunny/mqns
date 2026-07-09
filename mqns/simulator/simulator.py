@@ -30,15 +30,15 @@ class Simulator:
 
     _run_tracebackhide = True
     """
-    If True, the ``.run()`` method from pytest traceback.
+    If True, the ``.run()`` method is hidden from pytest traceback.
     """
 
     watchers: dict[type[Event], list["Monitor"]] | None = None
 
     def __init__(
         self,
-        start_second: float = 0.0,
-        end_second: float = 60.0,
+        ts: float,
+        te: float,
         *,
         accuracy: int = 1000000,
         need_synchronized: bool | None = None,
@@ -46,35 +46,42 @@ class Simulator:
     ):
         """
         Args:
-            start_second: simulation start time in seconds, defaults to 0.0.
-            end_second: simulator end time in seconds, defaults to 60.0; infinite means continuous simulation.
-            accuracy: the number of time slots per second, defaults to 1000000 i.e. 1us time slot.
+            ts: Simulation start time in seconds.
+            te: Simulation end time in seconds, infinite means continuous simulation.
+            accuracy: Number of time slots per second, defaults to 1000000 i.e. 1us time slot.
             need_synchronized: True to use thread-safe event pool, False to use non-thread-safe event pool,
                                default is thread-safe for continuous simulation and non-thread-safe for finite simulation.
-            install_to: install this simulator by invoking ``.install(self)`` on each target.
+            install_to: Install this simulator by invoking ``.install(self)`` on each target.
         """
         self.accuracy = accuracy
 
-        assert start_second >= 0.0
-        self.ts = self.time(sec=start_second)
+        assert ts >= 0.0
+        self.ts = self.time(sec=ts)
         """Simulation start time."""
-        assert end_second >= start_second
-        self.te = None if math.isinf(end_second) else self.time(sec=end_second)
-        """Simulation end time. None means continuous simulation."""
+        assert te >= ts
+        self.te = Time.SENTINEL if math.isinf(te) else self.time(sec=te)
+        """Simulation end time. ``Time.SENTINEL`` means continuous simulation."""
         self.time_spend: float = 0
         """Wall-clock time for entire simulation run."""
 
-        if (need_synchronized is None and self.te is None) or need_synchronized:
+        if (need_synchronized is None and self.is_continuous) or need_synchronized:
             pool_typ = SynchronizedEventPool
         else:
             pool_typ = HeapEventPool
 
-        self._pool = pool_typ(self.ts.time_slot, None if self.te is None else self.te.time_slot)
+        self._pool = pool_typ(self.ts.time_slot, None if self.is_continuous else self.te.time_slot)
         self.total_events = 0
         """How many events have been inserted into the simulator."""
 
         for install_target in install_to:
             install_target.install(self)
+
+    @property
+    def is_continuous(self) -> bool:
+        """
+        Determine whether the simulation is continuous (instead of finite).
+        """
+        return self.te is Time.SENTINEL
 
     @property
     def tc(self) -> Time:
@@ -130,10 +137,9 @@ class Simulator:
         """
         __tracebackhide__ = self._run_tracebackhide
 
-        is_continuous = self.te is None
         profile = Profile() if os.getenv("MQNS_PROFILING", "0") == "1" else None
         log.info(
-            f"{'Continuous' if is_continuous else 'Finite'} simulation started in {self._pool}"
+            f"{'Continuous' if self.is_continuous else 'Finite'} simulation started in {self._pool}"
             + (" with profiling." if profile else ".")
         )
 
@@ -155,7 +161,7 @@ class Simulator:
         self.time_spend = tre - trs
         sim_time = (self.tc - self.ts).sec
         log.info(
-            f"{'Continuous' if is_continuous else 'Finite'} simulation finished, "
+            f"{'Continuous' if self.is_continuous else 'Finite'} simulation finished, "
             f"runtime {self.time_spend}, {self.total_events} events, "
             f"sim_time {sim_time}, x{'INF' if self.time_spend == 0 else sim_time / self.time_spend}"
         )

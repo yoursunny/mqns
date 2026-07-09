@@ -194,7 +194,7 @@ def test_custom_topo_empty():
         }
     )
     net = QuantumNetwork(topo)
-    net.install(Simulator())
+    net.install(Simulator(0, 10))
 
     assert len(net.nodes) == 0
     assert len(net.qchannels) == 0
@@ -225,7 +225,7 @@ def test_custom_topo_basic():
         }
     )
     net = QuantumNetwork(topo)
-    net.install(Simulator())
+    net.install(Simulator(0, 10))
 
     assert len(net.nodes) == 3
     assert len(net.qchannels) == 2

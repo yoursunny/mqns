@@ -15,9 +15,11 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import override
 
-from mqns.network.fw import RoutingController, RoutingPath
+from mqns.network.fw import QubitAllocationType, RoutingController, RoutingPath, RoutingPathMulti, RoutingPathSingle
+from mqns.network.network import Request, RequestActiveEvent
+from mqns.network.route import YenRouteAlgorithm
+from mqns.simulator import event_handler
 
 
 class ProactiveRoutingController(RoutingController):
@@ -31,19 +33,30 @@ class ProactiveRoutingController(RoutingController):
 
     def __init__(
         self,
-        paths: RoutingPath | list[RoutingPath] | None = None,
+        *,
+        qubit_allocation: QubitAllocationType = QubitAllocationType.DISABLED,
     ):
         """
         Args:
-            paths: routing path(s) to be automatically installed when the application is initiated.
+            qubit_allocation: QubitAllocationType passed to ``RoutingPathSingle`` constructor
+                              when converting from ``Request``.
         """
         super().__init__()
-        self.paths = [] if not paths else paths if isinstance(paths, list) else [paths]
+        self.qubit_allocation = qubit_allocation
 
-    @override
-    def install(self, node):
-        super().install(node)
+    @event_handler
+    def handle_request(self, event: RequestActiveEvent) -> None:
+        req = event.req
+        if event.enter:
+            req.rp = self._path_from_request(req)
+            self.install_path(req.rp)
+        else:
+            assert req.rp
+            self.uninstall_path(req.rp)
 
-        # install pre-requested paths on QNodes
-        for rp in self.paths:
-            self.install_path(rp)
+    def _path_from_request(self, req: Request) -> RoutingPath:
+        if req.rp:
+            return req.rp
+        if isinstance(self.net.route, YenRouteAlgorithm):
+            return RoutingPathMulti(req.src, req.dst, **req.rp_args)
+        return RoutingPathSingle(req.src, req.dst, qubit_allocation=self.qubit_allocation, **req.rp_args)

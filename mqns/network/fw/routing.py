@@ -100,17 +100,6 @@ class RoutingPath(ABC):
             They will be installed into the nodes.
         """
 
-    def _query_routes(self, net: QuantumNetwork) -> list[list[str]]:
-        """
-        Query routes from source node to destination node.
-        """
-        src = net.get_node(self.src)
-        dst = net.get_node(self.dst)
-        route_result = net.query_route(src, dst)
-        if len(route_result) == 0:
-            raise RuntimeError(f"ROUTING: No route from {src} to {dst}")
-        return [[node.name for node in route_nodes] for _, _, route_nodes in route_result]
-
     def _make_path_instructions(
         self,
         net: QuantumNetwork,
@@ -174,7 +163,7 @@ class RoutingPathSingle(RoutingPath):
 
     @override
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
-        route = self._query_routes(net)[0]
+        route = net.query_route(self.src, self.dst)[0].path
         log.debug(f"ROUTING: Computed path #{self.path_id}: {route}")
         yield self._make_path_instructions(net, route, _compute_mv(net, route, self.qubit_allocation))
 
@@ -200,12 +189,12 @@ class RoutingPathMulti(RoutingPath):
     @override
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
         # Get all shortest paths (M ≥ 1)
-        routes = self._query_routes(net)
+        routes = net.query_route(self.src, self.dst)
 
         # Count usage of each quantum channel across all paths
         qchannel_use_count = defaultdict[str, int](lambda: 0)
         for route in routes:
-            for name_a, name_b in pairwise(route):
+            for name_a, name_b in pairwise(route.path):
                 ch = net.get_qchannel(name_a, name_b)
                 qchannel_use_count[ch.name] += 1
 
@@ -217,10 +206,8 @@ class RoutingPathMulti(RoutingPath):
             # Compute buffer-space multiplexing vector as pairs of (qubits_at_node_i, qubits_at_node_i+1)
             # The qubits are divided among all paths that share the qchannel
             m_v: MultiplexingVector = []
-            for name_a, name_b in pairwise(route):
-                node_a = net.get_node(name_a)
-                node_b = net.get_node(name_b)
-                ch = net.get_qchannel(name_a, name_b)
+            for node_a, node_b in pairwise(route.nodes):
+                ch = net.get_qchannel(node_a.name, node_b.name)
                 shared = qchannel_use_count.get(ch.name)
                 assert shared is not None
 
@@ -233,4 +220,4 @@ class RoutingPathMulti(RoutingPath):
                 m_v.append((qubits_a, qubits_b))
 
             # Send install instruction to each node on this path
-            yield self._make_path_instructions(net, route, m_v)
+            yield self._make_path_instructions(net, route.path, m_v)

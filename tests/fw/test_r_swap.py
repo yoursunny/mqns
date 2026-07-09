@@ -9,7 +9,7 @@ import pytest
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
 from mqns.network.fw import RoutingController, RoutingPathStatic
-from mqns.network.network import TimingModeSync, TimingPhase, TimingPhaseEvent
+from mqns.network.network import Request, TimingModeSync, TimingPhase, TimingPhaseEvent
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.reactive import ReactiveForwarder, ReactiveRoutingController
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
@@ -167,8 +167,12 @@ def test_3_minimal(req_active: tuple[float, float], etgAB: list[float], etgBC: l
     ctrl = net.get_controller().get_app(ReactiveRoutingController)
     fwA, fwB, fwC = (node.get_app(ReactiveForwarder) for node in net.nodes)
 
-    simulator.add_event(func_to_event(simulator.time(sec=req_active[0]), lambda: net.add_request(fwA.node, fwC.node, req_id=1)))
-    simulator.add_event(func_to_event(simulator.time(sec=req_active[1]), net.requests.clear))
+    net.add_request(
+        Request(
+            "A-C",
+            active_period=(simulator.time(sec=req_active[0]), simulator.time(sec=req_active[1])),
+        ).path(req_id=1)
+    )
     provide_entanglements(
         *((t, fwA, fwB) for t in etgAB),
         *((t, fwB, fwC) for t in etgBC),

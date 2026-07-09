@@ -25,19 +25,19 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Unpack, cast, overload
+from collections.abc import Iterable
+from typing import cast, overload
 
 from mqns.entity.base_channel import BaseChannel
 from mqns.entity.cchannel import ClassicChannel
 from mqns.entity.node import Controller, Node, QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement, WernerStateEntanglement
-from mqns.network.network.request import Request, RequestAttr
+from mqns.network.network.request import Request, RequestActiveEvent
 from mqns.network.network.timing import TimingMode, TimingModeAsync
 from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm, RouteQueryResult
 from mqns.network.topology import ClassicTopology, Topology
-from mqns.simulator import Simulator
-from mqns.utils import rng
+from mqns.simulator import Simulator, Time
 
 
 def _save_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], ch: C):
@@ -54,7 +54,7 @@ def _get_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], q: tup
         for ch in l:
             if ch.name == name:
                 return ch
-        raise LookupError(f"channel {name} does not exist")
+        raise LookupError(f"channel {name} does not exist") from None
 
     a, b = sorted(q)
     try:
@@ -105,7 +105,7 @@ class QuantumNetwork:
         if topo is not None:
             self._populate_from_topo(topo, classic_topo)
 
-        self.route: RouteAlgorithm = DijkstraRouteAlgorithm() if route is None else route
+        self.route: RouteAlgorithm = route or DijkstraRouteAlgorithm()
         """Routing algorithm."""
 
         self.requests: list[Request] = []
@@ -155,6 +155,9 @@ class QuantumNetwork:
 
         for node in self.all_nodes:
             node.install(simulator)
+
+        for req in self.requests:
+            self._sched_request_active_event(req)
 
     def add_node(self, node: QNode):
         """
@@ -257,117 +260,47 @@ class QuantumNetwork:
         """Build static route tables for each nodes"""
         self.route.build(self.nodes, self.qchannels)
 
-    def query_route(self, src: QNode, dest: QNode) -> list[RouteQueryResult[QNode]]:
-        """Query the metric, nexthop and the path
-
-        Args:
-            src: the source node
-            dest: the destination node
-
-        Returns: list of route paths, sorted by priority.
+    def query_route(self, src: str, dst: str, /, error_on_empty=True) -> list[RouteQueryResult[QNode]]:
         """
-        return self.route.query(src, dest)
-
-    def add_request(self, src: QNode, dst: QNode, **kwargs: Unpack[RequestAttr]):
-        """
-        Add a request (src, dst) pair to the network, placed in ``self.requests`` list.
+        Query the routing algorithm.
 
         Args:
             src: Source node.
             dst: Destination node.
-            kwargs: Other attributes.
+            error_on_empty: If true, raise RuntimeError if there's no route.
+
+
+        Returns: list of route paths, sorted by priority.
         """
-        req = Request(src, dst, **kwargs)
-        self.requests.append(req)
+        routes = self.route.query(self.get_node(src), self.get_node(dst))
+        if error_on_empty and not routes:
+            raise RuntimeError(f"no route from {src} to {dst}")
+        return routes
 
-    def random_requests(
-        self,
-        n: int,
-        *,
-        clear=True,
-        allow_overlay=False,
-        min_hops=1,
-        max_hops=10,
-        attr: RequestAttr = RequestAttr(),
-        forbid_endpoint_internal=True,  # reject endpoint-vs-internal conflicts
-    ):
+    @property
+    def active_requests(self) -> Iterable[Request]:
         """
-        Generate random (src, dst) pairs requests into ``self.requests`` list.
-
-        Args:
-            n: Number of requests to generate.
-            clear: If True, clear existing requests in ``self.requests``.
-            allow_overlay: Allow nodes to be the source or destination in multiple requests.
-            min_hops: Minimum number of hops (inclusive).
-            max_hops: Maximum number of hops (inclusive).
-            attr: Request attributes.
-                ``req_id`` is overwritten as 0-based index.
-            forbid_endpoint_internal: If True, eliminate requests that
-                would fail the rank-based endpoint-vs-internal check in SWAP-ASAP.
+        List requests that are within active period at current timestamp.
         """
-        used_nodes: list[int] = []
-        nnodes = len(self.nodes)
+        t = self.simulator.tc
+        return (req for req in self.requests if req.in_active_period(t))
 
-        if n < 1:
-            raise ValueError("number of requests should be larger than 1")
-        if not allow_overlay and n * 2 > nnodes:
-            raise ValueError("Too many requests")
+    def add_request(self, *reqs: Request):
+        """
+        Add one or more requests to the network.
+        """
+        self.requests.extend(reqs)
 
-        if clear:
-            self.requests.clear()
+        if hasattr(self, "simulator"):
+            for req in reqs:
+                self._sched_request_active_event(req)
 
-        # Track accepted paths
-        accepted_paths: list[dict] = []  # each: {"endpoints": set, "edges": set}
+    def _sched_request_active_event(self, req: Request):
+        if not self.controller:
+            return
 
-        def to_meta(path_nodes: list[QNode]) -> dict:
-            endpoints = {path_nodes[0].name, path_nodes[-1].name}
-            edges = {(path_nodes[i].name, path_nodes[i + 1].name) for i in range(len(path_nodes) - 1)}
-            return {"endpoints": endpoints, "edges": edges}
+        t_enter = self.simulator.tc if req.not_before is Time.SENTINEL else req.not_before
+        self.simulator.add_event(RequestActiveEvent(self.controller, req, True, t=t_enter))
 
-        def violates_endpoint_internal(candidate_meta: dict) -> bool:
-            cend = candidate_meta["endpoints"]
-            cedges = candidate_meta["edges"]
-            for meta in accepted_paths:
-                pend = meta["endpoints"]
-                pedges = meta["edges"]
-                shared = cedges & pedges
-                if not shared:
-                    continue
-                for u, v in shared:
-                    # one path treats node as endpoint, other as internal
-                    if ((u in cend) != (u in pend)) or ((v in cend) != (v in pend)):
-                        return True
-            return False
-
-        for i in range(n):
-            while True:
-                src_idx = rng.integers(0, nnodes, dtype=int)
-                dst_idx = rng.integers(0, nnodes, dtype=int)
-                if src_idx == dst_idx:
-                    continue
-                if not allow_overlay and (src_idx in used_nodes or dst_idx in used_nodes):
-                    continue
-
-                src = self.nodes[src_idx]
-                dst = self.nodes[dst_idx]
-                route_result = self.query_route(src, dst)
-                if not route_result:
-                    continue
-
-                hops, _, path_nodes = route_result[0]
-                if not (min_hops <= hops <= max_hops):
-                    continue
-
-                if forbid_endpoint_internal:
-                    meta = to_meta(path_nodes)
-                    if violates_endpoint_internal(meta):
-                        continue
-                    accepted_paths.append(meta)
-
-                # Accept
-                if not allow_overlay:
-                    used_nodes.extend([src_idx, dst_idx])
-
-                attr["req_id"] = i
-                self.add_request(src, dst, **attr)
-                break
+        if req.not_after is not Time.SENTINEL:
+            self.simulator.add_event(RequestActiveEvent(self.controller, req, False, t=req.not_after))
