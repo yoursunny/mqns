@@ -47,14 +47,7 @@ import numpy as np
 from tap import Tap
 
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
-from mqns.network.fw import (
-    MultiplexingVector,
-    MuxScheme,
-    MuxSchemeBufferSpace,
-    MuxSchemeStatistical,
-    QubitAllocationType,
-    RoutingPathStatic,
-)
+from mqns.network.fw import MultiplexingVector, MuxScheme, MuxSchemeBufferSpace, MuxSchemeStatistical, RoutingPathStatic
 from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
@@ -214,14 +207,12 @@ def build_network(mux: MuxScheme, active_flows: Sequence[FlowDef], active_flows_
         # Explicit static paths with per-hop MVs
         for flow in active_flows:
             b.request(
-                RoutingPathStatic(
-                    flow.route, req_id=flow.req_id, m_v=_mv_for_flow(flow.label, flow.route, active_flows_set), swap="asap"
-                )
+                RoutingPathStatic(flow.route, req_id=flow.req_id, m_v=_mv_for_flow(flow.label, flow.route, active_flows_set))
             )
     else:
         # Statistical: best-effort usage; no pre-split
         for flow in active_flows:
-            b.request(RoutingPathStatic(flow.route, req_id=flow.req_id, m_v=QubitAllocationType.DISABLED, swap="asap"))
+            b.request(RoutingPathStatic(flow.route, req_id=flow.req_id))
 
     return b.make_network()
 

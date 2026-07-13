@@ -53,7 +53,6 @@ from mqns.network.fw import (
     MuxScheme,
     MuxSchemeBufferSpace,
     MuxSchemeStatistical,
-    QubitAllocationType,
     RoutingPath,
     RoutingPathMulti,
     RoutingPathSingle,
@@ -205,8 +204,8 @@ SCENARIOS: dict[str, Scenario] = {
     "two_flows_statistical_single": Scenario(
         # let routing algorithm compute paths
         install_paths=[
-            RoutingPathSingle("S1", "D1", qubit_allocation=QubitAllocationType.DISABLED, swap=SWAPPING_POLICY),
-            RoutingPathSingle("S2", "D2", qubit_allocation=QubitAllocationType.DISABLED, swap=SWAPPING_POLICY),
+            RoutingPathSingle("S1", "D1", swap=SWAPPING_POLICY),
+            RoutingPathSingle("S2", "D2", swap=SWAPPING_POLICY),
         ],
         mux=_mux_statistical(),
         route_algorithm=DijkstraRouteAlgorithm(),

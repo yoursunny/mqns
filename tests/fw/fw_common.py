@@ -13,7 +13,14 @@ from mqns.entity.memory import QubitState
 from mqns.entity.node import Application, Controller, Node, QNode
 from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk, QuantumChannelInitKwargs
 from mqns.models.epr import Entanglement, WernerStateEntanglement
-from mqns.network.fw import Forwarder, ForwarderInitKwargs, RoutingController, RoutingPath
+from mqns.network.fw import (
+    Forwarder,
+    ForwarderInitKwargs,
+    MultiplexingVectorInput,
+    MuxSchemeBufferSpace,
+    RoutingController,
+    RoutingPath,
+)
 from mqns.network.fw.fw_swap import ForwarderSwapProc
 from mqns.network.network import QuantumNetwork, Request, TimingMode, TimingModeAsync, TimingPhase, TimingPhaseEvent
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
@@ -161,7 +168,11 @@ def _build_network_finish(
     if (ctrl := d.get("ctrl")) is None:
         match d.get("mode", "P"):
             case "P":
-                ctrl = ProactiveRoutingController()
+                mv_auto: MultiplexingVectorInput = "none"
+                mux = d.get("fw", {}).get("mux")
+                if mux is None or isinstance(mux, MuxSchemeBufferSpace):
+                    mv_auto = "max"
+                ctrl = ProactiveRoutingController(mv_auto=mv_auto)
             case "R":
                 ctrl = ReactiveRoutingController()
     topo.controller = Controller("ctrl", apps=[ctrl])

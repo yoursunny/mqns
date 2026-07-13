@@ -55,7 +55,7 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         Args:
             swap: Swapping policy applied to all paths.
         """
-        super().__init__()
+        super().__init__(mv_auto="max")
 
         self.cnt = ReactiveRoutingControllerCounters()
         """
@@ -129,7 +129,7 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
             if (qubits := self._try_consume(route.path)) is None:
                 continue
 
-            self.install_path(RoutingPathStatic(route.path, m_v=qubits, **req.rp_args))
+            self.install_path(RoutingPathStatic(route.path, **(req.rp_args | {"m_v": qubits})))
             return True
 
         return False

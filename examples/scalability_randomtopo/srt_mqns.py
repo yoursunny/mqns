@@ -2,7 +2,7 @@ import json
 import os.path
 
 from mqns.entity.node import QNode
-from mqns.network.fw import QubitAllocationType, RoutingPathSingle
+from mqns.network.fw import RoutingPathSingle
 from mqns.network.network import Request
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
 from mqns.network.protocol.consumer import RequestCounters
@@ -26,7 +26,7 @@ def run_simulation(args: RunArgs) -> RunResult:
     # Install paths for requests.
     ctrl = net.get_controller().get_app(ProactiveRoutingController)
     for req in net.requests:
-        ctrl.install_path(RoutingPathSingle(req.src, req.dst, qubit_allocation=QubitAllocationType.DISABLED, **req.rp_args))
+        ctrl.install_path(RoutingPathSingle(req.src, req.dst, **req.rp_args))
 
     # Run the simulation.
     timeout = WallClockTimeout(args.time_limit, stop=s.stop)

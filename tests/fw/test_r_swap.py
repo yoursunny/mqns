@@ -26,7 +26,7 @@ from .fw_common import (
 
 class ManualController(ClassicCommandDispatcherMixin, RoutingController):
     def __init__(self):
-        super().__init__()
+        super().__init__(mv_auto="max")
 
         self.ls_pkts: list[tuple[ClassicPacket, LinkStateMsg]] = []
         self.ls_entries: list[LinkStateEntry] = []

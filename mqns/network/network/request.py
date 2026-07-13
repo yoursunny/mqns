@@ -87,8 +87,7 @@ class Request:
         ``RoutingPath`` subclass is chosen based on network configuration:
 
         * If the network uses Yen routing algorithm, ``RoutingPathMulti``.
-        * If the network uses buffer-space multiplexing scheme, ``RoutingPathSingle(QubitAllocationType.FOLLOW_QCHANNEL)``.
-        * Otherwise, ``RoutingPathSingle(QubitAllocationType.DISABLED)``.
+        * Otherwise, ``RoutingPathSingle``.
         """
 
     def path(self, rp: "RoutingPath|None" = None, /, **kwargs: Unpack["RoutingPathInitArgs"]) -> Self:

@@ -9,7 +9,7 @@ from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
 from mqns.network.fw.mux_dynamic_epr import MuxSchemeDynamicEpr
 from mqns.network.fw.mux_statistical import MuxSchemeStatistical
 from mqns.network.fw.routing import (
-    QubitAllocationType,
+    MultiplexingVectorInput,
     RoutingPath,
     RoutingPathInitArgs,
     RoutingPathMulti,
@@ -38,12 +38,12 @@ __all__ = [
     "MemoryEprIterator",
     "MemoryEprTuple",
     "MultiplexingVector",
+    "MultiplexingVectorInput",
     "MuxScheme",
     "MuxSchemeBufferSpace",
     "MuxSchemeDynamicEpr",
     "MuxSchemeStatistical",
     "parse_swap_sequence",
-    "QubitAllocationType",
     "RoutingController",
     "RoutingPath",
     "RoutingPathInitArgs",
@@ -62,6 +62,7 @@ for name in __all__:
         "MemoryEprIterator",
         "MemoryEprTuple",
         "MultiplexingVector",
+        "MultiplexingVectorInput",
         "SelectPurifQubit",
         "SwapPolicy",
         "SwapSequence",
