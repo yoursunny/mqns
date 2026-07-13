@@ -167,12 +167,7 @@ def test_3_minimal(req_active: tuple[float, float], etgAB: list[float], etgBC: l
     ctrl = net.get_controller().get_app(ReactiveRoutingController)
     fwA, fwB, fwC = (node.get_app(ReactiveForwarder) for node in net.nodes)
 
-    net.add_request(
-        Request(
-            "A-C",
-            active_period=(simulator.time(sec=req_active[0]), simulator.time(sec=req_active[1])),
-        ).path(req_id=1)
-    )
+    net.add_request(Request("A-C", active_period=req_active).path(req_id=1))
     provide_entanglements(
         *((t, fwA, fwB) for t in etgAB),
         *((t, fwB, fwC) for t in etgBC),

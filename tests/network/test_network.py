@@ -78,7 +78,7 @@ def test_mtg_eager(tm: TrafficMatrixInput | TrafficMatrixMapping, src_dst: NodeP
         assert (req.src, req.dst) == src_dst
 
     for req0, req1 in itertools.pairwise(net.requests):
-        assert req0.not_before <= req1.not_before
+        assert req0.active_since <= req1.active_until
 
 
 class RequestCheckApp(Application[Controller]):
@@ -94,6 +94,7 @@ class RequestCheckApp(Application[Controller]):
     def handle_request_active(self, event: RequestActiveEvent):
         req = event.req
         assert (req.src, req.dst) == ("A", "C")
+        assert req.is_active(event.t) is event.enter
 
         if event.enter:
             self.enters.append(len(self.net.requests))
