@@ -15,7 +15,7 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import ClassVar, final, override
+from typing import ClassVar, cast, final, override
 
 from mqns.entity.memory import MemoryQubit, QubitState
 from mqns.entity.node import QNode
@@ -56,29 +56,36 @@ class ManageActiveChannel(Event):
 
 
 @final
-class LinkArchSuccessEvent(Event):
+class LinkArchNotifySrcEvent(Event):
     """
-    Event in LinkLayer to notify itself or its neighbor about successful entanglement in link architecture.
+    Event in LinkLayer to notify the primary node about successful entanglement in link architecture.
     """
 
-    def __init__(
-        self,
-        node: QNode,
-        key: str,
-        epr: Entanglement,
-        *,
-        t: Time,
-        attempts: int,
-    ):
-        super().__init__(t, f"LinkArchSuccessEvent({node.name}, key={key}, epr={epr.name})")
-        self.node = node
+    def __init__(self, key: str, epr: Entanglement, *, t: Time, attempts: int):
+        super().__init__(t, f"{cast(QNode, epr.src).name}, key={key}, epr={epr.name}")
         self.key = key
         self.epr = epr
         self.attempts = attempts
 
     @override
     def invoke(self) -> None:
-        self.node.handle(self)
+        cast(QNode, self.epr.src).handle(self)
+
+
+@final
+class LinkArchNotifyDstEvent(Event):
+    """
+    Event in LinkLayer to notify the secondary node about successful entanglement in link architecture.
+    """
+
+    def __init__(self, key: str, epr: Entanglement, *, t: Time):
+        super().__init__(t, f"{cast(QNode, epr.dst).name}, key={key}, epr={epr.name}")
+        self.key = key
+        self.epr = epr
+
+    @override
+    def invoke(self) -> None:
+        cast(QNode, self.epr.dst).handle(self)
 
 
 @final
@@ -141,6 +148,8 @@ class QubitReleasedEvent(Event):
     Event sent by Forwarder/Consumer to inform LinkLayer about a released (no longer needed) qubit.
     """
 
+    REASON_STR: ClassVar = {True: "decoh", False: "release"}
+
     def __init__(
         self,
         node: QNode,
@@ -149,7 +158,7 @@ class QubitReleasedEvent(Event):
         t: Time,
         is_decoh=False,
     ):
-        super().__init__(t, f"addr={qubit.addr} key={qubit.key}")
+        super().__init__(t, f"addr={qubit.addr} key={qubit.key} {self.REASON_STR[is_decoh]}")
         self.node = node
         self.qubit = qubit
         self.is_decoh = is_decoh

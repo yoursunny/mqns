@@ -23,10 +23,17 @@ from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, c
 from mqns.entity.memory import MemoryQubit, QubitState
 from mqns.entity.node import Application, QNode
 from mqns.entity.qchannel import QuantumChannel
+from mqns.models.epr import Entanglement
 from mqns.network.network import TimingPhase, TimingPhaseEvent
-from mqns.network.protocol.event import LinkArchSuccessEvent, ManageActiveChannel, QubitEntangledEvent, QubitReleasedEvent
+from mqns.network.protocol.event import (
+    LinkArchNotifyDstEvent,
+    LinkArchNotifySrcEvent,
+    ManageActiveChannel,
+    QubitEntangledEvent,
+    QubitReleasedEvent,
+)
 from mqns.simulator import event_handler
-from mqns.utils import AutoIncrementIdentifier, json_encodable, log, rng
+from mqns.utils import AutoIncrementIdentifier, json_encodable, log, rng, unwrap, unwrap_cast
 
 _AUTOID = AutoIncrementIdentifier("llk_")
 """
@@ -340,8 +347,16 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         if ap.insertion_count > 0:
             return
 
+        # If the path on a channel is being deactivated, reset qubits owned by LinkLayer.
+        addrs: list[int] = []
+        for mq, _ in self.memory.find(
+            lambda q, _: q.state in (QubitState.ACTIVE, QubitState.RESERVED) and q.path_id == path_id, qchannel=ch
+        ):
+            mq.state = QubitState.RAW
+            addrs.append(mq.addr)
+
         del ac.paths[path_id]
-        log.debug(f"{self}: removing path {path_id} in qchannel {ch.name}")
+        log.debug(f"{self}: removing path {path_id} in qchannel {ch.name}, reset-addrs={addrs}")
         if len(ac.paths) > 0:
             return
 
@@ -500,32 +515,33 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         assert mq.key == key
         mq.state = QubitState.RESERVED
         log.debug(f"{self}: RESERVE_RES({pkt.src.name}:{path_id}, {key}) processed addr={mq.addr}")
-        self.generate_entanglement(ac.qchannel, ac.partner, mq)
+        self.generate_entanglement(ac, mq)
 
-    def generate_entanglement(self, qchannel: QuantumChannel, next_hop: QNode, qubit: MemoryQubit):
+    def generate_entanglement(self, ac: _ActiveChannel, mq: MemoryQubit) -> None:
         """
         Schedule a successful entanglement attempt using skip-ahead sampling.
 
         Args:
-            qchannel: The quantum channel over which entanglement is to be generated.
-            next_hop: The neighboring node with which the entanglement is attempted.
+            ac: ActiveChannel record of the quantum channel, where this node is primary.
             qubit: The memory qubit used for this attempt.
         """
-        key = qubit.key
-        assert key
+        qchannel = ac.qchannel
+        src = self.node
+        dst = ac.partner
+        key = unwrap(mq.key)
 
         # Calculate which attempt would succeed.
-        k = rng.geometric(qchannel.link_arch.success_prob)
+        k = self._calc_attempt(qchannel)
 
         # Calculate when would the k-th attempt (1-based) succeed.
         # TODO space out EPRs on a qchannel by attempt_interval or qchannel.bandwidth
-        epr, t_notify_a, t_notify_b = qchannel.link_arch.make_epr(k, self.simulator.tc, src=self.node, dst=next_hop, key=key)
+        epr, t_notify_a, t_notify_b = qchannel.link_arch.make_epr(k, self.simulator.tc, src=src, dst=dst, key=key)
 
         # If the network uses SYNC timing mode but the successful attempt would exceed the current EXTERNAL phase,
         # the EPR would not arrive in time, and therefore is not scheduled.
-        if not self.node.timing.is_external(max(t_notify_a, t_notify_b)):
+        if not src.timing.is_external(max(t_notify_a, t_notify_b)):
             log.debug(
-                f"{self}: skip prepare EPR {epr.name} key={key} dst={next_hop.name} attempts={k} "
+                f"{self}: skip prepare EPR {epr.name} key={key} dst={dst.name} attempts={k} "
                 f"notify-times={t_notify_a},{t_notify_b} reason=beyond-external-phase"
             )
             return
@@ -533,27 +549,38 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         # If the network uses ASYNC timing mode or the successful attempt can complete within the current EXTERNAL phase,
         # schedule the EPR arrival on both nodes via LinkArchSuccessEvents.
         log.debug(
-            f"{self}: prepare EPR {epr.name} key={key} dst={next_hop.name} attempts={k} notify-times={t_notify_a},{t_notify_b}"
+            f"{self}: prepare EPR {epr.name} key={key} dst={dst.name} attempts={k} notify-times={t_notify_a},{t_notify_b}"
         )
 
-        self.simulator.add_event(LinkArchSuccessEvent(self.node, key, epr, t=t_notify_a, attempts=k))
-        self.simulator.add_event(LinkArchSuccessEvent(next_hop, key, epr, t=t_notify_b, attempts=k))
+        self.simulator.add_event(LinkArchNotifySrcEvent(key, epr, t=t_notify_a, attempts=k))
+        self.simulator.add_event(LinkArchNotifyDstEvent(key, epr, t=t_notify_b))
+
+    def _calc_attempt(self, qchannel: QuantumChannel) -> int:
+        return rng.geometric(qchannel.link_arch.success_prob)
 
     @event_handler
-    def handle_success_entangle(self, event: LinkArchSuccessEvent):
-        assert self.node.timing.is_external()
-
+    def _la_notify_src(self, event: LinkArchNotifySrcEvent):
+        self.cnt.increment_n_etg(event.attempts)
         epr = event.epr
-        partner, is_primary = (epr.dst, True) if epr.src == self.node else (epr.src, False)
-        assert partner is not None
-        if is_primary:
-            self.cnt.increment_n_etg(event.attempts)
+        self._la_notify(event.key, epr, "primary", "dst", unwrap_cast(epr.dst))
 
-        mq = self.memory.write(event.key, epr)
+    @event_handler
+    def _la_notify_dst(self, event: LinkArchNotifyDstEvent):
+        epr = event.epr
+        self._la_notify(event.key, epr, "secondary", "src", unwrap_cast(epr.src))
+
+    def _la_notify(self, key: str, epr: Entanglement, own_role: str, partner_role: str, partner: QNode) -> None:
+        assert self.node.timing.is_external()
+        try:
+            mq = self.memory.write(key, epr)
+        except LookupError:
+            # Path was deactivated and qubit was deallocated.
+            log.debug(f"{self}: EPR-notify-{own_role} {epr.name} ignored key={key} reason=qubit-not-found")
+            return
 
         log.debug(
-            f"{self}: got half-EPR {epr.name} key={event.key} {'dst' if is_primary else 'src'}={partner} "
-            f"addr={mq.addr} path={mq.path_id}"
+            f"{self}: EPR-notify-{own_role} {epr.name} delivered key={key} "
+            f"{partner_role}={partner} addr={mq.addr} path={mq.path_id}"
         )
         assert epr.decohere_time > self.simulator.tc
 
@@ -563,24 +590,27 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
     @event_handler
     def handle_release(self, event: QubitReleasedEvent) -> None:
         mq = event.qubit
-        log.debug(f"{self}: {event}")
         mq.state = QubitState.RAW
 
-        assert mq.qchannel is not None
-        partner = mq.qchannel.find_peer(self.node)
+        partner = unwrap(mq.qchannel).find_peer(self.node)
 
         ac = self.channels.get(partner.name)
         if ac is None:
+            log.debug(f"{self}: {event} ignored reason=no-active-channel")
             return
 
         ap = ac.paths.get(mq.path_id)
         if ap is None:
+            log.debug(f"{self}: {event} ignored reason=no-active-path")
             return
 
         if ac.is_primary:
+            log.debug(f"{self}: {event} processed role=primary")
             if event.is_decoh:
                 self.cnt.n_decoh += 1
             if self.node.timing.is_async():
                 self.start_reservation(ac, mq)
-        elif ap.ireq_queue and self.try_accept_reservation(ac, ap, ap.ireq_queue[0], hint=mq):
-            ap.ireq_queue.popleft()
+        else:
+            log.debug(f"{self}: {event} processed role=secondary")
+            if ap.ireq_queue and self.try_accept_reservation(ac, ap, ap.ireq_queue[0], hint=mq):
+                ap.ireq_queue.popleft()
