@@ -40,7 +40,7 @@ class QubitState(Enum):
     """
     ACTIVE = auto()
     """
-    The link layer has started a reservation on the qubit as the primary node.
+    The link layer has requested a reservation on the qubit as the primary node.
     ``qubit.active`` contains the reservation key.
     """
     RESERVED = auto()
@@ -96,9 +96,9 @@ class QubitState(Enum):
 
 
 ALLOWED_STATE_TRANSITIONS: dict[QubitState, tuple[QubitState, ...]] = {
-    QubitState.RAW: (QubitState.ACTIVE,),
-    QubitState.ACTIVE: (QubitState.RESERVED,),
-    QubitState.RESERVED: (QubitState.ENTANGLED0,),
+    QubitState.RAW: (QubitState.ACTIVE, QubitState.RESERVED),
+    QubitState.ACTIVE: (QubitState.RAW, QubitState.RESERVED),
+    QubitState.RESERVED: (QubitState.RAW, QubitState.ENTANGLED0),
     QubitState.ENTANGLED0: (QubitState.RELEASE, QubitState.ENTANGLED1),
     QubitState.ENTANGLED1: (QubitState.RELEASE, QubitState.PURIF),
     QubitState.PURIF: (QubitState.RELEASE, QubitState.PENDING, QubitState.ELIGIBLE),

@@ -15,7 +15,7 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import final, override
+from typing import ClassVar, final, override
 
 from mqns.entity.memory import MemoryQubit, QubitState
 from mqns.entity.node import QNode
@@ -25,28 +25,30 @@ from mqns.simulator import Event, Time
 
 
 @final
-class ManageActiveChannels(Event):
+class ManageActiveChannel(Event):
     """
-    Event sent by Forwarder to request LinkLayer to start/stop generating EPRs over a qchannel.
+    Event to instruct LinkLayer to start/stop generating EPRs over a quantum channel for a path_id.
     """
+
+    ACTION_STR: ClassVar = {True: "start", False: "stop"}
+    ROLE_STR: ClassVar = {True: "primary", False: "secondary"}
 
     def __init__(
         self,
         node: QNode,
-        neighbor: QNode,
         qchannel: QuantumChannel,
         *,
-        path_id: int | None = None,
+        path_id: int | None,
         start: bool,
+        is_primary: bool,
         t: Time,
-        name: str | None = None,
     ):
-        super().__init__(t, name)
+        super().__init__(t, f"{node.name}, {self.ACTION_STR[start]} {qchannel.name}, {self.ROLE_STR[is_primary]}")
         self.node = node
-        self.neighbor = neighbor
         self.qchannel = qchannel
         self.path_id = path_id
         self.start = start
+        self.is_primary = is_primary
 
     @override
     def invoke(self) -> None:
@@ -66,10 +68,9 @@ class LinkArchSuccessEvent(Event):
         epr: Entanglement,
         *,
         t: Time,
-        name: str | None = None,
         attempts: int,
     ):
-        super().__init__(t, name)
+        super().__init__(t, f"LinkArchSuccessEvent({node.name}, key={key}, epr={epr.name})")
         self.node = node
         self.key = key
         self.epr = epr
@@ -93,9 +94,8 @@ class QubitEntangledEvent(Event):
         qubit: MemoryQubit,
         *,
         t: Time,
-        name: str | None = None,
     ):
-        super().__init__(t, name)
+        super().__init__(t, f"{node.name}-{neighbor.name}, key={qubit.key}, addr={qubit.addr}")
         self.node = node
         self.neighbor = neighbor
         self.qubit = qubit
@@ -122,7 +122,7 @@ class QubitConsumeEvent(Event):
         t: Time,
         req_id: int,
     ):
-        super().__init__(t, f"EntanglementReadyEvent({qubit.addr}, {epr.name})")
+        super().__init__(t, f"{qubit.addr}, {epr.name}")
         self.node = node
         self.qubit = qubit
         self.epr = epr
