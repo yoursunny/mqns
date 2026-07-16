@@ -387,7 +387,11 @@ class ForwarderSwapProc:
             self.simulator.add_event(event)
 
     def check_table_leak(self) -> None:
-        """Check for memory leak in internal data structures."""
+        """
+        Check for memory leak in internal data structures with ``table_leak_tol`` tolerance.
+
+        This function is scheduled automatically at the end of a finite simulation.
+        """
         max_table_size = 0
         for attr in ("waiting_su", "remote_swapped", "task_by_qubit"):
             table = getattr(self, attr)

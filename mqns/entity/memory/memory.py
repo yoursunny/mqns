@@ -25,11 +25,10 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import functools
 import heapq
 import itertools
-from collections.abc import Callable, Iterable, Iterator
-from typing import Any, Literal, TypedDict, Unpack, overload, override
+from collections.abc import Callable, Container, Iterable, Iterator
+from typing import TYPE_CHECKING, Any, Literal, TypedDict, Unpack, overload, override
 
 from mqns.entity.entity import Entity
 from mqns.entity.memory.event import (
@@ -46,7 +45,10 @@ from mqns.models.core import QuantumModel
 from mqns.models.delay import DelayInput, parse_delay
 from mqns.models.epr import Entanglement
 from mqns.models.error import TimeDecayInput, parse_time_decay
-from mqns.simulator import Event, Simulator
+from mqns.simulator import EventDispatcherMixin, Simulator, event_handler
+
+if TYPE_CHECKING:
+    from mqns.entity.node import QNode
 
 
 class QuantumMemoryInitKwargs(TypedDict, total=False):
@@ -62,7 +64,7 @@ class QuantumMemoryInitKwargs(TypedDict, total=False):
     """Time decay function for loss of quantum information, defaults to dephasing in ``t_cohere``."""
 
 
-class QuantumMemory(Entity):
+class QuantumMemory(EventDispatcherMixin, Entity):
     """
     Quantum memory stores qubits or entangled pairs.
 
@@ -73,29 +75,59 @@ class QuantumMemory(Entity):
     * Asynchronous mode, caller uses events to operate the memory asynchronously.
     """
 
+    node: QNode
+    """
+    QNode that owns this memory.
+
+    This is assigned by ``QNode.memory`` setter.
+    """
+
+    @staticmethod
+    def check_leaks(
+        nodes: Iterable["QNode"],
+        *,
+        states: Container[QubitState] = (QubitState.RAW, QubitState.RELEASE),
+        unassigned=False,
+    ) -> None:
+        """
+        Verify that all MemoryQubits on every node are released.
+
+        Args:
+            nodes: List of quantum nodes, such as ``QuantumNetwork.nodes``.
+            states: Acceptable states.
+            unassigned: If True, qubit must not be assigned to a channel.
+
+        Raises:
+            MemoryError: Some qubits have unacceptable state.
+        """
+        errors: list[str] = []
+        for node in nodes:
+            for mq, data in node.memory.find(lambda *_: True):
+                if mq.state not in states:
+                    errors.append(f"{node.name} {mq} has unexpected state {mq.state} | {data}")
+                if unassigned and mq.qchannel:
+                    errors.append(f"{node.name} {mq} is assigned to {mq.qchannel} | {data}")
+        if len(errors) > 0:
+            raise MemoryError(*errors)
+
     def __init__(self, name: str, **kwargs: Unpack[QuantumMemoryInitKwargs]):
         """
         Constructor.
 
         Args:
-            name: memory name.
+            name: Memory entity name.
         """
         super().__init__(name=name)
-        self.node: QNode
-        """
-        QNode that owns this memory.
 
-        This is assigned by ``QNode.memory`` setter.
-        """
         self.capacity = kwargs.get("capacity", 1)
         """
         Memory capacity, i.e. how many qubits can be stored.
-        Each qubit would have an address in `[0, capacity)`.
+        Each qubit has an address in `[0, capacity)`.
         """
         self.delay = parse_delay(kwargs.get("delay", 0))
-        """Read/write delay, only applicable to async access."""
+        """Async read/write delay."""
 
-        self._t_cohere = kwargs.get("t_cohere", 1.0)
+        self._t_cohere_input = kwargs.get("t_cohere", 1.0)
         self._time_decay_input = kwargs.get("time_decay")
 
         assert self.capacity >= 1
@@ -115,7 +147,7 @@ class QuantumMemory(Entity):
     def install(self, simulator: Simulator) -> None:
         super().install(simulator)
 
-        self.t_decohere = simulator.time(sec=self._t_cohere)
+        self.t_decohere = simulator.time(sec=self._t_cohere_input)
         """
         Memory decoherence time, often known as T2.
 
@@ -125,16 +157,8 @@ class QuantumMemory(Entity):
         self.time_decay = parse_time_decay(self._time_decay_input, self.t_decohere)
         """Time based decay function constructed from store error model."""
 
-    @override
-    def handle(self, event: Event) -> None:
-        self._handle(event)
-
-    @functools.singledispatchmethod
-    def _handle(self, event: Event) -> None:
-        raise RuntimeError(f"unexpected event {event}")
-
-    @_handle.register
-    def _(self, event: MemoryDecohereEvent):
+    @event_handler
+    def handle_decohere(self, event: MemoryDecohereEvent):
         if isinstance(event.qm, Entanglement):
             event.qm.is_decohered = True
 
@@ -146,14 +170,14 @@ class QuantumMemory(Entity):
         event.qubit.state = QubitState.RELEASE
         self.node.handle(event)
 
-    @_handle.register
-    def _(self, event: MemoryReadRequestEvent):
-        result = self.read(event.key)  # will not update fidelity
+    @event_handler
+    def async_read(self, event: MemoryReadRequestEvent):
+        result = self.read(event.key)
         t = self.simulator.tc + self.delay.calculate()
         self.simulator.add_event(MemoryReadResponseEvent(self.node, result, request=event, t=t))
 
-    @_handle.register
-    def _(self, event: MemoryWriteRequestEvent):
+    @event_handler
+    def async_write(self, event: MemoryWriteRequestEvent):
         qubit = next(self.find(lambda _, v: v is None), None)
         assert qubit is not None, "memory is full"
         result = self.write(qubit[0].addr, event.qubit)
@@ -436,6 +460,3 @@ class QuantumMemory(Entity):
             qubit.reset_state(QubitState.RAW)
             self._storage[qubit.addr] = (qubit, None)
         self._usage = 0
-
-    def __repr__(self) -> str:
-        return "<memory " + self.name + ">"

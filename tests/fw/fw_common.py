@@ -382,16 +382,3 @@ def provide_entanglements(
             times, fws = etg
             for t, (src, dst) in zip(times, itertools.pairwise(fws), strict=True):
                 sched_entangle(t, src, dst)
-
-
-def check_memory_released(net: QuantumNetwork) -> None:
-    """
-    Verify that all MemoryQubits on every node are in RAW or RELEASED state.
-    """
-    errors: list[str] = []
-    for node in net.nodes:
-        for qubit, data in node.memory.find(lambda *_: True):
-            if qubit.state not in (QubitState.RAW, QubitState.RELEASE):
-                errors.append(f"{node.name}:{qubit.addr} unexpected state {qubit.state}: {data}")
-    if len(errors) > 0:
-        raise AssertionError(errors)
