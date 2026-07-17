@@ -307,14 +307,16 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         """
         Deallocate one or more qubits from any assigned path.
 
-        This method finds the memory qubit with the given address and clears its
-        path assignment (i.e., resets its ``path_id`` to None). It does not modify the
-        quantum state or remove the qubit from memory.
+        If a qubit is currently occupied, the deallocation takes effect when it next reaches RAW state.
         """
         for addr in addrs:
-            qubit, _ = self._storage[addr]
-            qubit.path_id = None
-            qubit.path_direction = None
+            mq, _ = self._storage[addr]
+            mq.on_raw(QuantumMemory._deallocate_qubit)
+
+    @staticmethod
+    def _deallocate_qubit(mq: MemoryQubit) -> None:
+        mq.path_id = None
+        mq.path_direction = None
 
     @overload
     def read(self, key: int | str, *, remove: bool | QuantumModel = False) -> tuple[MemoryQubit, QuantumModel | None] | None:

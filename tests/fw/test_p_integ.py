@@ -4,6 +4,7 @@ Test suite for ProactiveForwarder integrated with LinkLayer.
 
 import pytest
 
+from mqns.entity.memory import QuantumMemory
 from mqns.entity.timer import Timer
 from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
 from mqns.network.fw import RoutingPathSingle, RoutingPathStatic, SwapSequenceInput
@@ -74,3 +75,5 @@ def test_rect2_uninstall_path():
     # llA.cnt.n_attempts
     assert counters[0][4] == counters[1][4]
     assert counters[8][4] == counters[9][4]
+
+    QuantumMemory.check_leaks(net.nodes)

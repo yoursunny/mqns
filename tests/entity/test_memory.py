@@ -128,12 +128,25 @@ def test_memory_clear_and_deallocate():
     assert mem.count == 0
 
     # Test deallocate
-    addrs = mem.allocate(scenario.qc, 7, PathDirection.L)
-    assert len(addrs) == 1
-    addr = addrs[0]
-    mem.deallocate(addr)
+    addrs = mem.allocate(scenario.qc, 7, PathDirection.L, n=2)
+    assert len(addrs) == 2
+
+    q0, _ = mem.read(addrs[0], must=True)
+    q1, _ = mem.read(addrs[1], must=True)
+    assert q0.addr != q1.addr
+    assert q0.path_id == 7
+    assert q1.path_id == 7
+    q0.state = QubitState.ACTIVE
+
+    mem.deallocate(*addrs)
+    assert q0.path_id == 7
+    assert q1.path_id is None
+
+    q0.state = QubitState.RAW
+    assert q0.path_id is None
+
     with pytest.raises(LookupError):
-        mem.deallocate(999)  # invalid
+        mem.deallocate(999)  # out of range
 
 
 def test_qubit_reservation_behavior():

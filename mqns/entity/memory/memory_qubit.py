@@ -16,8 +16,9 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from enum import Enum, auto
+from typing import Any
 
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
@@ -172,6 +173,8 @@ class MemoryQubit:
     events: EventHandleSet
     """Events that are canceled upon reaching RELEASE state."""
 
+    _on_raw_callbacks: list[Callable[["MemoryQubit"], Any]] | None = None
+
     def __init__(self, addr: int):
         self.addr = addr
         self.events = EventHandleSet()
@@ -205,12 +208,32 @@ class MemoryQubit:
         """Reset state to RELEASE/RAW and clear associated fields."""
         self._state = state
         self.events.clear()
-        if state is QubitState.RAW:
-            self.key = None
-            self.partner = None
-            self.epr_path_ids = None
-            self.purif_rounds = 0
-            self.eligible_time = Time.SENTINEL
+        if state is not QubitState.RAW:
+            return
+
+        self.key = None
+        self.partner = None
+        self.epr_path_ids = None
+        self.purif_rounds = 0
+        self.eligible_time = Time.SENTINEL
+
+        if not self._on_raw_callbacks:
+            return
+        for fn in self._on_raw_callbacks:
+            fn(self)
+        del self._on_raw_callbacks
+
+    def on_raw(self, fn: Callable[["MemoryQubit"], Any]) -> None:
+        """
+        Schedule a function to be invoked when the qubit reaches RAW state.
+        If the qubit is already in RAW state, the function is called immediately.
+        """
+        if self._state is QubitState.RAW:
+            fn(self)
+        else:
+            if not self._on_raw_callbacks:
+                self._on_raw_callbacks = []
+            self._on_raw_callbacks.append(fn)
 
     def __repr__(self) -> str:
         return ", ".join(_describe(self)) + ")"
