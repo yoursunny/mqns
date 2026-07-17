@@ -35,29 +35,24 @@ class MuxSchemeDynamicBase(MuxScheme):
         assert "m_v" not in instructions
 
     @override
-    def install_path_neighbor(
+    def install_path_adj(
         self,
         instructions: PathInstructions,
         fib_entry: FibEntry,
         direction: PathDirection,
-        neighbor: QNode,
         qchannel: QuantumChannel,
     ) -> None:
-        _ = instructions
-        _ = direction
-        _ = neighbor
+        _ = instructions, direction
         self.qchannel_paths_map[qchannel.name].append(fib_entry.path_id)
 
     @override
-    def uninstall_path_neighbor(
+    def uninstall_path_adj(
         self,
         fib_entry: FibEntry,
         direction: PathDirection,
-        neighbor: QNode,
         qchannel: QuantumChannel,
     ) -> None:
         _ = direction
-        _ = neighbor
         paths = self.qchannel_paths_map[qchannel.name]
         paths.remove(fib_entry.path_id)
         if len(paths) == 0:

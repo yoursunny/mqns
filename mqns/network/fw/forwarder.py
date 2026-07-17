@@ -241,18 +241,18 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
 
         # identify left/right neighbors
         # associate path with qchannel and allocate qubits
-        if l_neighbor := self._find_neighbor(fib_entry, -1):
-            self.mux.install_path_neighbor(instructions, fib_entry, PathDirection.L, *l_neighbor)
-        if r_neighbor := self._find_neighbor(fib_entry, +1):
-            self.mux.install_path_neighbor(instructions, fib_entry, PathDirection.R, *r_neighbor)
+        if ch_l := self._find_adj(fib_entry, -1):
+            self.mux.install_path_adj(instructions, fib_entry, PathDirection.L, ch_l)
+        if ch_r := self._find_adj(fib_entry, +1):
+            self.mux.install_path_adj(instructions, fib_entry, PathDirection.R, ch_r)
 
         # call subclass specialization
         self.handle_path_change(
             path_id=path_id,
             uninstall=False,
             fib_entry=fib_entry,
-            l_neighbor=l_neighbor,
-            r_neighbor=r_neighbor,
+            ch_l=ch_l,
+            ch_r=ch_r,
         )
 
     @fw_control_cmd_handler("UNINSTALL_PATH")
@@ -273,26 +273,26 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
 
         # identify left/right neighbors
         # disassociate path with qchannel and deallocate qubits
-        if l_neighbor := self._find_neighbor(fib_entry, -1):
-            self.mux.uninstall_path_neighbor(fib_entry, PathDirection.L, *l_neighbor)
-        if r_neighbor := self._find_neighbor(fib_entry, +1):
-            self.mux.uninstall_path_neighbor(fib_entry, PathDirection.R, *r_neighbor)
+        if ch_l := self._find_adj(fib_entry, -1):
+            self.mux.uninstall_path_adj(fib_entry, PathDirection.L, ch_l)
+        if ch_r := self._find_adj(fib_entry, +1):
+            self.mux.uninstall_path_adj(fib_entry, PathDirection.R, ch_r)
 
         # call subclass specialization
         self.handle_path_change(
             path_id=path_id,
             uninstall=True,
             fib_entry=fib_entry,
-            l_neighbor=l_neighbor,
-            r_neighbor=r_neighbor,
+            ch_l=ch_l,
+            ch_r=ch_r,
         )
 
-    def _find_neighbor(self, fib_entry: FibEntry, route_offset: int) -> tuple[QNode, QuantumChannel] | None:
+    def _find_adj(self, fib_entry: FibEntry, route_offset: int) -> QuantumChannel | None:
         neigh_idx = fib_entry.own_idx + route_offset
         if neigh_idx in (-1, len(fib_entry.route)):  # no left/right neighbor if own node is the left/right end node
             return None
         neigh = self.network.get_node(fib_entry.route[neigh_idx])
-        return neigh, self.node.get_qchannel(neigh)
+        return self.node.get_qchannel(neigh)
 
     @abstractmethod
     def handle_path_change(
@@ -301,8 +301,8 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         path_id: int,
         uninstall: bool,
         fib_entry: FibEntry,
-        l_neighbor: tuple[QNode, QuantumChannel] | None,
-        r_neighbor: tuple[QNode, QuantumChannel] | None,
+        ch_l: QuantumChannel | None,
+        ch_r: QuantumChannel | None,
     ):
         """
         Process LinkLayer changes after a path has been installed or uninstalled.
@@ -311,8 +311,8 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
             path_id: Path identifier.
             uninstall: Whether this is an uninstall command.
             fib_entry: FIB entry.
-            l_neighbor: Left neighbor and channel toward it.
-            r_neighbor: Right neighbor and channel toward it.
+            ch_l: Quantum channel toward left, if exists.
+            ch_r: Quantum channel toward right, if exists.
         """
 
     @fw_signaling_cmd_handler("CUTOFF_DISCARD")

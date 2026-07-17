@@ -39,40 +39,36 @@ class MuxScheme(ABC):
         """Validate install_path instructions are compatible."""
 
     @abstractmethod
-    def install_path_neighbor(
+    def install_path_adj(
         self,
         instructions: PathInstructions,
         fib_entry: FibEntry,
         direction: PathDirection,
-        neighbor: QNode,
         qchannel: QuantumChannel,
     ) -> None:
         """
-        Store information about neighbor node and allocate resources.
+        Store information about adjacent quantum channel and allocate resources.
 
         Args:
             instructions: Path instructions.
             fib_entry: FIB entry derived from path instructions.
-            direction: LEFT for left neighbor or RIGHT for right neighbor.
-            neighbor: Neighbor node.
+            direction: Direction of adjacency.
             qchannel: Quantum channel to the neighbor.
         """
 
     @abstractmethod
-    def uninstall_path_neighbor(
+    def uninstall_path_adj(
         self,
         fib_entry: FibEntry,
         direction: PathDirection,
-        neighbor: QNode,
         qchannel: QuantumChannel,
     ) -> None:
         """
-        Erase information about neighbor node and deallocate resources.
+        Erase information about adjacent quantum channel and deallocate resources.
 
         Args:
             fib_entry: FIB entry.
-            direction: LEFT for left neighbor or RIGHT for right neighbor.
-            neighbor: Neighbor node.
+            direction: Direction of adjacency.
             qchannel: Quantum channel to the neighbor.
         """
 

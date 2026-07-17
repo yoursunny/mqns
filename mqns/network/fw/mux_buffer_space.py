@@ -100,15 +100,13 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
         assert "m_v" in instructions
 
     @override
-    def install_path_neighbor(
+    def install_path_adj(
         self,
         instructions: PathInstructions,
         fib_entry: FibEntry,
         direction: PathDirection,
-        neighbor: QNode,
         qchannel: QuantumChannel,
     ) -> None:
-        _ = neighbor
         assert "m_v" in instructions
         mv = instructions["m_v"]
         mv_offset, ch_side = (-1, 1) if direction == PathDirection.L else (0, 0)
@@ -134,10 +132,7 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
         log.debug(f"{self.fw}: allocated {direction} qubits: {addrs}")
 
     @override
-    def uninstall_path_neighbor(
-        self, fib_entry: FibEntry, direction: PathDirection, neighbor: QNode, qchannel: QuantumChannel
-    ) -> None:
-        _ = neighbor
+    def uninstall_path_adj(self, fib_entry: FibEntry, direction: PathDirection, qchannel: QuantumChannel) -> None:
         qubits = self.memory.find(lambda q, _: q.path_id == fib_entry.path_id, qchannel=qchannel)
         addrs = [q[0].addr for q in qubits]
         self.memory.deallocate(*addrs)

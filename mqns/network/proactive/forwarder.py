@@ -17,7 +17,6 @@
 
 from typing import override
 
-from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.network.fw import Forwarder
 from mqns.network.protocol.event import ManageActiveChannel
@@ -36,8 +35,8 @@ class ProactiveForwarder(Forwarder):
         *,
         path_id: int,
         uninstall: bool,
-        l_neighbor: tuple[QNode, QuantumChannel] | None,
-        r_neighbor: tuple[QNode, QuantumChannel] | None,
+        ch_l: QuantumChannel | None,
+        ch_r: QuantumChannel | None,
         **_,
     ):
         """
@@ -51,13 +50,13 @@ class ProactiveForwarder(Forwarder):
 
         1. Notify LinkLayer to stop elementary EPR generation toward the right neighbor.
         """
-        for i, neigh in enumerate((l_neighbor, r_neighbor)):
-            if neigh is None:
+        for i, ch in enumerate((ch_l, ch_r)):
+            if ch is None:
                 continue
             self.simulator.add_event(
                 ManageActiveChannel(
                     self.node,
-                    neigh[1],
+                    ch,
                     path_id=path_id if self.mux.qubit_has_path_id() else None,
                     start=not uninstall,
                     is_primary=i == 1,
