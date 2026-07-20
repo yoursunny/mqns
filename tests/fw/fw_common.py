@@ -321,7 +321,7 @@ _provide_entanglements_autoid = AutoIncrementIdentifier("Tpe_")
 
 
 def provide_entanglements(
-    *etgs: tuple[float, Forwarder, Forwarder] | tuple[Iterable[float], Iterable[Forwarder]],
+    *etgs: tuple[float | Iterable[float], Forwarder, Forwarder] | tuple[Iterable[float], Iterable[Forwarder]],
     transform_t: Callable[[float], float] = lambda t: t,
     fidelity=0.99,
 ):
@@ -377,7 +377,12 @@ def provide_entanglements(
 
     for etg in etgs:
         if len(etg) == 3:
-            sched_entangle(*etg)
+            times, src, dst = etg
+            if isinstance(times, int | float):
+                sched_entangle(times, src, dst)
+            else:
+                for t in times:
+                    sched_entangle(t, src, dst)
         else:
             times, fws = etg
             for t, (src, dst) in zip(times, itertools.pairwise(fws), strict=True):
