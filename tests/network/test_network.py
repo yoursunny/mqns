@@ -1,4 +1,4 @@
-from itertools import pairwise
+import itertools
 
 import numpy as np
 import pytest
@@ -77,7 +77,7 @@ def test_mtg_eager(tm: TrafficMatrixInput | TrafficMatrixMapping, src_dst: NodeP
     for req in net.requests:
         assert (req.src, req.dst) == src_dst
 
-    for req0, req1 in pairwise(net.requests):
+    for req0, req1 in itertools.pairwise(net.requests):
         assert req0.not_before <= req1.not_before
 
 

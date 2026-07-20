@@ -1,9 +1,9 @@
 import copy
 import functools
+import itertools
 import os
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping
-from itertools import pairwise
 from typing import Literal, TypedDict, Unpack, override
 
 import pytest
@@ -384,7 +384,7 @@ def provide_entanglements(
             sched_entangle(*etg)
         else:
             times, fws = etg
-            for t, (src, dst) in zip(times, pairwise(fws), strict=True):
+            for t, (src, dst) in zip(times, itertools.pairwise(fws), strict=True):
                 sched_entangle(t, src, dst)
 
 

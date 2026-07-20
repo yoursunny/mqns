@@ -1,4 +1,3 @@
-import itertools
 from collections.abc import Sequence
 
 import pytest
@@ -118,15 +117,8 @@ def test_init_fidelity(E: type[Entanglement], use_probv: bool):
             assert epr.probv[1] == pytest.approx(0.1, abs=1e-6)
 
 
-@pytest.mark.parametrize(
-    ("LA", "E"),
-    list(
-        itertools.product(
-            [LinkArchDimBk, LinkArchDimBkSeq, LinkArchDimDual, LinkArchSr],
-            [WernerStateEntanglement, MixedStateEntanglement],
-        )
-    ),
-)
+@pytest.mark.parametrize("LA", [LinkArchDimBk, LinkArchDimBkSeq, LinkArchDimDual, LinkArchSr])
+@pytest.mark.parametrize("E", [WernerStateEntanglement, MixedStateEntanglement])
 def test_perfect_error(LA: type[LinkArch], E: type[Entanglement]):
     ch = FakeQuantumChannel(0)
     t_cohere = Time.from_sec(1, accuracy=ACCURACY)

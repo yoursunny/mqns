@@ -2,8 +2,8 @@
 Test suite for ReactiveForwarder focused on swapping.
 """
 
+import itertools
 from collections import defaultdict
-from itertools import pairwise
 
 import pytest
 
@@ -109,7 +109,7 @@ def test_tree2_two():
                     route,
                     req_id=1 + i,
                     swap=[2, 0, 1, 0, 2],
-                    m_v=[qubits_by_channel[f"{a}{b}"].pop() for a, b in pairwise(route)],
+                    m_v=[qubits_by_channel[f"{a}{b}"].pop() for a, b in itertools.pairwise(route)],
                 )
             )
 

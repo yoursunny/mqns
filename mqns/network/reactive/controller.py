@@ -15,8 +15,8 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import itertools
 from collections import defaultdict, deque
-from itertools import pairwise
 from typing import cast, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
@@ -141,7 +141,7 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         """
         link_etgs: list[deque[str]] = []
 
-        for n0, n1 in pairwise(route):
+        for n0, n1 in itertools.pairwise(route):
             etgs = self._tls.get((n0, n1) if n0 < n1 else (n1, n0))
             if etgs is None or len(etgs) == 0:
                 return None

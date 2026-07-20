@@ -210,21 +210,9 @@ def test_4_sync(t_ext: float, expected: tuple[int, int, int, int]):
     assert RequestCounters.of(net, rp).n_consumed == min(expected[0], expected[3])
 
 
-@pytest.mark.parametrize(
-    ("etg_ms", "ps3"),
-    list(
-        itertools.product(
-            [
-                (1, 2, 1),
-                (2, 1, 2),
-                (1, 2, 3),
-                (3, 2, 1),
-            ],
-            (1, 0),
-        )
-    ),
-)
-def test_4_asap(etg_ms: tuple[int, int, int], ps3: int):
+@pytest.mark.parametrize("ps3", [1, 0])
+@pytest.mark.parametrize("etg_ms", [(1, 2, 1), (2, 1, 2), (1, 2, 3), (3, 2, 1)])
+def test_4_asap(ps3: int, etg_ms: tuple[int, int, int]):
     """Test SWAP-ASAP in 4-node topology with various entanglement arrival orders."""
     net, simulator = build_linear_network(4, fw={"p_swap": 1.0}, end_time=2)
     fwA, fwB, fwC, fwD = (node.get_app(ProactiveForwarder) for node in net.nodes)
@@ -416,7 +404,8 @@ def test_4_decohere(swap_delay: float, n_consumed: int):
     check_memory_released(net)
 
 
-@pytest.mark.parametrize(("ps3", "etg_ms"), list(itertools.product((1, 0), ((2, 1, 1, 2), (1, 2, 2, 1)))))
+@pytest.mark.parametrize("ps3", [1, 0])
+@pytest.mark.parametrize("etg_ms", [(2, 1, 1, 2), (1, 2, 2, 1)])
 def test_5_asap(
     ps3: float,
     etg_ms: tuple[int, int, int, int],
@@ -447,22 +436,16 @@ def test_5_asap(
 
 
 @pytest.mark.parametrize(
-    ("swap_sulower", "etg_ms"),
-    list(
-        itertools.product(
-            [
-                ((3, 0, 1, 2, 3), (1, 0, 1, 1, 1)),  # l2r
-                ((3, 2, 1, 0, 3), (1, 1, 1, 0, 1)),  # r2l
-                ((3, 0, 1, 0, 3), (1, 0, 2, 0, 1)),  # baln
-            ],
-            itertools.permutations(range(4), 4),
-        )
-    ),
+    ("swap", "su_lower"),
+    [
+        pytest.param((3, 0, 1, 2, 3), (1, 0, 1, 1, 1), id="l2r"),
+        pytest.param((3, 2, 1, 0, 3), (1, 1, 1, 0, 1), id="r2l"),
+        pytest.param((3, 0, 1, 0, 3), (1, 0, 2, 0, 1), id="baln"),
+    ],
 )
-def test_5_sequential(swap_sulower: tuple[Sequence[int], Sequence[int]], etg_ms: tuple[int, int, int, int]):
+@pytest.mark.parametrize("etg_ms", list(itertools.permutations(range(4), 4)))
+def test_5_sequential(swap: Sequence[int], su_lower: Sequence[int], etg_ms: tuple[int, int, int, int]):
     """Test sequential swap orders with various entanglement arrival orders."""
-    swap, su_lower = swap_sulower
-
     net, simulator = build_linear_network(5, fw={"p_swap": 1.0})
     fwA, fwB, fwC, fwD, fwE = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
