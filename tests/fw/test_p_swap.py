@@ -112,38 +112,38 @@ def test_3_decohere(swap_delay: float, n_consumed: int):
 @pytest.mark.parametrize(
     ("etg_sec", "swap_delay", "n_consumed", "n_cutoff"),
     [
-        # 1. t=1.0050, A-B arrives, discard scheduled at 1.007.
+        # 1. t=1.0050, A-B arrives, discard scheduled at 1.0070.
         # 2. t=1.0060, B-C arrives, A-B discard canceled, B starts swapping.
         # 3. t=1.0065, B finishes swapping, heralds success to A+C.
         # 4. t=1.0070, A/C consumes EPR.
         ((1.004, 1.005), 0.0005, 1, (0, 0)),
-        # 1. t=1.0050, A-B arrives, discard scheduled at 1.007.
+        # 1. t=1.0050, A-B arrives, discard scheduled at 1.0070.
         # 2. t=1.0060, B-C arrives, A-B discard canceled, B starts swapping.
         # 3. t=1.0072, B finishes swapping, heralds success to A+C.
         # 4. t=1.0077, A/C consumes EPR.
         ((1.004, 1.005), 0.0012, 1, (0, 0)),
-        # 1. t=1.0050, A-B arrives, discard scheduled at 1.007.
-        # 2. t=1.0060, B-C arrives, A-B discard canceled, B starts swapping.
-        # 3. t=1.0080, A-B decoheres.
-        # 3. t=1.0085, B aborts swapping, heralds failure to A+C.
-        ((1.004, 1.005), 0.0025, 0, (0, 0)),
-        # 1. t=1.0060, A-B arrives, discard scheduled at 1.007.
-        # 2. t=1.0080, A-B is discarded.
-        # 3. t=1.0090, B-C arrives, discard scheduled at 1.011.
-        ((1.005, 1.008), 0.0005, 0, (1, 0)),
-        # 1. t=1.0030, A-B arrives, discard scheduled at 1.007.
-        # 2. t=1.0050, A-B is discarded.
-        # 3. t=1.0060, B-C arrives, discard scheduled at 1.008.
+        # 1. t=1.0010, A-B arrives, discard scheduled at 1.0020.
+        # 2. t=1.0020, B-C arrives, A-B discard canceled, B starts swapping.
+        # 3. t=1.0070, A-B decoheres.
+        # 3. t=1.0075, B aborts swapping, heralds failure to A+C.
+        ((1.000, 1.001), 0.0055, 0, (0, 0)),
+        # 1. t=1.0010, A-B arrives, discard scheduled at 1.0030.
+        # 2. t=1.0030, A-B is discarded.
+        # 3. t=1.0070, B-C arrives, discard scheduled at 1.0110 (past end_time).
+        ((1.000, 1.006), 0.0000, 0, (1, 0)),
+        # 1. t=1.0010, A-B arrives, discard scheduled at 1.0030.
+        # 2. t=1.0030, A-B is discarded.
+        # 3. t=1.0040, B-C arrives, discard scheduled at 1.0090.
         # 3. t=1.0080, B-C is discarded.
-        ((1.002, 1.005), 0.0005, 0, (1, 1)),
+        ((1.000, 1.003), 0.0000, 0, (1, 1)),
     ],
 )
 def test_3_waittime(etg_sec: tuple[float, float], swap_delay: float, n_consumed: int, n_cutoff: tuple[int, int]):
     """Test CutoffSchemeWaitTime in 3-node topology."""
-    net, simulator = build_linear_network(3, t_cohere=0.004, fw={"p_swap": 1.0, "swap_delay": swap_delay}, end_time=1.010)
+    net, simulator = build_linear_network(3, t_cohere=0.006, fw={"p_swap": 1.0, "swap_delay": swap_delay}, end_time=1.010)
     fwA, fwB, fwC = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    rp = install_path(net, RoutingPathStatic("ABC", swap_cutoff=[0.002, 0.002]))
+    rp = install_path(net, RoutingPathStatic("ABC", swap_cutoff=[0.002, 0.004]))
     provide_entanglements(
         (etg_sec[0], fwA, fwB),
         (etg_sec[1], fwB, fwC),

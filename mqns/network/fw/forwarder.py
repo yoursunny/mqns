@@ -480,7 +480,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
             self.cutoff.before_swap(qubit, mq1, fib_entry)
             self.swap.start(qubit, mq1, fib_entry)
         else:
-            self.cutoff.before_store_eligible(qubit, PathDirection.L if epr.src is self.node else PathDirection.R, fib_entry)
+            self.cutoff.before_store_eligible(qubit, PathDirection.L if epr.dst is self.node else PathDirection.R, fib_entry)
 
     def _try_consume(self, qubit: MemoryQubit, epr: Entanglement, fib_entry: FibEntry | None) -> bool:
         """

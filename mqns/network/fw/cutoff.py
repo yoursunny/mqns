@@ -177,6 +177,11 @@ class CutoffSchemeWaitTime(CutoffScheme):
 
         now = self.simulator.tc
         deadline = now + wait_budget
+        log.debug(
+            f"{self.fw}: wait-time key={mq.key} addr={mq.addr} "
+            f"path={fib_entry.path_id}({fib_entry.own_idx}){dir.name} "
+            f"budget={wait_budget} deadline={deadline}"
+        )
         self.simulator.add_event(event := CutoffDiscardEvent(self, mq, fib_entry, round=-1, eligible_t=now, t=deadline))
         mq.events.add(event)
 
