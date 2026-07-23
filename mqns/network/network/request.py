@@ -39,12 +39,12 @@ class Request:
 
     active_since: Time
     """
-    Active period lower bound (inclusive), ``Time.SENTINEL`` means no restriction.
+    Active period lower bound (inclusive), ``Time.MIN`` means no restriction.
     This field becomes valid when the request is added to a network and a simulator is installed into the network.
     """
     active_until: Time
     """
-    Active period upper bound (exclusive), ``Time.SENTINEL`` means no restriction.
+    Active period upper bound (exclusive), ``Time.MAX`` means no restriction.
     This field becomes valid when the request is added to a network and a simulator is installed into the network.
     """
 
@@ -58,7 +58,7 @@ class Request:
 
     def __init__(self, np: NodePair, /, **kwargs: Unpack[RequestInitArgs]):
         self.src, self.dst = split_node_pair(np)
-        self.active_since_input, self.active_until_input = kwargs.get("active_period", (Time.SENTINEL, Time.SENTINEL))
+        self.active_since_input, self.active_until_input = kwargs.get("active_period", (Time.MIN, Time.MAX))
         self.rp_args = {}
 
     @overload
@@ -106,9 +106,9 @@ class Request:
 
         * Time point ``t`` is within active period.
         """
-        if self.active_since is not Time.SENTINEL and t < self.active_since:
+        if t < self.active_since:
             return False
-        if self.active_until is not Time.SENTINEL and t >= self.active_until:
+        if t >= self.active_until:
             return False
         return True
 
@@ -121,8 +121,7 @@ class Request:
         return f"Request({self.src}-{self.dst}, active_period={self._repr_active('since')}-{self._repr_active('until')})"
 
     def _repr_active(self, key: str) -> Any:
-        t = getattr(self, f"active_{key}", None) or getattr(self, f"active_{key}_input", None)
-        return "" if t is Time.SENTINEL else t
+        return getattr(self, f"active_{key}", None) or getattr(self, f"active_{key}_input", None)
 
 
 @final

@@ -16,7 +16,13 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import functools
-from typing import final
+from typing import Final, final
+
+_ACCURACY0_STRS: dict[int, str] = {
+    0: "(sentinel)",
+    -1: "(min)",
+    1: "(max)",
+}
 
 
 @final
@@ -26,19 +32,25 @@ class Time:
     Timestamp or duration used in the simulator.
     """
 
+    __slots__ = ("time_slot", "accuracy")
+
     SENTINEL: "Time"
     """Invalid Time instance as placeholder."""
+    MIN: "Time"
+    """Minimum value, compares less than all other instances."""
+    MAX: "Time"
+    """Maximum value, compares greater than all other instances."""
 
     def __init__(self, time_slot: int, *, accuracy: int):
         """
-        Construct Time from time slot.
+        Construct from time slot.
 
         Args:
-            time_slot: integer time slot.
-            accuracy: how many time slots per second.
+            time_slot: Integer time slot.
+            accuracy: How many time slots per second.
         """
-        self.time_slot = time_slot
-        self.accuracy = accuracy
+        self.time_slot: Final[int] = time_slot
+        self.accuracy: Final[int] = accuracy
 
     @staticmethod
     def sec_to_time_slot(sec: float, accuracy: int) -> int:
@@ -82,13 +94,18 @@ class Time:
         Less than comparison operator.
         Two Time instances can be compared only if they have the same accuracy.
         """
-        assert self.accuracy == other.accuracy
-        return self.time_slot < other.time_slot
+        if self.accuracy == other.accuracy:
+            return self.time_slot < other.time_slot
+        if self.accuracy == 0:
+            return self.time_slot < 0
+        if other.accuracy == 0:
+            return other.time_slot > 0
+        raise ValueError("cannot compare Time with different accuracy")
 
     def __hash__(self) -> int:
         return hash(self.time_slot)
 
-    def __add__(self, ts: "Time|int|float") -> "Time":
+    def __add__(self, ts: "Time|float") -> "Time":
         """
         Add a duration and returns a new Time object.
 
@@ -102,7 +119,7 @@ class Time:
             time_slot = Time.sec_to_time_slot(ts, self.accuracy)
         return Time(time_slot=self.time_slot + time_slot, accuracy=self.accuracy)
 
-    def __sub__(self, ts: "Time|int|float") -> "Time":
+    def __sub__(self, ts: "Time|float") -> "Time":
         """
         Subtract a duration and returns a new Time object.
 
@@ -117,7 +134,9 @@ class Time:
         return Time(time_slot=self.time_slot - time_slot, accuracy=self.accuracy)
 
     def __repr__(self) -> str:
-        return "(sentinel)" if self.accuracy == 0 else str(self.sec)
+        return _ACCURACY0_STRS[self.time_slot] if self.accuracy == 0 else str(self.sec)
 
 
 Time.SENTINEL = Time(0, accuracy=0)
+Time.MIN = Time(-1, accuracy=0)
+Time.MAX = Time(1, accuracy=0)

@@ -308,14 +308,10 @@ def install_path(
     """
     Install and/or uninstall a routing path at specific times.
     """
-    simulator = net.simulator
     net.add_request(
         Request(
             (rp.src, rp.dst),
-            active_period=(
-                Time.SENTINEL if t_install is None else simulator.time(sec=t_install),
-                Time.SENTINEL if t_uninstall is None else simulator.time(sec=t_uninstall),
-            ),
+            active_period=(Time.MIN if t_install is None else t_install, Time.MAX if t_uninstall is None else t_uninstall),
         ).path(rp)
     )
     return rp

@@ -19,10 +19,16 @@ def test_time_compare():
 
     t0 = Time.from_sec(1.1, accuracy=2000)
     assert t2 != t0
-    assert pytest.raises(AssertionError, lambda: t3 < t0)
+    assert pytest.raises(ValueError, lambda: t3 < t0)
 
     assert t2 != 1
     assert t2 != "A"
+
+    assert Time.MIN < t1
+    assert t1 > Time.MIN
+    assert Time.MAX > t1
+    assert t1 < Time.MAX
+    assert Time.MIN < Time.MAX
 
 
 def test_time_accuracy():
