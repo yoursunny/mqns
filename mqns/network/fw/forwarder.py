@@ -229,8 +229,8 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         else:
             swap_cutoff: list[Time | None] = [None] * (2 * (len(route) - 2))
         fib_entry = FibEntry(
-            path_id=path_id,
             req_id=instructions["req_id"],
+            path_id=path_id,
             route=route,
             own_idx=route.index(self.node.name),
             swap=instructions["swap"],

@@ -1,6 +1,5 @@
 from collections.abc import Iterable, MutableSequence, Sequence
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, cast, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, cast, override
 
 from mqns.entity.memory import MemoryQubit, QuantumMemory, QubitState
 from mqns.entity.node import Application, QNode
@@ -30,8 +29,7 @@ def _qubit_key(mq: MemoryQubit) -> str:
     return mq.key
 
 
-@dataclass
-class SwapArm:
+class SwapArm(NamedTuple):
     mq: MemoryQubit
     """Local qubit entangled with partner."""
     o_key: str
@@ -43,9 +41,8 @@ class SwapArm:
         return f"SwapArm(qubit={self.mq.addr}, o-key={self.o_key}, p-key={self.p_key})"
 
 
-@dataclass
-class SwapHerald:
-    """Herelading instruction."""
+class SwapHerald(NamedTuple):
+    """Heralding instruction."""
 
     su: SwapUpdateMsg
     """
@@ -55,7 +52,7 @@ class SwapHerald:
     """
     dest: str
     """Destination node name."""
-    paths: list[int]
+    paths: Sequence[int]
     """Possible path IDs for classical signaling, must be non-empty."""
 
 
@@ -115,6 +112,7 @@ class SwapTask:
 
     def __init__(self, proc: "ForwarderSwapProc", fib_entry: FibEntry):
         self.proc = proc
+        assert fib_entry.sg
         self.sg = fib_entry.sg
 
     def begin_local_swap(self, la: SwapArm, ra: SwapArm) -> None:
@@ -227,7 +225,9 @@ class SwapTask:
         if not self.q_paths or self.sg.path_id in self.q_paths:
             return
 
-        self.sg = self.proc.fw.fib.get(self.q_paths[0]).sg
+        fib_entry = self.proc.fw.fib.get(self.q_paths[0])
+        assert fib_entry.sg
+        self.sg = fib_entry.sg
 
     def _check_triggers(self) -> list[SwapHerald]:
         sg = self.sg

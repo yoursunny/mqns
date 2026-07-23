@@ -15,32 +15,56 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import functools
-from collections.abc import Callable, Iterable, Iterator, Set
-from dataclasses import dataclass
-from typing import Literal, final
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from typing import Final, Literal, final
 
 from mqns.network.fw.message import SwapSequence
 from mqns.simulator import Time
 
 
 @final
-@dataclass(frozen=True)
 class FibEntry:
-    path_id: int
-    """Path identifier, identifies end-to-end path."""
-    req_id: int
+    """FIB entry."""
+
+    __slots__ = ("req_id", "path_id", "route", "own_idx", "swap", "swap_cutoff", "purif", "sg")
+
+    req_id: Final[int]
     """Request identifier, identifies source-destination pair."""
-    route: list[str]
+    path_id: Final[int]
+    """Path identifier, identifies end-to-end path."""
+
+    route: Final[Sequence[str]]
     """List of nodes traversed by the path."""
-    own_idx: int
+    own_idx: Final[int]
     """Index of own node within the route."""
-    swap: SwapSequence
+    swap: Final[SwapSequence]
     """Swap sequence."""
-    swap_cutoff: list[Time | None]
+    swap_cutoff: Final[Sequence[Time | None]]
     """Swap cutoff times."""
-    purif: dict[str, int]
+    purif: Final[Mapping[str, int]]
     """Purification scheme."""
+    sg: Final["FibSwapGroup|None"]
+    """Swap group that this node belongs to; None for end-node or swap-disabled."""
+
+    def __init__(
+        self,
+        *,
+        req_id: int,
+        path_id: int,
+        route: Sequence[str],
+        own_idx: int,
+        swap: SwapSequence,
+        swap_cutoff: Sequence[Time | None],
+        purif: Mapping[str, int],
+    ):
+        self.req_id = req_id
+        self.path_id = path_id
+        self.route = route
+        self.own_idx = own_idx
+        self.swap = swap
+        self.swap_cutoff = swap_cutoff
+        self.purif = purif
+        self.sg = None if self.own_swap_rank == self.swap[0] else FibSwapGroup(self)
 
     @property
     def own_swap_rank(self) -> int:
@@ -75,11 +99,8 @@ class FibEntry:
         idx = self.route.index(node_name)
         return idx, self.swap[idx]
 
-    @functools.cached_property
-    def sg(self) -> "FibSwapGroup":
-        return FibSwapGroup.compute(self)
 
-
+@final
 class FibSwapGroup:
     """
     FibSwapGroup provides topological information to determine the heralding directions within
@@ -96,22 +117,24 @@ class FibSwapGroup:
     if that neighbor would not be heralded by the opposite neighbor.
     """
 
-    path_id: int
+    __slots__ = ("path_id", "rank", "nodes", "l_neigh", "r_neigh", "dir", "own_idx")
+
+    path_id: Final[int]
     """FIB entry path ID."""
 
-    rank: int
+    rank: Final[int]
     """Rank of all nodes in this swap group."""
 
-    nodes: list[str]
+    nodes: Final[Sequence[str]]
     """Nodes in this swap group."""
 
-    l_neigh: str
+    l_neigh: Final[str]
     """Left neighbor, not part of this swap group."""
 
-    r_neigh: str
+    r_neigh: Final[str]
     """Right neighbor, not part of this swap group."""
 
-    dir: Literal["l", "b", "r"]
+    dir: Final[Literal["l", "b", "r"]]
     """
     Heralding direction when there is no swap failure.
 
@@ -120,41 +143,38 @@ class FibSwapGroup:
     * r: Rightward -- Right neighbor has lower rank than left neighbor.
     """
 
-    own_idx: int
+    own_idx: Final[int]
     """Index of own node within ``nodes``."""
 
-    @staticmethod
-    def compute(entry: FibEntry) -> "FibSwapGroup":
+    def __init__(self, entry: FibEntry):
         route_len = len(entry.route)
         if entry.own_idx in (0, route_len - 1):
             raise ValueError("FibSwapGroup is undefined for end nodes")
 
-        sg = FibSwapGroup()
-        sg.path_id = entry.path_id
-        sg.rank = entry.own_swap_rank
-        sg.nodes = [entry.route[entry.own_idx]]
+        self.path_id = entry.path_id
+        self.rank = entry.own_swap_rank
 
-        sg.l_neigh, l_rank = sg._extend_1d(entry, range(entry.own_idx - 1, -1, -1))
-        sg.own_idx = len(sg.nodes) - 1
-        sg.nodes.reverse()
-        sg.r_neigh, r_rank = sg._extend_1d(entry, range(entry.own_idx + 1, route_len))
+        nodes = [entry.route[entry.own_idx]]
+        self.l_neigh, l_rank = self._extend_1d(entry, nodes, range(entry.own_idx - 1, -1, -1))
+        self.own_idx = len(nodes) - 1
+        nodes.reverse()
+        self.r_neigh, r_rank = self._extend_1d(entry, nodes, range(entry.own_idx + 1, route_len))
+        self.nodes = nodes
 
-        if l_rank == r_rank or entry.purif.get(f"{sg.l_neigh}-{sg.r_neigh}", 0) > 0:
-            sg.dir = "b"
+        if l_rank == r_rank or entry.purif.get(f"{self.l_neigh}-{self.r_neigh}", 0) > 0:
+            self.dir = "b"
         elif l_rank < r_rank:
-            sg.dir = "l"
+            self.dir = "l"
         else:
-            sg.dir = "r"
+            self.dir = "r"
 
-        return sg
-
-    def _extend_1d(self, entry: FibEntry, index_range: Iterable[int]) -> tuple[str, int]:
+    def _extend_1d(self, entry: FibEntry, nodes: list[str], index_range: Iterable[int]) -> tuple[str, int]:
         for i in index_range:
             node_rank = entry.swap[i]
             if node_rank > self.rank:
                 return entry.route[i], entry.swap[i]
             if node_rank == self.rank:
-                self.nodes.append(entry.route[i])
+                nodes.append(entry.route[i])
         raise ValueError(f"FibSwapGroup cannot find boundary in {entry.swap} from node index {entry.own_idx}")
 
     @property
@@ -287,12 +307,6 @@ class Fib:
         rg = self.by_req_id[entry.req_id]
         if rg.remove(entry):
             del self.by_req_id[entry.req_id]
-
-    def list_path_ids_by_request_id(self, request_id: int) -> Set[int]:
-        rg = self.by_req_id.get(request_id)
-        if rg:
-            return rg.path_ids
-        return set()
 
     def find_request(self, predicate: Callable[[FibRequestGroup], bool]) -> Iterator[FibRequestGroup]:
         for rg in self.by_req_id.values():

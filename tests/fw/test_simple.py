@@ -5,7 +5,7 @@ Test suite for simple data structure objects in forwarding.
 import pytest
 
 from mqns.network.fw import parse_swap_sequence
-from mqns.network.fw.fib import FibEntry, FibSwapGroup
+from mqns.network.fw.fib import FibEntry
 from mqns.network.fw.message import validate_path_instructions
 
 
@@ -111,21 +111,22 @@ def test_fib_swap_group(purif: str | None, own: str, expected: tuple[str, str, s
     nodes = "ABCDEFGHIJ"
     ranks = "3001012003"
     entry = FibEntry(
-        path_id=0,
         req_id=0,
-        route=list(nodes),
+        path_id=0,
+        route=nodes,
         own_idx=nodes.index(own),
         swap=[int(v) for v in ranks],
         swap_cutoff=[None] * 9,
         purif={purif: 1} if purif else {},
     )
 
+    sg = entry.sg
+
     if expected is None:
-        with pytest.raises(ValueError, match="undefined for end nodes"):
-            FibSwapGroup.compute(entry)
+        assert sg is None
         return
 
-    sg = entry.sg
+    assert sg is not None
     assert sg.nodes == list(expected[1])
     assert sg.own_idx == sg.nodes.index(own)
     assert (sg.l_neigh, "".join(sg.nodes), sg.r_neigh, sg.dir) == expected
