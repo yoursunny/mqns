@@ -16,22 +16,31 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from typing import Final, Literal, final
+from typing import TYPE_CHECKING, Final, Literal, final
 
 from mqns.network.fw.message import SwapSequence
 from mqns.simulator import Time
+
+if TYPE_CHECKING:
+    from mqns.network.fw.forwarder import Forwarder
 
 
 @final
 class FibEntry:
     """FIB entry."""
 
-    __slots__ = ("req_id", "path_id", "route", "own_idx", "swap", "swap_cutoff", "purif", "sg")
+    __slots__ = ("req_id", "path_id", "active_until", "route", "own_idx", "swap", "swap_cutoff", "purif", "sg")
 
     req_id: Final[int]
     """Request identifier, identifies source-destination pair."""
     path_id: Final[int]
     """Path identifier, identifies end-to-end path."""
+
+    active_until: Time
+    """
+    Active period upper bound (exclusive), ``Time.MAX`` means no restriction.
+    This field becomes valid when the request is added to a network and a simulator is installed into the network.
+    """
 
     route: Final[Sequence[str]]
     """List of nodes traversed by the path."""
@@ -59,6 +68,7 @@ class FibEntry:
     ):
         self.req_id = req_id
         self.path_id = path_id
+        self.active_until = Time.MAX
         self.route = route
         self.own_idx = own_idx
         self.swap = swap
@@ -81,6 +91,12 @@ class FibEntry:
         without attempting entanglement swapping.
         """
         return self.swap[0] == 0 == self.swap[-1]
+
+    def is_active(self, t: Time) -> bool:
+        """
+        Determine if the time point ``t`` is within the FIB entry's active period.
+        """
+        return t < self.active_until
 
     def find_index_and_swap_rank(self, node_name: str) -> tuple[int, int]:
         """
@@ -267,6 +283,9 @@ class Fib:
         Value contains aggregated information.
         """
 
+    def install(self, fw: "Forwarder") -> None:
+        self.simulator = fw.simulator
+
     def get(self, path_id: int) -> FibEntry:
         """
         Retrieve an entry by path_id.
@@ -308,10 +327,26 @@ class Fib:
         if rg.remove(entry):
             del self.by_req_id[entry.req_id]
 
-    def find_request(self, predicate: Callable[[FibRequestGroup], bool]) -> Iterator[FibRequestGroup]:
+    def find_request(
+        self,
+        predicate: Callable[[FibRequestGroup], bool],
+        *,
+        has_active=False,
+    ) -> Iterator[FibRequestGroup]:
+        """
+        List ``FibRequestGroup`` satisfying a predicate.
+
+        Args:
+            predicate: Function to determine the condition.
+            has_active: Also require at least one FIB entry to be within the active period.
+        """
         for rg in self.by_req_id.values():
-            if predicate(rg):
+            if predicate(rg) and ((not has_active) or self._request_has_active(rg)):
                 yield rg
+
+    def _request_has_active(self, rg: FibRequestGroup) -> bool:
+        now = self.simulator.tc
+        return any(self.table[path_id].is_active(now) for path_id in rg.path_ids)
 
     def __repr__(self):
         """Return a string representation of the forwarding table."""

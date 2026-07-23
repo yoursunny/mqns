@@ -105,7 +105,7 @@ class SwapTask:
     lb_key = UNKNOWN
     """Qubit reservation key between ``sg.nodes[0]`` and ``sg.l_neigh``."""
     rb_key = UNKNOWN
-    """Qubit reservation key between ``sg.nodes[-1]`` and ``sg.l_neigh``."""
+    """Qubit reservation key between ``sg.nodes[-1]`` and ``sg.r_neigh``."""
 
     has_expire_event = False
     """Whether ``ForwarderSwapProc._u_expire_task`` is scheduled."""
@@ -462,8 +462,12 @@ class ForwarderSwapProc:
         task_saved = self._s_put_task(task, arms)
 
         # Schedule swap completion event.
+        # If the FIB entry is being uninstalled, swap delay is bypassed and local swap is deemed failed.
         now = self.simulator.tc
-        finish_time = now + self.delay.calculate()
+        if fib_entry.is_active(now):
+            finish_time = now + self.delay.calculate()
+        else:
+            finish_time = now
         self.simulator.add_event(
             func_to_event(finish_time, self._s_finish, arms, fib_entry, finish_time if self.error_at_finish else now, task)
         )
@@ -548,6 +552,10 @@ class ForwarderSwapProc:
                 phy.ch_index = fib_entry.own_idx - 1 + i
             phy_eprs.append(phy)
 
+        # If the FIB entry is being uninstalled, local swap is deemed failed.
+        if not fib_entry.is_active(self.simulator.tc):
+            phy_eprs.clear()
+
         # Attempt physical swap.
         new_epr, outcome_str, local_success = self._s_physical_swap(error_t, phy_eprs)
         log.debug(f"{self}: {outcome_str} rank={fib_entry.own_swap_rank} | {arms[0]} x {arms[1]} = {new_epr}")
@@ -566,14 +574,14 @@ class ForwarderSwapProc:
         log.debug(f"{self}: SWAP_FINISH {task} retrieved-from={task_from} saved-at={task_saved}")
         self._heralds(heralds)
 
-    def _s_physical_swap(self, swap_start: Time, phy_eprs: Sequence[Entanglement]) -> tuple[Entanglement | None, str, bool]:
+    def _s_physical_swap(self, error_t: Time, phy_eprs: Sequence[Entanglement]) -> tuple[Entanglement | None, str, bool]:
         # If either memory qubit has decohered, abort the swap.
         if len(phy_eprs) != 2:
             return None, "SWAP_ABORT", False
 
         # Attempt the physical swap.
-        # Memory error model is applied as of the swap start time.
-        new_epr, local_success = Entanglement.swap(*phy_eprs, now=swap_start, ps=self.ps, error=self.error)
+        # Memory error model is applied as of the specified time point.
+        new_epr, local_success = Entanglement.swap(*phy_eprs, now=error_t, ps=self.ps, error=self.error)
 
         # Update physical swap counters.
         if local_success:
@@ -772,7 +780,7 @@ class ForwarderSwapProc:
             return
         task.has_expire_event = True
         t = self.simulator.tc if not task.expiry else self.simulator.time(time_slot=task.expiry)
-        t += self.memory.t_decohere  # delay deletion so that incoming messages can be replied to
+        t += self.memory.t_cohere  # delay deletion so that incoming messages can be replied to
         self.simulator.add_event(SwapTaskExpireEvent(task, t=t))
 
     def _expire_task(self, event: SwapTaskExpireEvent):

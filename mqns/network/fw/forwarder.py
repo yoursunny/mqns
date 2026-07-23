@@ -44,7 +44,7 @@ from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
 from mqns.network.fw.select import SelectPurifQubit, call_select_purif_qubit
 from mqns.network.network import TimingPhase, TimingPhaseEvent
 from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
-from mqns.simulator import Time, event_handler
+from mqns.simulator import Time, event_handler, func_to_event
 from mqns.utils import json_encodable, log, unwrap_cast
 
 
@@ -183,8 +183,11 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
 
         self.cutoff.install(self)
         self.mux.install(self)
+        self.fib.install(self)
         self.purif.install(self)
         self.swap.install(self)
+
+        self._fib_erase_delay = self.simulator.time(time_slot=4 * self.memory.t_cohere.time_slot)
 
     @event_handler
     def handle_sync_phase(self, event: TimingPhaseEvent):
@@ -211,13 +214,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
 
     @fw_control_cmd_handler("INSTALL_PATH")
     def handle_install_path(self, msg: InstallPathMsg):
-        """
-        Process an INSTALL_PATH message from the controller.
-
-        1. Insert FIB entry.
-        2. Identify neighbors and qchannels.
-        3. Save the path and neighbors in the multiplexing scheme.
-        """
+        """Process an INSTALL_PATH message from the controller."""
         path_id = msg["path_id"]
         instructions = msg["instructions"]
         self.mux.validate_path_instructions(instructions)
@@ -257,19 +254,13 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
 
     @fw_control_cmd_handler("UNINSTALL_PATH")
     def handle_uninstall_path(self, msg: UninstallPathMsg):
-        """
-        Process an UNINSTALL_PATH message from the controller.
-
-        1. Insert FIB entry.
-        2. Identify neighbors and qchannels.
-        3. Save the path and neighbors in the multiplexing scheme.
-        4. Notify LinkLayer to start elementary EPR generation toward the right neighbor.
-        """
+        """Process an UNINSTALL_PATH message from the controller."""
         path_id = msg["path_id"]
 
         # retrieve and erase FIB entry
         fib_entry = self.fib.get(path_id)
-        self.fib.erase(path_id)
+        fib_entry.active_until = self.simulator.tc
+        self.simulator.add_event(func_to_event(fib_entry.active_until + self._fib_erase_delay, self.fib.erase, path_id))
 
         # identify left/right neighbors
         # disassociate path with qchannel and deallocate qubits
@@ -489,7 +480,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         """
         if fib_entry is None:
             src, dst = unwrap_cast(epr.src).name, unwrap_cast(epr.dst).name
-            for req in self.fib.find_request(lambda g: g.src == src and g.dst == dst):
+            for req in self.fib.find_request(lambda g: g.src == src and g.dst == dst, has_active=True):
                 req_id = req.req_id
                 break
             return False

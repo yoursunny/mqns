@@ -45,8 +45,8 @@ class Node(Entity):
     def __init__(self, name: str, *, apps: list[Application] | None = None):
         """
         Args:
-            name: node name.
-            apps: applications on the node.
+            name: Node name.
+            apps: Applications on the node.
         """
         super().__init__(name)
         self.cchannels: list["ClassicChannel"] = []
@@ -58,14 +58,11 @@ class Node(Entity):
 
     @override
     def install(self, simulator: Simulator) -> None:
-        """Called from Network.install()"""
+        """Attach ``Simulator`` to entities within node."""
         super().install(simulator)
-        # initiate sub-entities
-        from mqns.entity.cchannel import ClassicChannel  # noqa: PLC0415
+        self._install_channels(self.cchannels, self._cchannel_by_dst)
+        self._node_install()
 
-        self._install_channels(ClassicChannel, self.cchannels, self._cchannel_by_dst)
-
-        # initiate applications
         apps_by_type = defaultdict[type, list[Application]](lambda: [])
         for app in self.apps:
             apps_by_type[type(app)].append(app)
@@ -75,6 +72,9 @@ class Node(Entity):
         for typ, apps in apps_by_type.items():
             if len(apps) == 1:
                 self._app_by_type[typ] = apps[0]
+
+    def _node_install(self) -> None:
+        pass
 
     @override
     def handle(self, event: Event) -> None:
@@ -146,9 +146,8 @@ class Node(Entity):
         channel.node_list.append(self)
         channels.append(channel)
 
-    def _install_channels[C: "BaseChannel"](self, typ: type[C], channels: list[C], by_neighbor: dict["Node", C]) -> None:
+    def _install_channels[C: "BaseChannel"](self, channels: list[C], by_neighbor: dict["Node", C]) -> None:
         for ch in channels:
-            assert isinstance(ch, typ)
             for dst in ch.node_list:
                 if dst is not self:
                     by_neighbor[dst] = ch

@@ -152,14 +152,14 @@ class QuantumMemory(EventDispatcherMixin, Entity):
     def install(self, simulator: Simulator) -> None:
         super().install(simulator)
 
-        self.t_decohere = simulator.time(sec=self._t_cohere_input)
+        self.t_cohere = simulator.time(sec=self._t_cohere_input)
         """
         Memory decoherence time, often known as T2.
 
         Stored qubits trigger ``MemoryDecohereEvent`` at this timer.
         """
 
-        self.time_decay = parse_time_decay(self._time_decay_input, self.t_decohere)
+        self.time_decay = parse_time_decay(self._time_decay_input, self.t_cohere)
         """Time based decay function constructed from store error model."""
 
     @event_handler

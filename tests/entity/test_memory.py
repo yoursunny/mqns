@@ -33,7 +33,7 @@ class TwoNodes:
     def make_epr(self, name: str) -> WernerStateEntanglement:
         return WernerStateEntanglement(
             name=name,
-            decohere_time=self.s.tc + self.m1.t_decohere,
+            decohere_time=self.s.tc + self.m1.t_cohere,
             fidelity_time=self.s.tc,
             src=self.n1,
             dst=self.n2,

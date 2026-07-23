@@ -101,11 +101,11 @@ xfail_uninstall = pytest.mark.xfail(reason="UNINSTALL_PATH cleanup not implement
         pytest.param(1.2037, ([1.0000, 1.0010], [1.0000]), -1, {"A-B": 1}, id="purif-complete"),
         # 1. t=1.0010, A-B arrives, discard scheduled at 1.0050.
         # 2. t=1.0012, path is uninstalled.
-        pytest.param(1.0012, ([1.0000], []), 0.004, {}, id="cutoff-waiting", marks=xfail_uninstall),
+        pytest.param(1.0012, ([1.0000], []), 0.004, {}, id="cutoff-waiting"),
         # 1. t=1.0010, A-B arrives, discard scheduled at 1.0050.
         # 2. t=1.0050, B discards A-B and sends CUTOFF_DISCARD message to A, which would arrive at 1.0055.
         # 3. t=1.0052, path is uninstalled.
-        pytest.param(1.0052, ([1.0000], []), 0.004, {}, id="cutoff-inflight", marks=xfail_uninstall),
+        pytest.param(1.0052, ([1.0000], []), 0.004, {}, id="cutoff-inflight"),
         # 1. t=1.0010, A-B arrives, discard scheduled at 1.0050.
         # 2. t=1.0050, B discards A-B and sends CUTOFF_DISCARD message to A.
         # 3. t=1.0055, A processes CUTOFF_DISCARD MESSAGE.
@@ -114,12 +114,12 @@ xfail_uninstall = pytest.mark.xfail(reason="UNINSTALL_PATH cleanup not implement
         # 1. t=1.0010, A-B arrives.
         # 2. t=1.0110, B-C arrives, B starts swapping, which would finish at 1.2110.
         # 3. t=1.1000, path is uninstalled.
-        pytest.param(1.1000, ([1.0000], [1.0100]), -1, {}, id="swap-waiting", marks=xfail_uninstall),
+        pytest.param(1.1000, ([1.0000], [1.0100]), -1, {}, id="swap-waiting"),
         # 1. t=1.0010, A-B arrives.
         # 2. t=1.0110, B-C arrives, B starts swapping.
         # 3. t=1.2110, B finishes swapping and sends SWAP_UPDATE to A and C, which would arrive at 1.2115.
         # 4. t=1.2112, path is uninstalled.
-        pytest.param(1.2112, ([1.0000], [1.0100]), -1, {}, id="swap-inflight", marks=xfail_uninstall),
+        pytest.param(1.2112, ([1.0000], [1.0100]), -1, {}, id="swap-inflight"),
         # 1. t=1.0010, A-B arrives.
         # 2. t=1.0110, B-C arrives, B starts swapping.
         # 3. t=1.2110, B finishes swapping and sends SWAP_UPDATE to A and C.

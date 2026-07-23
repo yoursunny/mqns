@@ -352,7 +352,7 @@ def provide_entanglements(
 
         ll_key = _provide_entanglements_autoid()
         epr = src.network.epr_type(
-            decohere_time=t_creation + min(src.memory.t_decohere, dst.memory.t_decohere),
+            decohere_time=t_creation + min(src.memory.t_cohere, dst.memory.t_cohere),
             fidelity_time=t_creation,
             src=src.node,
             dst=dst.node,
