@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from collections.abc import Callable
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, override
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
@@ -10,7 +10,7 @@ from mqns.network.fw.fib import FibEntry
 from mqns.network.fw.message import PathInstructions, validate_path_instructions
 from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.select import MemoryEprIterator, MemoryEprTuple, call_select, select_random
-from mqns.utils import log
+from mqns.utils import log, unwrap_cast
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
@@ -120,7 +120,7 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
     def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibEntry | None:
         _ = epr, neighbor
         mq.state = QubitState.PURIF
-        return self.fib.get(cast(int, mq.path_id))
+        return self.fib.get(unwrap_cast(mq.path_id))
 
     @override
     def list_swap_candidates(self, mq0: MemoryQubit, fib_entry: FibEntry, input: MemoryEprIterator):

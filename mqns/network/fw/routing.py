@@ -9,7 +9,7 @@ from mqns.network.fw.message import MultiplexingVector, PathInstructions, valida
 from mqns.network.fw.swap_sequence import SwapSequenceInput, parse_swap_sequence
 from mqns.network.network import QuantumNetwork
 from mqns.simulator import Time
-from mqns.utils import log
+from mqns.utils import log, unwrap
 
 
 class QubitAllocationType(Enum):
@@ -208,8 +208,7 @@ class RoutingPathMulti(RoutingPath):
             m_v: MultiplexingVector = []
             for node_a, node_b in itertools.pairwise(route.nodes):
                 ch = net.get_qchannel(node_a.name, node_b.name)
-                shared = qchannel_use_count.get(ch.name)
-                assert shared is not None
+                shared = unwrap(qchannel_use_count.get(ch.name))
 
                 qubits_a = sum(1 for _ in node_a.memory.find(lambda *_: True, qchannel=ch))
                 qubits_b = sum(1 for _ in node_b.memory.find(lambda *_: True, qchannel=ch))

@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import cast, override
+from typing import override
 
 import numpy as np
 
@@ -10,7 +10,7 @@ from mqns.network.fw.fib import Fib, FibEntry
 from mqns.network.fw.mux_buffer_space import MuxSchemeFibBase
 from mqns.network.fw.mux_statistical import MuxSchemeDynamicBase
 from mqns.network.fw.select import MemoryEprIterator
-from mqns.utils import rng
+from mqns.utils import rng, unwrap_cast
 
 
 def _select_path_random(epr: Entanglement, fib: Fib, path_ids: list[int]) -> int:
@@ -82,7 +82,7 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
             # The necessary information could be carried in the reservation message.
             # For ease of implementation, this choice is made at either primary or secondary node,
             # whichever receives the EPR notification earlier.
-            selected_path = self._select_path(epr, self.fib, cast(list[int], mq.epr_path_ids))
+            selected_path = self._select_path(epr, self.fib, unwrap_cast(mq.epr_path_ids))
             fib_entry = selected_path if type(selected_path) is FibEntry else self.fib.get(selected_path)
             epr.affectionated_path_id = fib_entry.path_id
         else:
@@ -95,4 +95,4 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
     @override
     def list_swap_candidates(self, mq0: MemoryQubit, fib_entry: FibEntry, input: MemoryEprIterator):
         _ = mq0
-        return ((q, v) for (q, v) in input if fib_entry.path_id in cast(list[int], q.epr_path_ids))
+        return ((q, v) for (q, v) in input if fib_entry.path_id in unwrap_cast(q.epr_path_ids))

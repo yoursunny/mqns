@@ -23,7 +23,7 @@ from mqns.entity.qchannel import LinkArch, LinkArchDimBk, LinkArchSim, LinkArchS
 from mqns.network.builder import CTRL_DELAY, ChannelParam, NetworkBuilder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, unwrap
 
 from examples_common.plotting import Axes2D, mpl, plt, plt_save
 
@@ -148,8 +148,7 @@ def save_results(results: Any, *, save_json: str, save_plt: str):
         ax_fid.set_ylabel("Fidelity")
         ax_fid.grid(True, which="both", ls="--", lw=0.6, alpha=0.8)
 
-    assert ax_rate is not None
-    handles, labels = ax_rate.get_legend_handles_labels()
+    handles, labels = unwrap(ax_rate).get_legend_handles_labels()
     fig_combined.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, -0.02), ncol=len(channel_configs))
 
     fig_combined.tight_layout(rect=(0, 0, 1, 0.93))  # leave space for legend

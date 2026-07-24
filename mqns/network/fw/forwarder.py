@@ -45,7 +45,7 @@ from mqns.network.fw.select import SelectPurifQubit, call_select_purif_qubit
 from mqns.network.network import TimingPhase, TimingPhaseEvent
 from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
 from mqns.simulator import Time, event_handler
-from mqns.utils import json_encodable, log
+from mqns.utils import json_encodable, log, unwrap_cast
 
 
 class ForwarderInitKwargs(TypedDict, total=False):
@@ -398,7 +398,6 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
             partner: The node with which the qubit shares an EPR.
         """
         assert qubit.state is QubitState.PURIF, f"unexpected state {qubit.state}"
-        assert qubit.qchannel is not None
 
         own_idx, own_rank = fib_entry.own_idx, fib_entry.own_swap_rank
         partner_idx, partner_rank = fib_entry.find_index_and_swap_rank(partner.name)
@@ -487,9 +486,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         If the EPR matches an end-to-end request, inform ``Consumer`` to consume the EPR.
         """
         if fib_entry is None:
-            assert epr.src is not None
-            assert epr.dst is not None
-            src, dst = epr.src.name, epr.dst.name
+            src, dst = unwrap_cast(epr.src).name, unwrap_cast(epr.dst).name
             for req in self.fib.find_request(lambda g: g.src == src and g.dst == dst):
                 req_id = req.req_id
                 break

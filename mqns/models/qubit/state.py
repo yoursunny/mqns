@@ -3,14 +3,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from mqns.models.core import ATOL, Basis, MeasureOutcome, Operator, QubitRho, QubitState
-from mqns.models.core.state import (
-    QUBIT_STATE_0,
-    check_qubit_rho,
-    qubit_rho_remove,
-    qubit_rho_to_state,
-    qubit_state_to_rho,
-)
-from mqns.utils import rng
+from mqns.models.core.state import QUBIT_STATE_0, check_qubit_rho, qubit_rho_remove, qubit_rho_to_state, qubit_state_to_rho
+from mqns.utils import rng, unwrap
 
 if TYPE_CHECKING:
     from mqns.models.qubit.qubit import Qubit
@@ -49,8 +43,7 @@ class QState:
         self.qubits = qubits
         """List of qubits in this state."""
         if state is None:
-            assert rho is not None
-            self.rho = check_qubit_rho(rho, self.num)
+            self.rho = check_qubit_rho(unwrap(rho), self.num)
             """Density matrix."""
         else:
             self.rho = qubit_state_to_rho(state, self.num)

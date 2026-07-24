@@ -4,11 +4,9 @@ Test suite for ProactiveForwarder focused on swapping.
 
 import itertools
 from collections.abc import Sequence
-from typing import cast
 
 import pytest
 
-from mqns.entity.node import QNode
 from mqns.entity.timer import Timer
 from mqns.models.delay import ConstantDelayModel
 from mqns.models.epr import Entanglement, MixedStateEntanglement
@@ -27,6 +25,7 @@ from mqns.network.network import TimingModeSync
 from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import Consumer, RequestCounters
 from mqns.simulator import func_to_event
+from mqns.utils import unwrap, unwrap_cast
 
 from .fw_common import (
     QubitReleaseReset,
@@ -668,8 +667,7 @@ def test_tree2_statistical(
             chosen = next((mt1 for mt1 in candidates if mt1[1].dst is partner.node), None)
         else:
             raise RuntimeError()
-        assert chosen is not None
-        return chosen
+        return unwrap(chosen)
 
     def select_path(candidates: list[int], fw: Forwarder, epr0: Entanglement, epr1: Entanglement) -> int:
         _ = fw, epr0, epr1
@@ -758,9 +756,8 @@ def test_tree3_statistical(
     def select_qubit(candidates: list[MemoryEprTuple], fw: Forwarder, mt0: MemoryEprTuple) -> MemoryEprTuple:
         _ = mt0
         partner = selected_qubit[fw.node.name]
-        chosen = next((mt1 for mt1 in candidates if partner in (cast(QNode, mt1[1].src).name, cast(QNode, mt1[1].dst).name)))
-        assert chosen is not None
-        return chosen
+        chosen = next((mt1 for mt1 in candidates if partner in (unwrap_cast(mt1[1].src).name, unwrap_cast(mt1[1].dst).name)))
+        return unwrap(chosen)
 
     def select_path(candidates: list[int], fw: Forwarder, epr0: Entanglement, epr1: Entanglement) -> int:
         _ = candidates, epr0, epr1

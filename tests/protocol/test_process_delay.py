@@ -1,4 +1,4 @@
-from typing import cast, final, override
+from typing import final, override
 
 from mqns.entity.node import Application, Node
 from mqns.network.protocol.node_process_delay import NodeProcessDelayApp
@@ -30,7 +30,7 @@ class ProcessApp(Application[Node]):
     def EventHandler(self, event: ProcessEvent) -> bool | None:
         expected_recv_time = [i + 0.5 for i in range(0, 10)]
         print(f"recv event at {event.t}")
-        assert cast(Time, event.t).sec in expected_recv_time
+        assert event.t.sec in expected_recv_time
 
 
 def test_process_delay():

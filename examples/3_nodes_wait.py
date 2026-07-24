@@ -51,7 +51,7 @@ from mqns.network.fw import CutoffSchemeWaitTime
 from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
-from mqns.utils import json_default, log, rng
+from mqns.utils import json_default, log, rng, unwrap
 
 from examples_common.plotting import Axes, Axes1D, SubFigure, SubFigure1D, plt, plt_save
 
@@ -128,9 +128,7 @@ def run_simulation(seed: int, args: Args, t_cohere: float, t_wait: float):
     req_cnt = RequestCounters.of(net, 0, "S-D")
     rate = req_cnt.get_rate(args.sim_duration)
     discard = fwR.cnt.n_cutoff[0] / args.sim_duration
-    assert req_cnt.consumed_fidelity_values is not None
-    assert waitR.cnt.wait_values is not None
-    return [rate], [discard], req_cnt.consumed_fidelity_values, waitR.cnt.wait_values
+    return [rate], [discard], unwrap(req_cnt.consumed_fidelity_values), unwrap(waitR.cnt.wait_values)
 
 
 class Stats(TypedDict):

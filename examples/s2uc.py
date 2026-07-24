@@ -18,7 +18,7 @@ from mqns.models.epr import MixedStateEntanglement
 from mqns.network.builder import CTRL_DELAY, ChannelParam, NetworkBuilder, NodeDef, tap_configure
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, unwrap
 
 log.set_default_level("CRITICAL")
 
@@ -121,10 +121,9 @@ def run_simulation(seed: int, args: Args, ri: RowInput) -> Stats:
     s.run()
 
     req_cnt = RequestCounters.of(net, 0, "S-D")
-    assert req_cnt.consumed_fidelity_values is not None
     return Stats(
         count=req_cnt.n_consumed,
-        fid=req_cnt.consumed_fidelity_values,
+        fid=unwrap(req_cnt.consumed_fidelity_values),
     )
 
 
