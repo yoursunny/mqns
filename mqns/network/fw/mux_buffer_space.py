@@ -1,6 +1,5 @@
 from abc import abstractmethod
-from collections.abc import Callable
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, Protocol, override
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
@@ -9,17 +8,56 @@ from mqns.models.epr import Entanglement
 from mqns.network.fw.fib import FibEntry
 from mqns.network.fw.message import PathInstructions, validate_path_instructions
 from mqns.network.fw.mux import MuxScheme
-from mqns.network.fw.select import MemoryEprIterator, MemoryEprTuple, call_select, select_random
-from mqns.utils import log
+from mqns.network.fw.select import (
+    MemoryEprIterator,
+    MemoryEprTuple,
+    call_select,
+    select_random,
+    select_swap_qubit_newest,
+    select_swap_qubit_oldest,
+)
+from mqns.utils import log, unwrap_cast
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
 
 
 class MuxSchemeFibBase(MuxScheme):
-    type SelectSwapQubit = Callable[[list[MemoryEprTuple], "Forwarder", MemoryEprTuple, FibEntry], MemoryEprTuple]
+    class SelectSwapQubit(Protocol):
+        """
+        Function to select a preferred swap candidate.
+
+        When qubit ``mq0`` on channel ``ch0`` becomes ELIGIBLE and the forwarder decides to swap it with a qubit from ``ch1``,
+        but there are multiple candidate qubits from ``ch1``, this function is called to select a qubit.
+        """
+
+        def __call__(
+            self, candidates: list[MemoryEprTuple], fw: "Forwarder", mq0: MemoryEprTuple, fib_entry: FibEntry, /
+        ) -> MemoryEprTuple:
+            """
+            Args:
+                candidates: List of qubits from ``ch1``, guaranteed to have two or more items.
+                fw: The forwarder instance.
+                mq0: The qubit from ``ch0``.
+                fib_entry: The FIB entry.
+
+            Returns:
+                One item from ``candidates``.
+            """
+            ...
 
     SelectSwapQubit_random: SelectSwapQubit = select_random
+    """
+    Select a random qubit among the candidates, following uniform distribution.
+    """
+    SelectSwapQubit_oldest: SelectSwapQubit = select_swap_qubit_oldest
+    """
+    Select the qubit that becomes ELIGIBLE in this forwarder the earliest, i.e. First-In-First-Out (FIFO).
+    """
+    SelectSwapQubit_newest: SelectSwapQubit = select_swap_qubit_newest
+    """
+    Select the qubit that becomes ELIGIBLE in this forwarder the latest, i.e. Last-In-First-Out (LIFO).
+    """
 
     def __init__(self, name: str, select_swap_qubit: SelectSwapQubit | None):
         super().__init__(name)
@@ -120,7 +158,7 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
     def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibEntry | None:
         _ = epr, neighbor
         mq.state = QubitState.PURIF
-        return self.fib.get(cast(int, mq.path_id))
+        return self.fib.get(unwrap_cast(mq.path_id))
 
     @override
     def list_swap_candidates(self, mq0: MemoryQubit, fib_entry: FibEntry, input: MemoryEprIterator):

@@ -47,7 +47,7 @@ class Event(ABC):
         return f"{type(self).__name__}({self.name or ''})"
 
 
-class WrapperEvent(Event):
+class _WrapperEvent(Event):
     def __init__(self, t: Time, fn: Callable, args: Any, kwargs: Any):
         super().__init__(t)
         self.fn = fn
@@ -58,19 +58,24 @@ class WrapperEvent(Event):
     def invoke(self) -> None:
         self.fn(*self.args, **self.kwargs)
 
+    @override
+    def __repr__(self):
+        if self.name is None:
+            return f"func_to_event({self.t}, {self.fn}, {self.args}, {self.kwargs})"
+        return super().__repr__()
+
 
 def func_to_event(t: Time, fn: Callable, *args, **kwargs):
     """
     Convert a function to an event, the function ``fn`` will be called at ``t``.
-    It is a simple method to wrap a function to an event.
 
     Args:
-        t: timestamp to call the function.
-        fn: the function.
-        *args: the function's positional parameters.
-        **kwargs: the function's keyword parameters.
+        t: Timestamp to call the function.
+        fn: The function.
+        *args: Positional parameters passed to ``fn``.
+        **kwargs: Keyword parameters passed to ``fn``.
     """
-    return WrapperEvent(t, fn, args, kwargs)
+    return _WrapperEvent(t, fn, args, kwargs)
 
 
 class EventHandleSet:

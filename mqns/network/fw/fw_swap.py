@@ -1,6 +1,5 @@
 from collections.abc import Iterable, MutableSequence, Sequence
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, cast, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, cast, override
 
 from mqns.entity.memory import MemoryQubit, QuantumMemory, QubitState
 from mqns.entity.node import Application, QNode
@@ -13,7 +12,7 @@ from mqns.network.fw.message import SwapUpdateMsg
 from mqns.network.fw.mux import MuxScheme
 from mqns.network.network import QuantumNetwork
 from mqns.simulator import Event, Simulator, Time, func_to_event
-from mqns.utils import log
+from mqns.utils import log, unwrap_cast
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
@@ -30,8 +29,7 @@ def _qubit_key(mq: MemoryQubit) -> str:
     return mq.key
 
 
-@dataclass
-class SwapArm:
+class SwapArm(NamedTuple):
     mq: MemoryQubit
     """Local qubit entangled with partner."""
     o_key: str
@@ -43,9 +41,8 @@ class SwapArm:
         return f"SwapArm(qubit={self.mq.addr}, o-key={self.o_key}, p-key={self.p_key})"
 
 
-@dataclass
-class SwapHerald:
-    """Herelading instruction."""
+class SwapHerald(NamedTuple):
+    """Heralding instruction."""
 
     su: SwapUpdateMsg
     """
@@ -55,7 +52,7 @@ class SwapHerald:
     """
     dest: str
     """Destination node name."""
-    paths: list[int]
+    paths: Sequence[int]
     """Possible path IDs for classical signaling, must be non-empty."""
 
 
@@ -115,6 +112,7 @@ class SwapTask:
 
     def __init__(self, proc: "ForwarderSwapProc", fib_entry: FibEntry):
         self.proc = proc
+        assert fib_entry.sg
         self.sg = fib_entry.sg
 
     def begin_local_swap(self, la: SwapArm, ra: SwapArm) -> None:
@@ -127,8 +125,8 @@ class SwapTask:
         """
 
         self.o_started = True
-        self.lc_paths = cast(list[int], la.mq.epr_path_ids)
-        self.rc_paths = cast(list[int], ra.mq.epr_path_ids)
+        self.lc_paths = unwrap_cast(la.mq.epr_path_ids)
+        self.rc_paths = unwrap_cast(ra.mq.epr_path_ids)
         self.q_paths = _intersect_path_ids(self.q_paths, self.lc_paths)
         self.q_paths = _intersect_path_ids(self.q_paths, self.rc_paths)
 
@@ -227,7 +225,9 @@ class SwapTask:
         if not self.q_paths or self.sg.path_id in self.q_paths:
             return
 
-        self.sg = self.proc.fw.fib.get(self.q_paths[0]).sg
+        fib_entry = self.proc.fw.fib.get(self.q_paths[0])
+        assert fib_entry.sg
+        self.sg = fib_entry.sg
 
     def _check_triggers(self) -> list[SwapHerald]:
         sg = self.sg
@@ -251,7 +251,7 @@ class SwapTask:
                 l_node=sg.l_adj,
                 l_key=self.lb_key if sg.l_most else self.la_key,
             )
-            heralds.append(SwapHerald(su, sg.l_adj, cast(list[int], self.lc_paths)))
+            heralds.append(SwapHerald(su, sg.l_adj, unwrap_cast(self.lc_paths)))
             self.l_sent = True
 
         if not self.r_sent and (
@@ -262,7 +262,7 @@ class SwapTask:
                 r_node=sg.r_adj,
                 r_key=self.rb_key if sg.r_most else self.ra_key,
             )
-            heralds.append(SwapHerald(su, sg.r_adj, cast(list[int], self.rc_paths)))
+            heralds.append(SwapHerald(su, sg.r_adj, unwrap_cast(self.rc_paths)))
             self.r_sent = True
 
         return heralds
@@ -278,9 +278,9 @@ class SwapTask:
             r_node=self.UNKNOWN if spoiled else sg.r_neigh,
             l_key=self.UNKNOWN if spoiled else self.lb_key,
             r_key=self.UNKNOWN if spoiled else self.rb_key,
-            expiry=cast(int, self.expiry),
+            expiry=unwrap_cast(self.expiry),
             # .q_paths is set in .begin_local_swap(), which is a prerequisite of .o_started and .o_complete
-            q_paths=cast(list[int], self.q_paths),
+            q_paths=unwrap_cast(self.q_paths),
         )
 
     def __repr__(self) -> str:
@@ -410,7 +410,7 @@ class ForwarderSwapProc:
         """
         Called by forwarder before releasing a qubit due to decoherence or CutOffScheme.
         """
-        key = cast(str, mq.key)
+        key = unwrap_cast(mq.key)
         deleted_from: list[str] = []
         if epr := self.remote_swapped.pop(key, None):
             epr.is_decohered = True
@@ -693,11 +693,11 @@ class ForwarderSwapProc:
         # Having parallel swap at any higher rank would break the assertion, because the physical EPR
         # may have been swapped by a peer when own node processes SWAP_UPDATE.
         if swapper_idx < fib_entry.own_idx:
-            assert (partner := cast(QNode, new_phy.src)).name == msg["l_node"]
+            assert (partner := unwrap_cast(new_phy.src)).name == msg["l_node"]
             assert new_phy.dst is self.node
             p_key = msg["l_key"]
         else:
-            assert (partner := cast(QNode, new_phy.dst)).name == msg["r_node"]
+            assert (partner := unwrap_cast(new_phy.dst)).name == msg["r_node"]
             assert new_phy.src is self.node
             p_key = msg["r_key"]
 
@@ -707,7 +707,7 @@ class ForwarderSwapProc:
 
         self.fw.cnt.n_su_lower[0] += 1
         log.debug(
-            f"{self}: segment {cast(QNode, new_phy.src).name}-{cast(QNode, new_phy.dst).name} "
+            f"{self}: segment {unwrap_cast(new_phy.src).name}-{unwrap_cast(new_phy.dst).name} "
             f"swap completed for rank {swapper_rank}"
         )
 

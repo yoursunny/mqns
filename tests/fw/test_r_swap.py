@@ -2,8 +2,8 @@
 Test suite for ReactiveForwarder focused on swapping.
 """
 
+import itertools
 from collections import defaultdict
-from itertools import pairwise
 
 import pytest
 
@@ -51,7 +51,7 @@ def test_tree2_one():
     net, simulator = build_tree_network(
         2,
         mode="R",
-        qchannel_capacity=2,
+        ch_capacity=2,
         ctrl=ctrl,
         fw={"p_swap": 1.0},
         end_time=0.020,
@@ -87,7 +87,7 @@ def test_tree2_two():
     net, simulator = build_tree_network(
         2,
         mode="R",
-        qchannel_capacity=4,
+        ch_capacity=4,
         ctrl=ctrl,
         fw={"p_swap": 1.0},
         end_time=0.020,
@@ -109,7 +109,7 @@ def test_tree2_two():
                     route,
                     req_id=1 + i,
                     swap=[2, 0, 1, 0, 2],
-                    m_v=[qubits_by_channel[f"{a}{b}"].pop() for a, b in pairwise(route)],
+                    m_v=[qubits_by_channel[f"{a}{b}"].pop() for a, b in itertools.pairwise(route)],
                 )
             )
 
@@ -158,7 +158,7 @@ def test_3_minimal(req_active: tuple[float, float], etgAB: list[float], etgBC: l
     """Test 3-node minimal swap, two time slots."""
     net, simulator = build_linear_network(
         3,
-        qchannel_capacity=2,
+        ch_capacity=2,
         mode="R",
         fw={"p_swap": 1.0},
         end_time=0.020,
@@ -167,12 +167,7 @@ def test_3_minimal(req_active: tuple[float, float], etgAB: list[float], etgBC: l
     ctrl = net.get_controller().get_app(ReactiveRoutingController)
     fwA, fwB, fwC = (node.get_app(ReactiveForwarder) for node in net.nodes)
 
-    net.add_request(
-        Request(
-            "A-C",
-            active_period=(simulator.time(sec=req_active[0]), simulator.time(sec=req_active[1])),
-        ).path(req_id=1)
-    )
+    net.add_request(Request("A-C", active_period=req_active).path(req_id=1))
     provide_entanglements(
         *((t, fwA, fwB) for t in etgAB),
         *((t, fwB, fwC) for t in etgBC),

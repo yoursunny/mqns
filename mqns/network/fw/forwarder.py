@@ -45,7 +45,7 @@ from mqns.network.fw.select import SelectPurifQubit, call_select_purif_qubit
 from mqns.network.network import TimingPhase, TimingPhaseEvent
 from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
 from mqns.simulator import Time, event_handler
-from mqns.utils import json_encodable, log
+from mqns.utils import json_encodable, log, unwrap_cast
 
 
 class ForwarderInitKwargs(TypedDict, total=False):
@@ -229,8 +229,8 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         else:
             swap_cutoff: list[Time | None] = [None] * (2 * (len(route) - 2))
         fib_entry = FibEntry(
-            path_id=path_id,
             req_id=instructions["req_id"],
+            path_id=path_id,
             route=route,
             own_idx=route.index(self.node.name),
             swap=instructions["swap"],
@@ -398,7 +398,6 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
             partner: The node with which the qubit shares an EPR.
         """
         assert qubit.state is QubitState.PURIF, f"unexpected state {qubit.state}"
-        assert qubit.qchannel is not None
 
         own_idx, own_rank = fib_entry.own_idx, fib_entry.own_swap_rank
         partner_idx, partner_rank = fib_entry.find_index_and_swap_rank(partner.name)
@@ -414,8 +413,6 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         )
 
         if qubit.purif_rounds == want_rounds:
-            self.cnt.n_eligible += 1
-            qubit.purif_rounds = 0
             qubit.state = QubitState.ELIGIBLE
             self.qubit_is_eligible(qubit, fib_entry)
             return
@@ -460,6 +457,10 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
             fib_entry: FIB entry (not available with MuxSchemeStatistical).
         """
         assert qubit.state is QubitState.ELIGIBLE, f"unexpected state {qubit.state}"
+        self.cnt.n_eligible += 1
+        qubit.purif_rounds = 0
+        qubit.eligible_time = self.simulator.tc
+
         if not self.node.timing.is_internal():
             log.debug(f"{self}: INT phase is over -> stop swaps")
             return
@@ -480,16 +481,14 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
             self.cutoff.before_swap(qubit, mq1, fib_entry)
             self.swap.start(qubit, mq1, fib_entry)
         else:
-            self.cutoff.before_store_eligible(qubit, PathDirection.L if epr.src is self.node else PathDirection.R, fib_entry)
+            self.cutoff.before_store_eligible(qubit, PathDirection.L if epr.dst is self.node else PathDirection.R, fib_entry)
 
     def _try_consume(self, qubit: MemoryQubit, epr: Entanglement, fib_entry: FibEntry | None) -> bool:
         """
         If the EPR matches an end-to-end request, inform ``Consumer`` to consume the EPR.
         """
         if fib_entry is None:
-            assert epr.src is not None
-            assert epr.dst is not None
-            src, dst = epr.src.name, epr.dst.name
+            src, dst = unwrap_cast(epr.src).name, unwrap_cast(epr.dst).name
             for req in self.fib.find_request(lambda g: g.src == src and g.dst == dst):
                 req_id = req.req_id
                 break

@@ -1,15 +1,15 @@
+import itertools
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Iterator, Mapping, Sequence
 from enum import Enum, auto
-from itertools import pairwise
 from typing import TypedDict, Unpack, override
 
 from mqns.network.fw.message import MultiplexingVector, PathInstructions, validate_path_instructions
 from mqns.network.fw.swap_sequence import SwapSequenceInput, parse_swap_sequence
 from mqns.network.network import QuantumNetwork
 from mqns.simulator import Time
-from mqns.utils import log
+from mqns.utils import log, unwrap
 
 
 class QubitAllocationType(Enum):
@@ -194,7 +194,7 @@ class RoutingPathMulti(RoutingPath):
         # Count usage of each quantum channel across all paths
         qchannel_use_count = defaultdict[str, int](lambda: 0)
         for route in routes:
-            for name_a, name_b in pairwise(route.path):
+            for name_a, name_b in itertools.pairwise(route.path):
                 ch = net.get_qchannel(name_a, name_b)
                 qchannel_use_count[ch.name] += 1
 
@@ -206,10 +206,9 @@ class RoutingPathMulti(RoutingPath):
             # Compute buffer-space multiplexing vector as pairs of (qubits_at_node_i, qubits_at_node_i+1)
             # The qubits are divided among all paths that share the qchannel
             m_v: MultiplexingVector = []
-            for node_a, node_b in pairwise(route.nodes):
+            for node_a, node_b in itertools.pairwise(route.nodes):
                 ch = net.get_qchannel(node_a.name, node_b.name)
-                shared = qchannel_use_count.get(ch.name)
-                assert shared is not None
+                shared = unwrap(qchannel_use_count.get(ch.name))
 
                 qubits_a = sum(1 for _ in node_a.memory.find(lambda *_: True, qchannel=ch))
                 qubits_b = sum(1 for _ in node_b.memory.find(lambda *_: True, qchannel=ch))

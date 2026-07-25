@@ -75,3 +75,11 @@ def select_purif_qubit_random(
 ) -> MemoryEprTuple:
     _ = qubit, fib_entry, partner
     return candidates[rng.choice(len(candidates))]
+
+
+def select_swap_qubit_oldest(candidates: list[MemoryEprTuple], *_) -> MemoryEprTuple:
+    return min(candidates, key=lambda c: c[0].eligible_time)
+
+
+def select_swap_qubit_newest(candidates: list[MemoryEprTuple], *_) -> MemoryEprTuple:
+    return max(candidates, key=lambda c: c[0].eligible_time)

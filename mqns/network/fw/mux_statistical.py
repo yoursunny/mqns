@@ -1,6 +1,6 @@
 from collections import defaultdict
 from collections.abc import Callable
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, override
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
@@ -9,7 +9,15 @@ from mqns.models.epr import Entanglement
 from mqns.network.fw.fib import FibEntry
 from mqns.network.fw.message import PathInstructions, validate_path_instructions
 from mqns.network.fw.mux import MuxScheme
-from mqns.network.fw.select import MemoryEprIterator, MemoryEprTuple, call_select, select_random
+from mqns.network.fw.select import (
+    MemoryEprIterator,
+    MemoryEprTuple,
+    call_select,
+    select_random,
+    select_swap_qubit_newest,
+    select_swap_qubit_oldest,
+)
+from mqns.utils import unwrap_cast
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
@@ -78,6 +86,8 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
     type SelectSwapQubit = Callable[[list[MemoryEprTuple], "Forwarder", MemoryEprTuple], MemoryEprTuple]
 
     SelectSwapQubit_random: SelectSwapQubit = select_random
+    SelectSwapQubit_oldest: SelectSwapQubit = select_swap_qubit_oldest
+    SelectSwapQubit_newest: SelectSwapQubit = select_swap_qubit_newest
 
     type SelectPath = Callable[[list[int], "Forwarder", Entanglement, Entanglement], int | FibEntry]
 
@@ -123,7 +133,7 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
     @override
     def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibEntry | None:
         if self.coordinated_decisions and epr.affectionated_path_id >= 0:
-            assert epr.affectionated_path_id in cast(list[int], mq.epr_path_ids)
+            assert epr.affectionated_path_id in unwrap_cast(mq.epr_path_ids)
             mq.epr_path_ids = [epr.affectionated_path_id]
 
         def calc_rank_diff(path_id: int):
@@ -131,7 +141,7 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
             _, p_rank = fib_entry.find_index_and_swap_rank(neighbor.name)
             return fib_entry.own_swap_rank - p_rank
 
-        rank_diff = [calc_rank_diff(path_id) for path_id in cast(list[int], mq.epr_path_ids)]
+        rank_diff = [calc_rank_diff(path_id) for path_id in unwrap_cast(mq.epr_path_ids)]
         assert min(rank_diff) == max(rank_diff)  # failure means one node is both repeater and end node, unsupported
         if rank_diff[0] > 0:
             # Own node has higher rank and cannot initiate swap; qubit stays in ENTANGLED1 state.
@@ -147,7 +157,7 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
     def find_swap_candidate(
         self, mq0: MemoryQubit, epr0: Entanglement, fib_entry: FibEntry | None, input: MemoryEprIterator
     ) -> tuple[MemoryQubit, FibEntry] | None:
-        mq0_path_ids = set(cast(list[int], mq0.epr_path_ids))
+        mq0_path_ids = set(unwrap_cast(mq0.epr_path_ids))
 
         # Find another qubit to swap with.
         # The qubit must have overlapping epr_path_ids so that there would be one or more viable paths.
@@ -156,7 +166,7 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
             (
                 (q, v)
                 for (q, v) in input
-                if not mq0_path_ids.isdisjoint(cast(list[int], q.epr_path_ids))  # has overlapping epr_path_ids
+                if not mq0_path_ids.isdisjoint(unwrap_cast(q.epr_path_ids))  # has overlapping epr_path_ids
                 and (not self.coordinated_decisions or v.affectionated_path_id < 0 or v.affectionated_path_id in mq0_path_ids)
             ),
             self._select_swap_qubit,
@@ -171,13 +181,13 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         # Select a FIB entry to guide swap updates initially, but the ForwarderSwapProc could pivot as needed.
         # In coordinated_decision mode, the chosen FIB entry is locked onto EPRs and visible to other nodes.
         selected_path = call_select(
-            sorted(mq0_path_ids.intersection(cast(list[int], mq1.epr_path_ids))),
+            sorted(mq0_path_ids.intersection(unwrap_cast(mq1.epr_path_ids))),
             self._select_path,
             self.fw,
             epr0,
             epr1,
         )
-        assert selected_path is not None
+        assert selected_path is not None, "select_path did not find path"
         fib_entry = selected_path if type(selected_path) is FibEntry else self.fib.get(selected_path)
         if self.coordinated_decisions:
             epr0.affectionated_path_id = epr1.affectionated_path_id = fib_entry.path_id

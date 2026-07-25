@@ -146,16 +146,18 @@ class Simulator:
         self._pool.start()
         trs = time.time()
 
+        self._current_event: Event | None = None
         try:
             if profile:
                 profile.runcall(self._run)
             else:
                 self._run()
         except Exception as e:
-            log.error(f"Simulator exception {type(e)} occurred: {e}")
+            log.error(f"Simulator exception {type(e).__name__} occurred during {self._current_event}: {e}")
             raise RuntimeError(f"simulation aborted at [{self.tc}] by exception: {e}") from e
         finally:
             self.stop()  # ensure s.running is False
+            del self._current_event
 
         tre = time.time()
         self.time_spend = tre - trs
@@ -173,7 +175,7 @@ class Simulator:
         __tracebackhide__ = self._run_tracebackhide
 
         while self._pool.running:
-            event = self._pool.pop()
+            self._current_event = event = self._pool.pop()
 
             if event is None:
                 # simulator stopped or finite end time reached

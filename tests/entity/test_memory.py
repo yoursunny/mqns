@@ -14,6 +14,7 @@ from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import WernerStateEntanglement
 from mqns.models.qubit import Qubit
 from mqns.simulator import Simulator, event_handler
+from mqns.utils import unwrap
 
 
 class TwoNodes:
@@ -55,8 +56,7 @@ def test_write_and_read_with_path_and_key():
 
     # Now write with path_id and key
     qubit = mem.write(key, epr1)
-    assert qubit is not None
-    assert qubit.addr == addr
+    assert unwrap(qubit).addr == addr
 
     # Should fail to write another one in the same slot
     epr2 = scenario.make_epr("epr2")
@@ -204,9 +204,8 @@ def test_memory_async_qubit():
             print("self.simulator.tc.sec: {}".format(self.simulator.tc))
             print("result: {}".format(result))
             assert self.simulator.tc.sec == pytest.approx(1.5)
-            assert result is not None
 
-            qubit, data = result
+            qubit, data = unwrap(result)
             assert qubit.addr == 0
             assert isinstance(data, Qubit)
 
@@ -218,9 +217,8 @@ def test_memory_async_qubit():
             print("self.simulator.tc.sec: {}".format(self.simulator.tc))
             print("result: {}".format(result))
             assert self.simulator.tc.sec == pytest.approx(0.5)
-            assert result is not None
 
-            assert result.addr == 0
+            assert unwrap(result).addr == 0
 
     n1 = QNode("n1")
     app = MemoryReadResponseApp()

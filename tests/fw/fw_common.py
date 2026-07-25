@@ -1,8 +1,9 @@
 import copy
 import functools
+import itertools
+import os
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping
-from itertools import pairwise
 from typing import Literal, TypedDict, Unpack, override
 
 import pytest
@@ -23,7 +24,28 @@ from mqns.network.reactive import ReactiveForwarder, ReactiveRoutingController
 from mqns.network.route import RouteAlgorithm, YenRouteAlgorithm
 from mqns.network.topology import ClassicTopology, GridTopology, LinearTopology, Topology, TopologyInitKwargs, TreeTopology
 from mqns.simulator import Event, Simulator, Time, func_to_event
-from mqns.utils import AutoIncrementIdentifier, log
+from mqns.utils import AutoIncrementIdentifier, log, rng
+
+next_seed: list[int] = []
+"""
+If this contains an integer, ``build_*_network`` functions adopt the specified random seed.
+This enables detecting seed-specific test failures.
+
+The first seed is set with MQNS_TESTFW_SEED environment variable.
+Subsequent seeds are auto-incremented.
+The actual seed value is printed during test setup.
+
+To run a test case repeatedly with increasing seeds:
+
+    MQNS_TESTFW_SEED=0 pytest test_file.py::test_case --count=100 -x
+
+To run a test case with a specific seed:
+
+    MQNS_TESTFW_SEED=47 pytest test_file.py::test_case
+"""
+if _next_seed_env := os.getenv("MQNS_TESTFW_SEED"):
+    next_seed.append(int(_next_seed_env))
+del _next_seed_env
 
 
 class QubitReleaseReset(Application[QNode]):
@@ -79,7 +101,7 @@ dflt_cchannel_args = ClassicChannelInitKwargs(
 class BuildNetworkArgs(TypedDict, total=False):
     mode: Literal["P", "R"]
     t_cohere: float  # memory dephasing time, defaults to 5.0 seconds
-    qchannel_capacity: int  # quantum channel capacity, defaults to 1
+    ch_capacity: int  # quantum channel capacity, defaults to 1
     qchannel_args: QuantumChannelInitKwargs
     cchannel_args: ClassicChannelInitKwargs
     ctrl: RoutingController  # replacing controller application
@@ -108,7 +130,7 @@ def _make_topo_args(d: BuildNetworkArgs, *, memory_capacity_factor: int) -> Topo
 
     nodes_apps.append(Consumer())
 
-    qchannel_capacity = d.get("qchannel_capacity", 1)
+    ch_capacity = d.get("ch_capacity", 1)
     return TopologyInitKwargs(
         nodes_naming="A",
         nodes_apps=nodes_apps,
@@ -116,7 +138,7 @@ def _make_topo_args(d: BuildNetworkArgs, *, memory_capacity_factor: int) -> Topo
         cchannel_args=d.get("cchannel_args", dflt_cchannel_args),
         memory_args={
             "t_cohere": d.get("t_cohere", 5.0),
-            "capacity": memory_capacity_factor * qchannel_capacity,
+            "capacity": memory_capacity_factor * ch_capacity,
         },
     )
 
@@ -127,9 +149,14 @@ def _build_network_finish(
     *,
     route: RouteAlgorithm | None = None,
 ):
+    if next_seed:
+        rng.reseed(next_seed[0])
+        print(f"MQNS_TESTFW_SEED={next_seed[0]}")
+        next_seed[0] += 1
+
     ForwarderSwapProc.table_leak_tol = d.get("swap_table_leak_tol", 0)
 
-    qchannel_capacity = d.get("qchannel_capacity", 1)
+    ch_capacity = d.get("ch_capacity", 1)
 
     if (ctrl := d.get("ctrl")) is None:
         match d.get("mode", "P"):
@@ -147,7 +174,7 @@ def _build_network_finish(
         epr_type=d.get("epr_type", WernerStateEntanglement),
     )
     for qchannel in net.qchannels:
-        qchannel.assign_memory_qubits(capacity=qchannel_capacity)
+        qchannel.assign_memory_qubits(capacity=ch_capacity)
     topo.connect_controller(net.nodes)
 
     simulator = Simulator(0.0, d.get("end_time", 10.0), install_to=(log, net))
@@ -281,14 +308,10 @@ def install_path(
     """
     Install and/or uninstall a routing path at specific times.
     """
-    simulator = net.simulator
     net.add_request(
         Request(
             (rp.src, rp.dst),
-            active_period=(
-                Time.SENTINEL if t_install is None else simulator.time(sec=t_install),
-                Time.SENTINEL if t_uninstall is None else simulator.time(sec=t_uninstall),
-            ),
+            active_period=(Time.MIN if t_install is None else t_install, Time.MAX if t_uninstall is None else t_uninstall),
         ).path(rp)
     )
     return rp
@@ -357,7 +380,7 @@ def provide_entanglements(
             sched_entangle(*etg)
         else:
             times, fws = etg
-            for t, (src, dst) in zip(times, pairwise(fws), strict=True):
+            for t, (src, dst) in zip(times, itertools.pairwise(fws), strict=True):
                 sched_entangle(t, src, dst)
 
 

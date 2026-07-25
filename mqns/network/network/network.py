@@ -157,7 +157,7 @@ class QuantumNetwork:
             node.install(simulator)
 
         for req in self.requests:
-            self._sched_request_active_event(req)
+            self._install_request(req)
 
     def add_node(self, node: QNode):
         """
@@ -280,10 +280,11 @@ class QuantumNetwork:
     @property
     def active_requests(self) -> Iterable[Request]:
         """
-        List requests that are within active period at current timestamp.
+        List requests that are active at current timestamp.
+        See ``Request.is_active()`` for the criteria of determining whether a request is active.
         """
         t = self.simulator.tc
-        return (req for req in self.requests if req.in_active_period(t))
+        return (req for req in self.requests if req.is_active(t))
 
     def add_request(self, *reqs: Request):
         """
@@ -293,14 +294,20 @@ class QuantumNetwork:
 
         if hasattr(self, "simulator"):
             for req in reqs:
-                self._sched_request_active_event(req)
+                self._install_request(req)
 
-    def _sched_request_active_event(self, req: Request):
+    def _install_request(self, req: Request):
+        for key in "since", "until":
+            t: Time | float = getattr(req, f"active_{key}_input")
+            delattr(req, f"active_{key}_input")
+            setattr(req, f"active_{key}", t if isinstance(t, Time) else self.simulator.time(sec=t))
+
         if not self.controller:
             return
 
-        t_enter = self.simulator.tc if req.not_before is Time.SENTINEL else req.not_before
+        t_enter = self.simulator.tc if req.active_since is Time.MIN else req.active_since
         self.simulator.add_event(RequestActiveEvent(self.controller, req, True, t=t_enter))
 
-        if req.not_after is not Time.SENTINEL:
-            self.simulator.add_event(RequestActiveEvent(self.controller, req, False, t=req.not_after))
+        if req.active_until is not Time.MAX:
+            req.inactive_event = RequestActiveEvent(self.controller, req, False, t=req.active_until)
+            self.simulator.add_event(req.inactive_event)

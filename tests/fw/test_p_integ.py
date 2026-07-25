@@ -2,14 +2,12 @@
 Test suite for ProactiveForwarder integrated with LinkLayer.
 """
 
-import itertools
-
 import pytest
 
 from mqns.entity.timer import Timer
 from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
 from mqns.network.fw import RoutingPathSingle, RoutingPathStatic, SwapSequenceInput
-from mqns.network.network import TimingModeAsync, TimingModeSync
+from mqns.network.network import TimingMode, TimingModeAsync, TimingModeSync
 from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
@@ -17,19 +15,11 @@ from mqns.network.protocol.link_layer import LinkLayer
 from .fw_common import build_linear_network, build_rect_network, install_path, print_node_counters
 
 
-@pytest.mark.parametrize(
-    ("epr_type", "timing_mode", "swap"),
-    list(
-        itertools.product(
-            (WernerStateEntanglement, MixedStateEntanglement),
-            ("ASYNC", "SYNC"),
-            ("asap", "l2r", "r2l"),
-        )
-    ),
-)
-def test_4_swap(epr_type: type[Entanglement], timing_mode: str, swap: SwapSequenceInput):
+@pytest.mark.parametrize("epr_type", [WernerStateEntanglement, MixedStateEntanglement])
+@pytest.mark.parametrize("timing", [TimingModeAsync(), TimingModeSync(t_ext=0.006, t_int=0.004)], ids=["ASYNC", "SYNC"])
+@pytest.mark.parametrize("swap", ["asap", "l2r", "r2l"])
+def test_4_swap(epr_type: type[Entanglement], timing: TimingMode, swap: SwapSequenceInput):
     """Test swapping in 4-node topology."""
-    timing = TimingModeAsync() if timing_mode == "ASYNC" else TimingModeSync(t_ext=0.006, t_int=0.004)
     net, simulator = build_linear_network(
         4, swap_table_leak_tol=256, end_time=3.0, timing=timing, epr_type=epr_type, has_link_layer=True
     )

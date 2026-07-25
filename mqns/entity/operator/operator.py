@@ -23,6 +23,7 @@ from mqns.entity.node.qnode import QNode
 from mqns.entity.operator.event import OperateRequestEvent, OperateResponseEvent
 from mqns.models.delay import DelayInput, parse_delay
 from mqns.simulator.event import Event
+from mqns.utils import unwrap
 
 
 class QuantumOperator(Entity):
@@ -52,14 +53,12 @@ class QuantumOperator(Entity):
     @override
     def handle(self, event: Event) -> None:
         if isinstance(event, OperateRequestEvent):
-            assert self.node is not None
-
             qubits = event.qubits
             # operate qubits and get measure results
             result = self.operate(*qubits)
 
             t = self.simulator.tc + self.delay.calculate()
-            response = OperateResponseEvent(node=self.node, result=result, request=event, t=t)
+            response = OperateResponseEvent(node=unwrap(self.node), result=result, request=event, t=t)
             self.simulator.add_event(response)
 
     def set_own(self, node: QNode):

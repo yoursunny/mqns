@@ -4,11 +4,9 @@ Test suite for ProactiveForwarder focused on swapping.
 
 import itertools
 from collections.abc import Sequence
-from typing import cast
 
 import pytest
 
-from mqns.entity.node import QNode
 from mqns.entity.timer import Timer
 from mqns.models.delay import ConstantDelayModel
 from mqns.models.epr import Entanglement, MixedStateEntanglement
@@ -17,6 +15,7 @@ from mqns.network.fw import (
     Fib,
     Forwarder,
     MemoryEprTuple,
+    MuxSchemeBufferSpace,
     MuxSchemeDynamicEpr,
     MuxSchemeStatistical,
     QubitAllocationType,
@@ -27,6 +26,7 @@ from mqns.network.network import TimingModeSync
 from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import Consumer, RequestCounters
 from mqns.simulator import func_to_event
+from mqns.utils import unwrap, unwrap_cast
 
 from .fw_common import (
     QubitReleaseReset,
@@ -71,6 +71,50 @@ def test_3_disabled():
 
 
 @pytest.mark.parametrize(
+    ("ssq", "addrs"),
+    [
+        (None, [0, 1, 4, 5]),
+        (MuxSchemeBufferSpace.SelectSwapQubit_random, None),
+        (MuxSchemeBufferSpace.SelectSwapQubit_oldest, [4, 5, 6, 7]),
+        (MuxSchemeBufferSpace.SelectSwapQubit_newest, [1, 0, 7, 6]),
+    ],
+)
+def test_3_ssq(ssq: MuxSchemeBufferSpace.SelectSwapQubit | None, addrs: list[int] | None):
+    """Test SelectSwapQubit in 3-node topology."""
+    net, simulator = build_linear_network(
+        3, t_cohere=0.090, ch_capacity=8, fw={"p_swap": 1.0, "mux": MuxSchemeBufferSpace(select_swap_qubit=ssq)}, end_time=1.120
+    )
+    fwA, fwB, fwC = (node.get_app(ProactiveForwarder) for node in net.nodes)
+
+    install_path(net, RoutingPathStatic("ABC"))
+    provide_entanglements(
+        (1.000, fwA, fwB),  # decohere at 1.090
+        (1.001, fwA, fwB),  # decohere at 1.091
+        (1.002, fwA, fwB),  # decohere at 1.092
+        (1.003, fwA, fwB),  # decohere at 1.093
+        (1.054, fwA, fwB),  # B.addr=4
+        (1.055, fwA, fwB),  # B.addr=5
+        (1.056, fwA, fwB),  # B.addr=6
+        (1.057, fwA, fwB),  # B.addr=7
+        (1.100, fwA, fwB),  # B.addr=0
+        (1.101, fwA, fwB),  # B.addr=1
+        (1.110, fwB, fwC),
+        (1.111, fwB, fwC),
+        (1.112, fwB, fwC),
+        (1.113, fwB, fwC),
+    )
+    simulator.run()
+    print_node_counters(net)
+
+    selected_qubits = [a for a, t in fwB.node.get_app(QubitReleaseReset).history if a < 8 and t.sec >= 1.100]
+    if addrs is None:
+        assert len(selected_qubits) == 4 == len(set(selected_qubits))
+        assert {0, 1, 4, 5, 6, 7}.issuperset(selected_qubits)
+    else:
+        assert selected_qubits == addrs
+
+
+@pytest.mark.parametrize(
     ("swap_delay", "n_consumed"),
     [
         # 1. t=1.0010, elementary EPRs arrive, B starts swapping.
@@ -112,38 +156,38 @@ def test_3_decohere(swap_delay: float, n_consumed: int):
 @pytest.mark.parametrize(
     ("etg_sec", "swap_delay", "n_consumed", "n_cutoff"),
     [
-        # 1. t=1.0050, A-B arrives, discard scheduled at 1.007.
+        # 1. t=1.0050, A-B arrives, discard scheduled at 1.0070.
         # 2. t=1.0060, B-C arrives, A-B discard canceled, B starts swapping.
         # 3. t=1.0065, B finishes swapping, heralds success to A+C.
         # 4. t=1.0070, A/C consumes EPR.
         ((1.004, 1.005), 0.0005, 1, (0, 0)),
-        # 1. t=1.0050, A-B arrives, discard scheduled at 1.007.
+        # 1. t=1.0050, A-B arrives, discard scheduled at 1.0070.
         # 2. t=1.0060, B-C arrives, A-B discard canceled, B starts swapping.
         # 3. t=1.0072, B finishes swapping, heralds success to A+C.
         # 4. t=1.0077, A/C consumes EPR.
         ((1.004, 1.005), 0.0012, 1, (0, 0)),
-        # 1. t=1.0050, A-B arrives, discard scheduled at 1.007.
-        # 2. t=1.0060, B-C arrives, A-B discard canceled, B starts swapping.
-        # 3. t=1.0080, A-B decoheres.
-        # 3. t=1.0085, B aborts swapping, heralds failure to A+C.
-        ((1.004, 1.005), 0.0025, 0, (0, 0)),
-        # 1. t=1.0060, A-B arrives, discard scheduled at 1.007.
-        # 2. t=1.0080, A-B is discarded.
-        # 3. t=1.0090, B-C arrives, discard scheduled at 1.011.
-        ((1.005, 1.008), 0.0005, 0, (1, 0)),
-        # 1. t=1.0030, A-B arrives, discard scheduled at 1.007.
-        # 2. t=1.0050, A-B is discarded.
-        # 3. t=1.0060, B-C arrives, discard scheduled at 1.008.
+        # 1. t=1.0010, A-B arrives, discard scheduled at 1.0020.
+        # 2. t=1.0020, B-C arrives, A-B discard canceled, B starts swapping.
+        # 3. t=1.0070, A-B decoheres.
+        # 3. t=1.0075, B aborts swapping, heralds failure to A+C.
+        ((1.000, 1.001), 0.0055, 0, (0, 0)),
+        # 1. t=1.0010, A-B arrives, discard scheduled at 1.0030.
+        # 2. t=1.0030, A-B is discarded.
+        # 3. t=1.0070, B-C arrives, discard scheduled at 1.0110 (past end_time).
+        ((1.000, 1.006), 0.0000, 0, (1, 0)),
+        # 1. t=1.0010, A-B arrives, discard scheduled at 1.0030.
+        # 2. t=1.0030, A-B is discarded.
+        # 3. t=1.0040, B-C arrives, discard scheduled at 1.0090.
         # 3. t=1.0080, B-C is discarded.
-        ((1.002, 1.005), 0.0005, 0, (1, 1)),
+        ((1.000, 1.003), 0.0000, 0, (1, 1)),
     ],
 )
 def test_3_waittime(etg_sec: tuple[float, float], swap_delay: float, n_consumed: int, n_cutoff: tuple[int, int]):
     """Test CutoffSchemeWaitTime in 3-node topology."""
-    net, simulator = build_linear_network(3, t_cohere=0.004, fw={"p_swap": 1.0, "swap_delay": swap_delay}, end_time=1.010)
+    net, simulator = build_linear_network(3, t_cohere=0.006, fw={"p_swap": 1.0, "swap_delay": swap_delay}, end_time=1.010)
     fwA, fwB, fwC = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    rp = install_path(net, RoutingPathStatic("ABC", swap_cutoff=[0.002, 0.002]))
+    rp = install_path(net, RoutingPathStatic("ABC", swap_cutoff=[0.002, 0.004]))
     provide_entanglements(
         (etg_sec[0], fwA, fwB),
         (etg_sec[1], fwB, fwC),
@@ -210,21 +254,9 @@ def test_4_sync(t_ext: float, expected: tuple[int, int, int, int]):
     assert RequestCounters.of(net, rp).n_consumed == min(expected[0], expected[3])
 
 
-@pytest.mark.parametrize(
-    ("etg_ms", "ps3"),
-    list(
-        itertools.product(
-            [
-                (1, 2, 1),
-                (2, 1, 2),
-                (1, 2, 3),
-                (3, 2, 1),
-            ],
-            (1, 0),
-        )
-    ),
-)
-def test_4_asap(etg_ms: tuple[int, int, int], ps3: int):
+@pytest.mark.parametrize("ps3", [1, 0])
+@pytest.mark.parametrize("etg_ms", [(1, 2, 1), (2, 1, 2), (1, 2, 3), (3, 2, 1)])
+def test_4_asap(ps3: int, etg_ms: tuple[int, int, int]):
     """Test SWAP-ASAP in 4-node topology with various entanglement arrival orders."""
     net, simulator = build_linear_network(4, fw={"p_swap": 1.0}, end_time=2)
     fwA, fwB, fwC, fwD = (node.get_app(ProactiveForwarder) for node in net.nodes)
@@ -360,7 +392,7 @@ def test_4_delayed(
     req_cnt = RequestCounters.of(net, rp)
     assert req_cnt.n_consumed == n_consumed
     if n_consumed > 0:
-        assert 0.5 < req_cnt.consumed_avg_fidelity <= 0.75
+        assert 0.750 < req_cnt.consumed_avg_fidelity <= 0.875
 
     assert list(fw.node.get_app(QubitReleaseReset).last_t for fw in (fwA, fwB, fwC, fwD)) == [
         simulator.time(sec=t) for t in t_release
@@ -416,7 +448,8 @@ def test_4_decohere(swap_delay: float, n_consumed: int):
     check_memory_released(net)
 
 
-@pytest.mark.parametrize(("ps3", "etg_ms"), list(itertools.product((1, 0), ((2, 1, 1, 2), (1, 2, 2, 1)))))
+@pytest.mark.parametrize("ps3", [1, 0])
+@pytest.mark.parametrize("etg_ms", [(2, 1, 1, 2), (1, 2, 2, 1)])
 def test_5_asap(
     ps3: float,
     etg_ms: tuple[int, int, int, int],
@@ -447,22 +480,16 @@ def test_5_asap(
 
 
 @pytest.mark.parametrize(
-    ("swap_sulower", "etg_ms"),
-    list(
-        itertools.product(
-            [
-                ((3, 0, 1, 2, 3), (1, 0, 1, 1, 1)),  # l2r
-                ((3, 2, 1, 0, 3), (1, 1, 1, 0, 1)),  # r2l
-                ((3, 0, 1, 0, 3), (1, 0, 2, 0, 1)),  # baln
-            ],
-            itertools.permutations(range(4), 4),
-        )
-    ),
+    ("swap", "su_lower"),
+    [
+        pytest.param((3, 0, 1, 2, 3), (1, 0, 1, 1, 1), id="l2r"),
+        pytest.param((3, 2, 1, 0, 3), (1, 1, 1, 0, 1), id="r2l"),
+        pytest.param((3, 0, 1, 0, 3), (1, 0, 2, 0, 1), id="baln"),
+    ],
 )
-def test_5_sequential(swap_sulower: tuple[Sequence[int], Sequence[int]], etg_ms: tuple[int, int, int, int]):
+@pytest.mark.parametrize("etg_ms", list(itertools.permutations(range(4), 4)))
+def test_5_sequential(swap: Sequence[int], su_lower: Sequence[int], etg_ms: tuple[int, int, int, int]):
     """Test sequential swap orders with various entanglement arrival orders."""
-    swap, su_lower = swap_sulower
-
     net, simulator = build_linear_network(5, fw={"p_swap": 1.0})
     fwA, fwB, fwC, fwD, fwE = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
@@ -685,8 +712,7 @@ def test_tree2_statistical(
             chosen = next((mt1 for mt1 in candidates if mt1[1].dst is partner.node), None)
         else:
             raise RuntimeError()
-        assert chosen is not None
-        return chosen
+        return unwrap(chosen)
 
     def select_path(candidates: list[int], fw: Forwarder, epr0: Entanglement, epr1: Entanglement) -> int:
         _ = fw, epr0, epr1
@@ -775,9 +801,8 @@ def test_tree3_statistical(
     def select_qubit(candidates: list[MemoryEprTuple], fw: Forwarder, mt0: MemoryEprTuple) -> MemoryEprTuple:
         _ = mt0
         partner = selected_qubit[fw.node.name]
-        chosen = next((mt1 for mt1 in candidates if partner in (cast(QNode, mt1[1].src).name, cast(QNode, mt1[1].dst).name)))
-        assert chosen is not None
-        return chosen
+        chosen = next((mt1 for mt1 in candidates if partner in (unwrap_cast(mt1[1].src).name, unwrap_cast(mt1[1].dst).name)))
+        return unwrap(chosen)
 
     def select_path(candidates: list[int], fw: Forwarder, epr0: Entanglement, epr1: Entanglement) -> int:
         _ = candidates, epr0, epr1

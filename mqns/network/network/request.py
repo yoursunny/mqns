@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Self, TypedDict, Unpack, final, overload, override
+from typing import TYPE_CHECKING, Any, Final, Self, TypedDict, Unpack, final, overload, override
 
 from mqns.entity.node import Controller, NodePair, split_node_pair
 from mqns.simulator import Event, Time
@@ -12,7 +12,7 @@ class RequestInitArgs(TypedDict, total=False):
     Request attributes.
     """
 
-    active_period: tuple[Time, Time]
+    active_period: tuple[Time | float, Time | float]
     """
     Time period in which the request is active / valid.
     Use ``Time.SENTINEL`` to indicate no restriction on either side.
@@ -32,11 +32,34 @@ class RequestInitArgs(TypedDict, total=False):
 class Request:
     """Requests entanglement pairs between a source and a destination."""
 
+    src: Final[str]
+    """Source node name."""
+    dst: Final[str]
+    """Destination node name."""
+
+    active_since: Time
+    """
+    Active period lower bound (inclusive), ``Time.MIN`` means no restriction.
+    This field becomes valid when the request is added to a network and a simulator is installed into the network.
+    """
+    active_until: Time
+    """
+    Active period upper bound (exclusive), ``Time.MAX`` means no restriction.
+    This field becomes valid when the request is added to a network and a simulator is installed into the network.
+    """
+
+    inactive_event: "RequestActiveEvent|None" = None
+    """Event when the request becomes inactive."""
+
+    rp: "RoutingPath|None" = None
+    """Routing path specified by scenario or assigned by controller."""
+    rp_args: "RoutingPathInitArgs"
+    """Routing path parameters specified by scenario and used by controller."""
+
     def __init__(self, np: NodePair, /, **kwargs: Unpack[RequestInitArgs]):
         self.src, self.dst = split_node_pair(np)
-        self.not_before, self.not_after = kwargs.get("active_period", (Time.SENTINEL, Time.SENTINEL))
-        self.rp: "RoutingPath|None" = None
-        self.rp_args: "RoutingPathInitArgs" = {}
+        self.active_since_input, self.active_until_input = kwargs.get("active_period", (Time.MIN, Time.MAX))
+        self.rp_args = {}
 
     @overload
     def path(self, rp: "RoutingPath", /) -> Self:
@@ -77,13 +100,15 @@ class Request:
             self.rp_args.update(kwargs)
         return self
 
-    def in_active_period(self, t: Time) -> bool:
+    def is_active(self, t: Time) -> bool:
         """
-        Determine if time point ``t`` is within active period.
+        Determine if the request is active, subject to these conditions:
+
+        * Time point ``t`` is within active period.
         """
-        if self.not_before is not Time.SENTINEL and t < self.not_before:
+        if t < self.active_since:
             return False
-        if self.not_after is not Time.SENTINEL and t > self.not_after:
+        if t >= self.active_until:
             return False
         return True
 
@@ -93,7 +118,10 @@ class Request:
         return self.rp.req_id if self.rp else self.rp_args.get("req_id", -1)
 
     def __repr__(self) -> str:
-        return f"Request({self.src}-{self.dst}, active_period={self.not_before}-{self.not_after})"
+        return f"Request({self.src}-{self.dst}, active_period={self._repr_active('since')}-{self._repr_active('until')})"
+
+    def _repr_active(self, key: str) -> Any:
+        return getattr(self, f"active_{key}", None) or getattr(self, f"active_{key}_input", None)
 
 
 @final

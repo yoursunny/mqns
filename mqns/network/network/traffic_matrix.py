@@ -127,4 +127,4 @@ class MatrixTrafficGenerator:
             return
 
         self.net.add_request(req)
-        self.simulator.add_event(func_to_event(req.not_before, self._sched_lazy, it))
+        self.simulator.add_event(func_to_event(req.active_since, self._sched_lazy, it))
