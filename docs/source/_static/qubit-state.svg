@@ -10,9 +10,10 @@
       dominant-baseline: middle;
     }
   </style>
-  <g transform="translate(50 50)">
-    <line x1="100" y1="100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
-    <line x2="100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+  <g transform="translate(50 150)">
+    <line x1="100" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <line x2="100" y2="-100" marker-start="url(#arrow)" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
+    <line x2="200" y2="-100" marker-start="url(#arrow)" marker-end="url(#arrow)" stroke="#111" stroke-width="2"/>
     <circle r="30" fill="#AAAAAA"/>
     <text font-size="12">RAW</text>
   </g>
