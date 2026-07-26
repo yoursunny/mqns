@@ -46,6 +46,7 @@ from mqns.models.delay import DelayInput, parse_delay
 from mqns.models.epr import Entanglement
 from mqns.models.error import TimeDecayInput, parse_time_decay
 from mqns.simulator import EventDispatcherMixin, Simulator, event_handler
+from mqns.utils import log
 
 if TYPE_CHECKING:
     from mqns.entity.node import QNode
@@ -112,7 +113,8 @@ class QuantumMemory(EventDispatcherMixin, Entity):
                     errors.append(f"{node.name} {mq} is allocated to path {mq.path_id}")
                 if unassigned and mq.qchannel:
                     errors.append(f"{node.name} {mq} is assigned to {mq.qchannel}")
-        if len(errors) > 0:
+        if n := len(errors):
+            log.warning(f"QuantumMemory.check_leaks() found {n} errors:\n\t{'\n\t'.join(errors)}")
             raise MemoryError(*errors)
 
     def __init__(self, name: str, **kwargs: Unpack[QuantumMemoryInitKwargs]):

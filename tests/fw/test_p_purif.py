@@ -2,14 +2,15 @@
 Test suite for ProactiveForwarder focused on purification.
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 
 import pytest
 
-from mqns.entity.memory import QuantumMemory
+from mqns.entity.memory import MemoryQubit, PathDirection, QuantumMemory, QubitState
 from mqns.network.fw import RoutingPathStatic
 from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
+from mqns.simulator import Time
 from mqns.utils import rng
 
 from .fw_common import (
@@ -76,21 +77,25 @@ def test_link_rounds(monkeypatch: pytest.MonkeyPatch, n_rounds: int, purif_succe
     assert RequestCounters.of(net, rp).n_consumed == n_eligible
 
 
-xfail_uninstall = pytest.mark.xfail(reason="UNINSTALL_PATH cleanup not implemented", strict=True)
+xfail_memory = pytest.mark.xfail(reason="UNINSTALL_PATH cleanup not implemented", raises=MemoryError, strict=True)
+_3u_purif = ([1.0000, 1.0010], []), -1, {"A-B": 1}, ([1.0025], [1.0020], [], [])
+_3u_purif_swap = ([1.0000, 1.0010], [1.0000]), *_3u_purif[1:-1], ([1.0025, 1.2035], [1.0020, 1.2030], [1.2030], [1.2035])
+_3u_cutoff = ([1.0000], []), 0.004, {}, ([1.0055], [1.0050], [], [])
+_3u_swap = ([1.0000], [1.0100]), -1, {}, ([1.2115], [1.2110], [1.2110], [1.2115])
 
 
 @pytest.mark.parametrize(
-    ("t_uninstall", "etg_sec", "cutoff", "purif"),
+    ("t_uninstall", "etg_sec", "cutoff", "purif", "t_raw"),
     [
         # 1. t=1.0010, A-B.0 arrives.
         # 2. t=1.0020, A-B.1 arrives, B sends PURIF_SOLICIT, which would arrive at 1.0025.
         # 3. t=1.0022, path is uninstalled.
-        pytest.param(1.0022, ([1.0000, 1.0010], []), -1, {"A-B": 1}, id="purif-solicit", marks=xfail_uninstall),
+        pytest.param(1.0022, *_3u_purif, id="purif-solicit", marks=xfail_memory),
         # 1. t=1.0010, A-B.0 arrives.
         # 2. t=1.0020, A-B.1 arrives, B sends PURIF_SOLICIT.
         # 3. t=1.0025, A receives PURIF_SOLICIT and sends PURIF_RESPONSE, which would arrive at 1.0030.
         # 4. t=1.0027, path is uninstalled.
-        pytest.param(1.0027, ([1.0000, 1.0010], []), -1, {"A-B": 1}, id="purif-response", marks=xfail_uninstall),
+        pytest.param(1.0027, *_3u_purif, id="purif-response", marks=xfail_memory),
         # 1. t=1.0010, A-B.0 arrives, B-C arrives.
         # 2. t=1.0020, A-B.1 arrives, B sends PURIF_SOLICIT.
         # 3. t=1.0025, A receives PURIF_SOLICIT and sends PURIF_RESPONSE.
@@ -98,55 +103,85 @@ xfail_uninstall = pytest.mark.xfail(reason="UNINSTALL_PATH cleanup not implement
         # 5. t=1.2030, B finishes swapping and sends SWAP_UPDATE.
         # 6. t=1.2035, A and C process SWAP_UPDATE message.
         # 7. t=1.2037, path is uninstalled.
-        pytest.param(1.2037, ([1.0000, 1.0010], [1.0000]), -1, {"A-B": 1}, id="purif-complete"),
+        pytest.param(1.2037, *_3u_purif_swap, id="purif-complete"),
         # 1. t=1.0010, A-B arrives, discard scheduled at 1.0050.
         # 2. t=1.0012, path is uninstalled.
-        pytest.param(1.0012, ([1.0000], []), 0.004, {}, id="cutoff-waiting"),
+        # 3. t=1.0050, B discards A-B and sends CUTOFF_DISCARD to A.
+        # 4. t=1.0055, A processes CUTOFF_DISCARD message.
+        pytest.param(1.0012, *_3u_cutoff, id="cutoff-waiting"),
         # 1. t=1.0010, A-B arrives, discard scheduled at 1.0050.
-        # 2. t=1.0050, B discards A-B and sends CUTOFF_DISCARD message to A, which would arrive at 1.0055.
+        # 2. t=1.0050, B discards A-B and sends CUTOFF_DISCARD to A.
         # 3. t=1.0052, path is uninstalled.
-        pytest.param(1.0052, ([1.0000], []), 0.004, {}, id="cutoff-inflight"),
+        # 4. t=1.0055, A processes CUTOFF_DISCARD message.
+        pytest.param(1.0052, *_3u_cutoff, id="cutoff-inflight"),
         # 1. t=1.0010, A-B arrives, discard scheduled at 1.0050.
-        # 2. t=1.0050, B discards A-B and sends CUTOFF_DISCARD message to A.
-        # 3. t=1.0055, A processes CUTOFF_DISCARD MESSAGE.
+        # 2. t=1.0050, B discards A-B and sends CUTOFF_DISCARD to A.
+        # 3. t=1.0055, A processes CUTOFF_DISCARD message.
         # 4. t=1.0057, path is uninstalled.
-        pytest.param(1.0057, ([1.0000], []), 0.004, {}, id="cutoff-complete"),
+        pytest.param(1.0057, *_3u_cutoff, id="cutoff-complete"),
         # 1. t=1.0010, A-B arrives.
-        # 2. t=1.0110, B-C arrives, B starts swapping, which would finish at 1.2110.
+        # 2. t=1.0110, B-C arrives, B starts swapping.
         # 3. t=1.1000, path is uninstalled.
-        pytest.param(1.1000, ([1.0000], [1.0100]), -1, {}, id="swap-waiting"),
+        # 4. t=1.2110, B aborts the swap and sends SWAP_UPDATE.
+        # 5. t=1.2115, A and C process SWAP_UPDATE message.
+        pytest.param(1.1000, *_3u_swap, id="swap-waiting"),
         # 1. t=1.0010, A-B arrives.
         # 2. t=1.0110, B-C arrives, B starts swapping.
-        # 3. t=1.2110, B finishes swapping and sends SWAP_UPDATE to A and C, which would arrive at 1.2115.
+        # 3. t=1.2110, B finishes swapping and sends SWAP_UPDATE.
         # 4. t=1.2112, path is uninstalled.
-        pytest.param(1.2112, ([1.0000], [1.0100]), -1, {}, id="swap-inflight"),
+        # 5. t=1.2115, A and C process SWAP_UPDATE message.
+        pytest.param(1.2112, *_3u_swap, id="swap-inflight"),
         # 1. t=1.0010, A-B arrives.
         # 2. t=1.0110, B-C arrives, B starts swapping.
-        # 3. t=1.2110, B finishes swapping and sends SWAP_UPDATE to A and C.
+        # 3. t=1.2110, B finishes swapping and sends SWAP_UPDATE.
         # 4. t=1.2115, A and C process SWAP_UPDATE message.
         # 4. t=1.2117, path is uninstalled.
-        pytest.param(1.2117, ([1.0000], [1.0100]), -1, {}, id="swap-complete"),
+        pytest.param(1.2117, *_3u_swap, id="swap-complete"),
     ],
 )
 def test_3_uninstall(
+    monkeypatch: pytest.MonkeyPatch,
     t_uninstall: float,
     etg_sec: tuple[Iterable[float], Iterable[float]],
     cutoff: float,
     purif: Mapping[str, int],
+    t_raw: tuple[Sequence[float], ...],
 ):
     """Test UNINSTALL_PATH cleanup during cut-off/swap/purify on 3-node topology."""
     net, simulator = build_linear_network(3, t_cohere=5.0, ch_capacity=2, fw={"p_swap": 1.0, "swap_delay": 0.2}, end_time=5.0)
+    chAB = net.get_qchannel("A", "B")
+    chBC = net.get_qchannel("B", "C")
     fwA, fwB, fwC = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    install_path(net, RoutingPathStatic("ABC", swap_cutoff=[cutoff, -1], purif=purif), t_uninstall=t_uninstall)
+    install_path(net, RoutingPathStatic("ABC", path_id=0, swap_cutoff=[cutoff, -1], purif=purif), t_uninstall=t_uninstall)
     provide_entanglements(
         (etg_sec[0], fwA, fwB),
         (etg_sec[1], fwB, fwC),
     )
 
+    mq_reset_state_old = MemoryQubit.reset_state
+    reset_times = [list[Time]() for _ in range(4)]
+
+    def mq_reset_state_new(self: MemoryQubit, state: QubitState) -> None:
+        nonlocal chAB, chBC
+        if self.path_id == 0 and state is QubitState.RAW:
+            match self.path_direction:
+                case PathDirection.R if self.qchannel is chAB:
+                    reset_times[0].append(simulator.tc)
+                case PathDirection.L if self.qchannel is chAB:
+                    reset_times[1].append(simulator.tc)
+                case PathDirection.R if self.qchannel is chBC:
+                    reset_times[2].append(simulator.tc)
+                case PathDirection.L if self.qchannel is chBC:
+                    reset_times[3].append(simulator.tc)
+        mq_reset_state_old(self, state)
+
+    monkeypatch.setattr(MemoryQubit, "reset_state", mq_reset_state_new)
+
     simulator.run()
     print_node_counters(net)
     QuantumMemory.check_leaks(net.nodes, deallocated=True)
+    assert reset_times == list(list(simulator.time(sec=t) for t in mqt) for mqt in t_raw)
 
 
 def test_4_l2r(monkeypatch: pytest.MonkeyPatch):
