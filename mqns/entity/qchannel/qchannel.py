@@ -83,7 +83,7 @@ class QuantumChannelInitKwargs(BaseChannelInitKwargs, total=False):
 
 class QuantumChannel(BaseChannel[QNode]):
     """
-    QuantumChannel is the channel for transmitting photonic qubits.
+    A channel for transmitting photonic qubits.
 
     In entanglement routing experiments, MQNS does not use the ``send()`` method to transmit photonic qubits.
     Instead, the ``LinkLayer`` application calculates entanglement arrival times and fidelity from channel parameters
@@ -108,10 +108,6 @@ class QuantumChannel(BaseChannel[QNode]):
         self.transfer_error = parse_error(kwargs.get("transfer_error"), DepolarErrorModel, self.length)
         self.bsa_error = parse_error(kwargs.get("bsa_error"), DepolarErrorModel, -1)
 
-    @override
-    def handle(self, event: Event):
-        raise RuntimeError(f"unexpected event {event}")
-
     def assign_memory_qubits(self, *, capacity: int | dict[str, int] = 1):
         """
         Assign memory qubits at each node connected to the qchannel.
@@ -134,28 +130,25 @@ class QuantumChannel(BaseChannel[QNode]):
         Send a qubit to the next_hop.
 
         Args:
-            qubit: the photonic qubit.
-            next_hop: the recipient quantum node.
+            qubit: The photonic qubit.
+            next_hop: The recipient quantum node.
 
         Raises:
-            NextHopNotConnectionException: next_hop is not connected to this channel.
+            LookupError: The next_hop is not connected to this channel.
         """
-        drop, recv_time = self._send(
-            packet_repr=f"qubit {qubit}",
-            packet_len=1,
-            next_hop=next_hop,
-        )
+        drop, recv_time = self._send(qubit, 1, next_hop)
 
         if drop:
-            # photon is lost -> flag this pair as decoherenced to inform receiver node
+            # photon is lost -> flag this pair as decohered to inform receiver node
             if isinstance(qubit, Entanglement):
                 qubit.is_decohered = True
             return
 
         # operation on the qubit
         qubit.apply_error(self.transfer_error)
-        send_event = RecvQubitPacket(t=recv_time, qchannel=self, qubit=qubit, dest=next_hop)
-        self.simulator.add_event(send_event)
+
+        event = RecvQubitPacket(self, qubit, next_hop, t=recv_time)
+        self.simulator.add_event(event)
 
     def __repr__(self) -> str:
         return "<qchannel " + self.name + ">"
@@ -167,8 +160,8 @@ class RecvQubitPacket(Event):
     Event dispatched on recipient QNode for receiving a qubit.
     """
 
-    def __init__(self, *, t: Time, name: str | None = None, qchannel: QuantumChannel, qubit: QuantumModel, dest: QNode):
-        super().__init__(t, name)
+    def __init__(self, qchannel: QuantumChannel, qubit: QuantumModel, dest: QNode, *, t: Time):
+        super().__init__(t)
         self.qchannel = qchannel
         self.qubit = qubit
         self.dest = dest

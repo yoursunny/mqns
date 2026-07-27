@@ -1,9 +1,9 @@
-from typing import TypedDict, Unpack, override
+from typing import Any, TypedDict, Unpack, override
 
 from mqns.entity.entity import Entity
 from mqns.entity.node import Node
 from mqns.models.delay import DelayInput, parse_delay
-from mqns.simulator import Simulator, Time
+from mqns.simulator import Event, Simulator, Time
 from mqns.utils import log, rng
 
 default_light_speed: list[float] = [2e5]
@@ -61,18 +61,22 @@ class BaseChannel[N: Node](Entity):
         super().install(simulator)
         self._next_send_time = simulator.ts
 
-    def _send(self, *, packet_repr: str, packet_len: int, next_hop: N) -> tuple[bool, Time]:
+    @override
+    def handle(self, event: Event):
+        raise RuntimeError(f"unexpected event {event}")
+
+    def _send(self, packet: Any, packet_len: int, next_hop: N) -> tuple[bool, Time]:
         now = self.simulator.tc
 
         if next_hop not in self.node_list:
-            raise NextHopNotConnectionException(f"{self}: not connected to {next_hop}")
+            raise LookupError(f"{self}: not connected to {next_hop}")
 
         if self.bandwidth != 0:
             send_time = max(self._next_send_time, now)
 
             if self.max_buffer_size != 0 and send_time > now + self.max_buffer_size / self.bandwidth:
                 # buffer is overflow
-                log.debug(f"{self}: drop {packet_repr} due to overflow")
+                log.debug(f"{self}: drop %s due to overflow", packet)
                 return True, Time.SENTINEL
 
             self._next_send_time = send_time + packet_len / self.bandwidth
@@ -81,7 +85,7 @@ class BaseChannel[N: Node](Entity):
 
         # random drop
         if self.drop_rate > 0 and rng.random() < self.drop_rate:
-            log.debug(f"{self}: drop {packet_repr} due to drop rate")
+            log.debug(f"{self}: drop %s due to drop rate", packet)
             return True, Time.SENTINEL
 
         # add delay
@@ -102,10 +106,6 @@ class BaseChannel[N: Node](Entity):
         if self.node_list[1] == own:
             return self.node_list[0]
         raise ValueError(f"{self} does not connect to {own}")
-
-
-class NextHopNotConnectionException(Exception):
-    pass
 
 
 def calc_transmission_prob(length: float, alpha: float) -> float:

@@ -15,7 +15,6 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from mqns.entity.base_channel import NextHopNotConnectionException
 from mqns.entity.cchannel.cchannel import ClassicChannel, ClassicChannelInitKwargs, ClassicPacket, RecvClassicPacket
 from mqns.entity.cchannel.cdispatch import ClassicCommandDispatcherMixin, classic_cmd_handler
 
@@ -25,11 +24,8 @@ __all__ = [
     "ClassicChannelInitKwargs",
     "ClassicCommandDispatcherMixin",
     "ClassicPacket",
-    "NextHopNotConnectionException",
     "RecvClassicPacket",
 ]
 
 for name in __all__:
-    if name in ("NextHopNotConnectionException",):
-        continue
     globals()[name].__module__ = __name__
