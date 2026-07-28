@@ -321,7 +321,7 @@ _provide_entanglements_autoid = AutoIncrementIdentifier("Tpe_")
 
 
 def provide_entanglements(
-    *etgs: tuple[float, Forwarder, Forwarder] | tuple[Iterable[float], Iterable[Forwarder]],
+    *etgs: tuple[float | Iterable[float], Forwarder, Forwarder] | tuple[Iterable[float], Iterable[Forwarder]],
     transform_t: Callable[[float], float] = lambda t: t,
     fidelity=0.99,
 ):
@@ -352,7 +352,7 @@ def provide_entanglements(
 
         ll_key = _provide_entanglements_autoid()
         epr = src.network.epr_type(
-            decohere_time=t_creation + min(src.memory.t_decohere, dst.memory.t_decohere),
+            decohere_time=t_creation + min(src.memory.t_cohere, dst.memory.t_cohere),
             fidelity_time=t_creation,
             src=src.node,
             dst=dst.node,
@@ -377,21 +377,13 @@ def provide_entanglements(
 
     for etg in etgs:
         if len(etg) == 3:
-            sched_entangle(*etg)
+            times, src, dst = etg
+            if isinstance(times, int | float):
+                sched_entangle(times, src, dst)
+            else:
+                for t in times:
+                    sched_entangle(t, src, dst)
         else:
             times, fws = etg
             for t, (src, dst) in zip(times, itertools.pairwise(fws), strict=True):
                 sched_entangle(t, src, dst)
-
-
-def check_memory_released(net: QuantumNetwork) -> None:
-    """
-    Verify that all MemoryQubits on every node are in RAW or RELEASED state.
-    """
-    errors: list[str] = []
-    for node in net.nodes:
-        for qubit, data in node.memory.find(lambda *_: True):
-            if qubit.state not in (QubitState.RAW, QubitState.RELEASE):
-                errors.append(f"{node.name}:{qubit.addr} unexpected state {qubit.state}: {data}")
-    if len(errors) > 0:
-        raise AssertionError(errors)

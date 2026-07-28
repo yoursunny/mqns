@@ -15,11 +15,10 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from mqns.entity.node.app import Application
 from mqns.entity.node.node import Node
-from mqns.simulator import Simulator
 
 if TYPE_CHECKING:
     from mqns.entity.memory import QuantumMemory
@@ -43,21 +42,14 @@ class QNode(Node):
         self._memory: "QuantumMemory|None" = None
         self.operators: list["QuantumOperator"] = []
 
-    def install(self, simulator: Simulator) -> None:
-        super().install(simulator)
-        # initiate sub-entities
-        from mqns.entity.memory import QuantumMemory  # noqa: PLC0415
-        from mqns.entity.operator import QuantumOperator  # noqa: PLC0415
-        from mqns.entity.qchannel import QuantumChannel  # noqa: PLC0415
+    @override
+    def _node_install(self) -> None:
+        self._install_channels(self.qchannels, self._qchannel_by_dst)
 
-        if self._memory is not None:
-            assert isinstance(self._memory, QuantumMemory)
-            self._memory.install(simulator)
+        if self._memory:
+            self._memory.install(self.simulator)
         for operator in self.operators:
-            assert isinstance(operator, QuantumOperator)
-            operator.install(simulator)
-
-        self._install_channels(QuantumChannel, self.qchannels, self._qchannel_by_dst)
+            operator.install(self.simulator)
 
     @property
     def memory(self) -> "QuantumMemory":

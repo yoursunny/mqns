@@ -19,7 +19,7 @@ from typing import override
 
 from mqns.network.fw import Forwarder
 from mqns.network.network import TimingPhase, TimingPhaseEvent
-from mqns.network.protocol.event import ManageActiveChannels
+from mqns.network.protocol.event import ManageActiveChannel
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
 from mqns.utils import log
 
@@ -46,18 +46,17 @@ class ReactiveForwarder(Forwarder):
         This may be called from install() or at the first EXTERNAL phase (for better coordination).
         """
         for ch in self.node.qchannels:
-            if self.node == ch.node_list[0]:  # self is the EPR initiator node for this channel
-                log.debug(f"{self}: activate qchannel {ch.name}")
-                self.simulator.add_event(
-                    ManageActiveChannels(
-                        self.node,
-                        ch.node_list[1],
-                        ch,
-                        path_id=None,
-                        start=True,
-                        t=self.simulator.tc,
-                    )
+            log.debug(f"{self}: activate qchannel {ch.name}")
+            self.simulator.add_event(
+                ManageActiveChannel(
+                    self.node,
+                    ch,
+                    path_id=None,
+                    start=True,
+                    is_primary=ch.node_list[0] is self.node,
+                    t=self.simulator.tc,
                 )
+            )
 
     @override
     def handle_sync_phase(self, event: TimingPhaseEvent):

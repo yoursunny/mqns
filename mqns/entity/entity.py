@@ -56,13 +56,12 @@ class Entity(ABC):
         """Global simulator instance."""
 
     @abstractmethod
-    def handle(self, event: Event) -> None:
+    def handle(self, event: Event, /) -> bool | None:
         """
-        Process a received event.
+        Process an event.
 
-        Args:
-            event: the event that targets this entity.
+        The return value is ignored.
         """
 
     def __repr__(self) -> str:
-        return f"<entity {self.name}>"
+        return f"{type(self).__name__}({self.name})"

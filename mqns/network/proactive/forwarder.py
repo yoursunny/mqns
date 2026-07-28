@@ -17,8 +17,9 @@
 
 from typing import override
 
+from mqns.entity.qchannel import QuantumChannel
 from mqns.network.fw import Forwarder
-from mqns.network.protocol.event import ManageActiveChannels
+from mqns.network.protocol.event import ManageActiveChannel
 
 
 class ProactiveForwarder(Forwarder):
@@ -29,7 +30,15 @@ class ProactiveForwarder(Forwarder):
     """
 
     @override
-    def handle_path_change(self, *, path_id, uninstall, r_neighbor, **_):
+    def handle_path_change(
+        self,
+        *,
+        path_id: int,
+        uninstall: bool,
+        ch_l: QuantumChannel | None,
+        ch_r: QuantumChannel | None,
+        **_,
+    ):
         """
         Process LinkLayer changes after a path has been installed or uninstalled.
 
@@ -41,14 +50,16 @@ class ProactiveForwarder(Forwarder):
 
         1. Notify LinkLayer to stop elementary EPR generation toward the right neighbor.
         """
-        if r_neighbor:
-            # instruct LinkLayer to start/stop generating EPRs on the qchannel toward the right neighbor
+        for i, ch in enumerate((ch_l, ch_r)):
+            if ch is None:
+                continue
             self.simulator.add_event(
-                ManageActiveChannels(
+                ManageActiveChannel(
                     self.node,
-                    *r_neighbor,
+                    ch,
                     path_id=path_id if self.mux.qubit_has_path_id() else None,
                     start=not uninstall,
+                    is_primary=i == 1,
                     t=self.simulator.tc,
                 )
             )

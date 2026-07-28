@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 import pytest
 
+from mqns.entity.memory import QuantumMemory
 from mqns.entity.timer import Timer
 from mqns.models.delay import ConstantDelayModel
 from mqns.models.epr import Entanglement, MixedStateEntanglement
@@ -34,7 +35,6 @@ from .fw_common import (
     build_rect_network,
     build_tree_network,
     check_fw_counters,
-    check_memory_released,
     collect_cpacket_counts,
     install_path,
     print_node_counters,
@@ -287,7 +287,7 @@ def test_4_asap(ps3: int, etg_ms: tuple[int, int, int]):
             n_su_lower=(1, 0, 0, 1),
         )
         assert RequestCounters.of(net, rp).n_consumed == 0
-    check_memory_released(net)
+    QuantumMemory.check_leaks(net.nodes)
 
 
 @pytest.mark.parametrize(
@@ -385,7 +385,7 @@ def test_4_delayed(
     cpacket_cnt = collect_cpacket_counts(monkeypatch)
     simulator.run()
     print_node_counters(net)
-    check_memory_released(net)
+    QuantumMemory.check_leaks(net.nodes)
     print("cpacket_cnt", cpacket_cnt)
 
     assert fwB_n_swapped_values == [0, 0, 0, 0, 0, n_swap2, n_swap2, n_swap2]
@@ -445,7 +445,7 @@ def test_4_decohere(swap_delay: float, n_consumed: int):
         n_su_lower=(1, 0, 0, 1),
     )
     assert RequestCounters.of(net, rp).n_consumed == n_consumed
-    check_memory_released(net)
+    QuantumMemory.check_leaks(net.nodes)
 
 
 @pytest.mark.parametrize("ps3", [1, 0])
@@ -476,7 +476,7 @@ def test_5_asap(
         n_su_lower=(1, 0, 0, 0, 1),
     )
     assert RequestCounters.of(net, rp).n_consumed == n_consumed
-    check_memory_released(net)
+    QuantumMemory.check_leaks(net.nodes)
 
 
 @pytest.mark.parametrize(
@@ -569,7 +569,7 @@ def test_5_decohere(
     #     n_su_lower=(1, 0, 0, 0, 1),
     # )
     assert RequestCounters.of(net, rp).n_consumed == n_consumed
-    check_memory_released(net)
+    QuantumMemory.check_leaks(net.nodes)
     assert list(node.get_app(QubitReleaseReset).last_t for node in net.nodes[: len(t_release)]) == [
         simulator.time(sec=t) for t in t_release
     ]
@@ -742,7 +742,7 @@ def test_tree2_statistical(
     print_node_counters(net)
     if -1 in etg_ms:
         # For test cases without unused EPRs, swap conflict should release memory quickly.
-        check_memory_released(net)
+        QuantumMemory.check_leaks(net.nodes)
 
     assert RequestCounters.of(net, rp0).n_consumed == n_consumed[0]
     assert RequestCounters.of(net, rp1).n_consumed == n_consumed[1]

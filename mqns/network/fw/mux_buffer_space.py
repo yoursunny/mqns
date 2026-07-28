@@ -100,15 +100,13 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
         assert "m_v" in instructions
 
     @override
-    def install_path_neighbor(
+    def install_path_adj(
         self,
         instructions: PathInstructions,
         fib_entry: FibEntry,
         direction: PathDirection,
-        neighbor: QNode,
         qchannel: QuantumChannel,
     ) -> None:
-        _ = neighbor
         assert "m_v" in instructions
         mv = instructions["m_v"]
         mv_offset, ch_side = (-1, 1) if direction == PathDirection.L else (0, 0)
@@ -131,18 +129,16 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
                 direction,
                 n="all" if n_qubits == 0 else n_qubits,
             )
-        log.debug(f"{self.fw}: allocated {direction} qubits: {addrs}")
+        log.debug(f"{self.fw}: allocating {direction} qubits: {addrs}")
 
     @override
-    def uninstall_path_neighbor(
-        self, fib_entry: FibEntry, direction: PathDirection, neighbor: QNode, qchannel: QuantumChannel
-    ) -> None:
-        _ = neighbor
+    def uninstall_path_adj(self, fib_entry: FibEntry, direction: PathDirection, qchannel: QuantumChannel) -> None:
         qubits = self.memory.find(lambda q, _: q.path_id == fib_entry.path_id, qchannel=qchannel)
         addrs = [q[0].addr for q in qubits]
+        log.debug(f"{self.fw}: deallocating {direction} qubits: {addrs}")
+        # If some qubits are currently ACTIVE or RESERVED IN LinkLayer, deallocation would occur
+        # when they next reach RAW state.
         self.memory.deallocate(*addrs)
-        log.debug(f"{self.fw}: deallocated {direction} qubits: {addrs}")
-        pass
 
     @override
     def qubit_has_path_id(self) -> bool:

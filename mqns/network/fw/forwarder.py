@@ -44,7 +44,7 @@ from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
 from mqns.network.fw.select import SelectPurifQubit, call_select_purif_qubit
 from mqns.network.network import TimingPhase, TimingPhaseEvent
 from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
-from mqns.simulator import Time, event_handler
+from mqns.simulator import Time, event_handler, func_to_event
 from mqns.utils import json_encodable, log, unwrap_cast
 
 
@@ -183,8 +183,11 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
 
         self.cutoff.install(self)
         self.mux.install(self)
+        self.fib.install(self)
         self.purif.install(self)
         self.swap.install(self)
+
+        self._fib_erase_delay = self.simulator.time(time_slot=4 * self.memory.t_cohere.time_slot)
 
     @event_handler
     def handle_sync_phase(self, event: TimingPhaseEvent):
@@ -211,13 +214,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
 
     @fw_control_cmd_handler("INSTALL_PATH")
     def handle_install_path(self, msg: InstallPathMsg):
-        """
-        Process an INSTALL_PATH message from the controller.
-
-        1. Insert FIB entry.
-        2. Identify neighbors and qchannels.
-        3. Save the path and neighbors in the multiplexing scheme.
-        """
+        """Process an INSTALL_PATH message from the controller."""
         path_id = msg["path_id"]
         instructions = msg["instructions"]
         self.mux.validate_path_instructions(instructions)
@@ -241,58 +238,52 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
 
         # identify left/right neighbors
         # associate path with qchannel and allocate qubits
-        if l_neighbor := self._find_neighbor(fib_entry, -1):
-            self.mux.install_path_neighbor(instructions, fib_entry, PathDirection.L, *l_neighbor)
-        if r_neighbor := self._find_neighbor(fib_entry, +1):
-            self.mux.install_path_neighbor(instructions, fib_entry, PathDirection.R, *r_neighbor)
+        if ch_l := self._find_adj(fib_entry, -1):
+            self.mux.install_path_adj(instructions, fib_entry, PathDirection.L, ch_l)
+        if ch_r := self._find_adj(fib_entry, +1):
+            self.mux.install_path_adj(instructions, fib_entry, PathDirection.R, ch_r)
 
         # call subclass specialization
         self.handle_path_change(
             path_id=path_id,
             uninstall=False,
             fib_entry=fib_entry,
-            l_neighbor=l_neighbor,
-            r_neighbor=r_neighbor,
+            ch_l=ch_l,
+            ch_r=ch_r,
         )
 
     @fw_control_cmd_handler("UNINSTALL_PATH")
     def handle_uninstall_path(self, msg: UninstallPathMsg):
-        """
-        Process an UNINSTALL_PATH message from the controller.
-
-        1. Insert FIB entry.
-        2. Identify neighbors and qchannels.
-        3. Save the path and neighbors in the multiplexing scheme.
-        4. Notify LinkLayer to start elementary EPR generation toward the right neighbor.
-        """
+        """Process an UNINSTALL_PATH message from the controller."""
         path_id = msg["path_id"]
 
         # retrieve and erase FIB entry
         fib_entry = self.fib.get(path_id)
-        self.fib.erase(path_id)
+        fib_entry.active_until = self.simulator.tc
+        self.simulator.add_event(func_to_event(fib_entry.active_until + self._fib_erase_delay, self.fib.erase, path_id))
 
         # identify left/right neighbors
         # disassociate path with qchannel and deallocate qubits
-        if l_neighbor := self._find_neighbor(fib_entry, -1):
-            self.mux.uninstall_path_neighbor(fib_entry, PathDirection.L, *l_neighbor)
-        if r_neighbor := self._find_neighbor(fib_entry, +1):
-            self.mux.uninstall_path_neighbor(fib_entry, PathDirection.R, *r_neighbor)
+        if ch_l := self._find_adj(fib_entry, -1):
+            self.mux.uninstall_path_adj(fib_entry, PathDirection.L, ch_l)
+        if ch_r := self._find_adj(fib_entry, +1):
+            self.mux.uninstall_path_adj(fib_entry, PathDirection.R, ch_r)
 
         # call subclass specialization
         self.handle_path_change(
             path_id=path_id,
             uninstall=True,
             fib_entry=fib_entry,
-            l_neighbor=l_neighbor,
-            r_neighbor=r_neighbor,
+            ch_l=ch_l,
+            ch_r=ch_r,
         )
 
-    def _find_neighbor(self, fib_entry: FibEntry, route_offset: int) -> tuple[QNode, QuantumChannel] | None:
+    def _find_adj(self, fib_entry: FibEntry, route_offset: int) -> QuantumChannel | None:
         neigh_idx = fib_entry.own_idx + route_offset
         if neigh_idx in (-1, len(fib_entry.route)):  # no left/right neighbor if own node is the left/right end node
             return None
         neigh = self.network.get_node(fib_entry.route[neigh_idx])
-        return neigh, self.node.get_qchannel(neigh)
+        return self.node.get_qchannel(neigh)
 
     @abstractmethod
     def handle_path_change(
@@ -301,8 +292,8 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         path_id: int,
         uninstall: bool,
         fib_entry: FibEntry,
-        l_neighbor: tuple[QNode, QuantumChannel] | None,
-        r_neighbor: tuple[QNode, QuantumChannel] | None,
+        ch_l: QuantumChannel | None,
+        ch_r: QuantumChannel | None,
     ):
         """
         Process LinkLayer changes after a path has been installed or uninstalled.
@@ -311,8 +302,8 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
             path_id: Path identifier.
             uninstall: Whether this is an uninstall command.
             fib_entry: FIB entry.
-            l_neighbor: Left neighbor and channel toward it.
-            r_neighbor: Right neighbor and channel toward it.
+            ch_l: Quantum channel toward left, if exists.
+            ch_r: Quantum channel toward right, if exists.
         """
 
     @fw_signaling_cmd_handler("CUTOFF_DISCARD")
@@ -489,7 +480,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         """
         if fib_entry is None:
             src, dst = unwrap_cast(epr.src).name, unwrap_cast(epr.dst).name
-            for req in self.fib.find_request(lambda g: g.src == src and g.dst == dst):
+            for req in self.fib.find_request(lambda g: g.src == src and g.dst == dst, has_active=True):
                 req_id = req.req_id
                 break
             return False

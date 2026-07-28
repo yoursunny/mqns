@@ -4,6 +4,7 @@ Test suite for ProactiveForwarder integrated with LinkLayer.
 
 import pytest
 
+from mqns.entity.memory import QuantumMemory
 from mqns.entity.timer import Timer
 from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
 from mqns.network.fw import RoutingPathSingle, RoutingPathStatic, SwapSequenceInput
@@ -37,14 +38,11 @@ def test_4_swap(epr_type: type[Entanglement], timing: TimingMode, swap: SwapSequ
     assert RequestCounters.of(net, rp).n_consumed >= 16
 
 
-def test_rect_uninstall_path():
-    """Test uninstall_path in rectangle topology."""
-    net, simulator = build_rect_network(swap_table_leak_tol=256, has_link_layer=True)
-    fwB = net.get_node("B").get_app(ProactiveForwarder)
-    fwC = net.get_node("C").get_app(ProactiveForwarder)
-    llA = net.get_node("A").get_app(LinkLayer)
-    llB = net.get_node("B").get_app(LinkLayer)
-    llC = net.get_node("C").get_app(LinkLayer)
+def test_rect2_uninstall_path():
+    """Test uninstall_path in 2x2 rectangle topology."""
+    net, simulator = build_rect_network(t_cohere=1.0, has_link_layer=True)
+    _, fwB, fwC, _ = (node.get_app(ProactiveForwarder) for node in net.nodes)
+    llA, llB, llC, _ = (node.get_app(LinkLayer) for node in net.nodes)
 
     counters: list[tuple[int, int, int, int, int]] = []
 
@@ -77,3 +75,5 @@ def test_rect_uninstall_path():
     # llA.cnt.n_attempts
     assert counters[0][4] == counters[1][4]
     assert counters[8][4] == counters[9][4]
+
+    QuantumMemory.check_leaks(net.nodes)
