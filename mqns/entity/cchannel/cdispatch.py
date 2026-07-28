@@ -19,33 +19,56 @@ def classic_cmd_handler(cmd: str):
     return decorator
 
 
-def _populate_handlers(cls: type["ClassicCommandDispatcherMixin"]):
-    # Identify handler method names.
-    handler_names: dict[str, str] = {}
-    for base in reversed(cls.mro()):
-        for name, attr in base.__dict__.items():
+def _make_wrapper(attr_name: str, handler: Any):
+    def wrapper(self: Any, pkt: ClassicPacket, msg: Any):
+        return handler(getattr(self, attr_name), pkt, msg)
+
+    return wrapper
+
+
+class ClassicCommandModule:
+    """
+    Indicate that classic command handlers may be declared within a subclass of this type
+    when it appears as a member of ``ClassicCommandDispatcherMixin`` subclass.
+
+    The member must be declared at the class level of the owning class,
+    with a type hint that resolves to the subclass type.
+    """
+
+    __slots__ = ()
+    _classic_handlers: ClassVar[dict[str, _HandlerFunc]]
+
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+
+        handlers: dict[str, _HandlerFunc] = {}
+
+        for base in reversed(cls.mro()):
+            handlers.update(base.__dict__.get("_classic_handlers", {}))
+
+        for attr_name, attr_type in cls.__annotations__.items():
+            if isinstance(attr_type, type) and issubclass(attr_type, ClassicCommandModule):
+                for cmd, handler in attr_type._classic_handlers.items():
+                    handlers[cmd] = _make_wrapper(attr_name, handler)
+
+        for attr in cls.__dict__.values():
             if cmd := getattr(attr, "_classic_cmd", None):
-                handler_names[cmd] = name
+                handlers[cmd] = attr
 
-    # Map commands to the most specific implementation in this class.
-    cls._classic_handlers = {cmd: getattr(cls, name) for cmd, name in handler_names.items()}
+        cls._classic_handlers = handlers
 
 
-class ClassicCommandDispatcherMixin:
+class ClassicCommandDispatcherMixin(ClassicCommandModule):
     """
     Provide classic packet dispatching functionality,
     assuming the classic packet contains JSON dict with "cmd" key.
     """
 
     __slots__ = ()
-    _classic_handlers: ClassVar[dict[str, _HandlerFunc]]
 
     @event_handler
     def handle_classic_command(self, event: RecvClassicPacket) -> bool:
         cls = type(self)
-
-        if "_classic_handlers" not in cls.__dict__:
-            _populate_handlers(cls)
 
         pkt = event.packet
         msg = pkt.get()

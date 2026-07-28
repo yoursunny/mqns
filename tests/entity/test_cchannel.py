@@ -1,13 +1,23 @@
 from collections.abc import Callable
-from typing import Any, Unpack
+from typing import Any, TypedDict, Unpack
 
-from mqns.entity.cchannel import ClassicChannel, ClassicChannelInitKwargs, ClassicPacket, RecvClassicPacket
+import pytest
+
+from mqns.entity.cchannel import (
+    ClassicChannel,
+    ClassicChannelInitKwargs,
+    ClassicCommandDispatcherMixin,
+    ClassicCommandModule,
+    ClassicPacket,
+    RecvClassicPacket,
+    classic_cmd_handler,
+)
 from mqns.entity.node import Application, Node
 from mqns.models.delay import UniformDelayModel
 from mqns.simulator import Simulator, event_handler, func_to_event
 
 
-class ClassicApp(Application[Node]):
+class SendRecvApp(Application[Node]):
     def __init__(self):
         super().__init__()
 
@@ -31,14 +41,14 @@ class ClassicApp(Application[Node]):
             t += interval
 
 
-def make_nodes(n=2, **kwargs: Unpack[ClassicChannelInitKwargs]):
+def make_nodes[T: Application[Node]](n=2, app_type: type[T] = SendRecvApp, **kwargs: Unpack[ClassicChannelInitKwargs]):
     cc = ClassicChannel("cc", **kwargs)
     nodes: list[Node] = []
-    apps: list[ClassicApp] = []
+    apps: list[T] = []
     for i in range(n):
         node = Node(f"n{i}")
         node.add_cchannel(cc)
-        app = ClassicApp()
+        app = app_type()
         node.add_apps(app)
         nodes.append(node)
         apps.append(app)
@@ -104,3 +114,99 @@ def test_bandwidth():
         (1110, "0090"),
     ]
     assert len(a1.rx) == 12
+
+
+class SimpleCommand(TypedDict):
+    cmd: str
+
+
+class CommandAppA(ClassicCommandDispatcherMixin, Application[Node]):
+    def __init__(self):
+        super().__init__()
+        self.records = set[str]()
+
+    def save(self, pkt: ClassicPacket, msg: SimpleCommand) -> None:
+        _ = pkt
+        self.records.add(msg["cmd"])
+
+    @classic_cmd_handler("a")
+    def handle_a(self, pkt: ClassicPacket, msg: SimpleCommand) -> None:
+        self.save(pkt, msg)
+
+
+class CommandAppB(CommandAppA):
+    @classic_cmd_handler("b")
+    def handle_b(self, pkt: ClassicPacket, msg: SimpleCommand) -> None:
+        self.save(pkt, msg)
+
+
+class CommandAppC(CommandAppA):
+    @classic_cmd_handler("c")
+    def handle_c(self, pkt: ClassicPacket, msg: SimpleCommand) -> None:
+        self.save(pkt, msg)
+
+
+class CommandAppD(CommandAppB, CommandAppC):
+    @classic_cmd_handler("d")
+    def handle_d(self, pkt: ClassicPacket, msg: SimpleCommand) -> None:
+        self.save(pkt, msg)
+
+
+class CommandModuleE(ClassicCommandModule):
+    def __init__(self, owner: CommandAppA):
+        self.owner = owner
+
+    @classic_cmd_handler("e")
+    def handle_e(self, pkt: ClassicPacket, msg: SimpleCommand) -> None:
+        self.owner.save(pkt, msg)
+
+
+class CommandAppE(CommandAppA):
+    module_e: CommandModuleE
+
+    def __init__(self):
+        super().__init__()
+        self.module_e = CommandModuleE(self)
+
+
+class CommandModuleF(CommandModuleE):
+    @classic_cmd_handler("f")
+    def handle_f(self, pkt: ClassicPacket, msg: SimpleCommand) -> None:
+        self.owner.save(pkt, msg)
+
+
+class CommandAppF(CommandAppA):
+    module_f: CommandModuleF
+
+    def __init__(self):
+        super().__init__()
+        self.module_f = CommandModuleF(self)
+
+
+@pytest.mark.parametrize(
+    ("app_type", "expected"),
+    [
+        (CommandAppB, {"a", "b"}),
+        (CommandAppC, {"a", "c"}),
+        (CommandAppD, {"a", "b", "c", "d"}),
+        (CommandAppE, {"a", "e"}),
+        (CommandAppF, {"a", "e", "f"}),
+    ],
+)
+def test_dispatch(app_type: type[CommandAppA], expected: dict[str, int]):
+    simulator, a0, a1 = make_nodes(app_type=app_type)
+
+    def send(cmd: str):
+        msg = SimpleCommand(cmd=cmd)
+        pkt = ClassicPacket(msg, src=a0.node, dest=a1.node)
+        a0.node.send_cpacket(a1.node, pkt)
+
+    send("a")
+    send("b")
+    send("c")
+    send("d")
+    send("e")
+    send("f")
+
+    simulator.run()
+    assert a1.records == expected
