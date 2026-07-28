@@ -1,7 +1,7 @@
 from mqns.entity.memory import MemoryQubit, QubitState
 from mqns.entity.node import QNode
 from mqns.network.fw.fib import FibEntry
-from mqns.network.fw.fw_module import ForwarderModule
+from mqns.network.fw.fw_module import ForwarderModule, fw_signaling_cmd_handler
 from mqns.network.fw.message import PurifResponseMsg, PurifSolicitMsg
 
 
@@ -51,11 +51,12 @@ class ForwarderPurifProc(ForwarderModule):
             "key1": _qubit_p_key(mq1),
             "round": mq0.purif_rounds,
         }
-        self.fw.send_msg(partner, msg, fib_entry)
+        self.send_msg(partner, msg, fib_entry)
 
         mq0.state = QubitState.PENDING
         self.fw.release_qubit(mq1)
 
+    @fw_signaling_cmd_handler("PURIF_SOLICIT")
     def handle_solicit(self, msg: PurifSolicitMsg, fib_entry: FibEntry):
         """
         Process a PURIF_SOLICIT message from primary node as part of the purification protocol.
@@ -130,8 +131,9 @@ class ForwarderPurifProc(ForwarderModule):
             "key1": p_key1,
             "result": result,
         }
-        self.fw.send_msg(primary, resp, fib_entry)
+        self.send_msg(primary, resp, fib_entry)
 
+    @fw_signaling_cmd_handler("PURIF_RESPONSE")
     def handle_response(self, msg: PurifResponseMsg, fib_entry: FibEntry):
         """
         Process a PURIF_RESPONSE message indicating the outcome of a purification attempt.

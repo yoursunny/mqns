@@ -2,7 +2,8 @@ from mqns.network.fw.controller import RoutingController
 from mqns.network.fw.cutoff import CutoffScheme, CutoffSchemeWaitTime, CutoffSchemeWaitTimeCounters
 from mqns.network.fw.fib import Fib, FibEntry
 from mqns.network.fw.forwarder import Forwarder, ForwarderCounters, ForwarderInitKwargs
-from mqns.network.fw.fw_classic import fw_control_cmd_handler, fw_signaling_cmd_handler
+from mqns.network.fw.fw_module import fw_control_cmd_handler, fw_signaling_cmd_handler
+from mqns.network.fw.fw_nb import ForwarderNorthbound
 from mqns.network.fw.message import MultiplexingVector, SwapSequence
 from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
@@ -33,6 +34,7 @@ __all__ = [
     "Forwarder",
     "ForwarderCounters",
     "ForwarderInitKwargs",
+    "ForwarderNorthbound",
     "fw_control_cmd_handler",
     "fw_signaling_cmd_handler",
     "MemoryEprIterator",

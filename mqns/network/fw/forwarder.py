@@ -16,35 +16,26 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import copy
-from abc import abstractmethod
 from typing import Literal, TypedDict, Unpack, override
 
+from mqns.entity.cchannel import ClassicCommandDispatcherMixin
 from mqns.entity.memory import MemoryDecohereEvent, MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import Application, QNode
-from mqns.entity.qchannel import QuantumChannel
 from mqns.models.delay import DelayInput, parse_delay
 from mqns.models.epr import Entanglement
 from mqns.models.error import PerfectErrorModel
 from mqns.models.error.input import ErrorModelInputBasic, parse_error
 from mqns.network.fw.cutoff import CutoffScheme, CutoffSchemeWaitTime
 from mqns.network.fw.fib import Fib, FibEntry
-from mqns.network.fw.fw_classic import ForwarderClassicMixin, fw_control_cmd_handler, fw_signaling_cmd_handler
+from mqns.network.fw.fw_nb import ForwarderNorthbound
 from mqns.network.fw.fw_purif import ForwarderPurifProc
 from mqns.network.fw.fw_swap import ForwarderSwapProc
-from mqns.network.fw.message import (
-    CutoffDiscardMsg,
-    InstallPathMsg,
-    PurifResponseMsg,
-    PurifSolicitMsg,
-    SwapUpdateMsg,
-    UninstallPathMsg,
-)
 from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
 from mqns.network.fw.select import SelectPurifQubit, call_select_purif_qubit
 from mqns.network.network import TimingPhase, TimingPhaseEvent
 from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
-from mqns.simulator import Time, event_handler, func_to_event
+from mqns.simulator import event_handler
 from mqns.utils import json_encodable, unwrap_cast
 
 
@@ -128,14 +119,32 @@ class ForwarderCounters:
         )
 
 
-class Forwarder(ForwarderClassicMixin, Application[QNode]):
+class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
     """
     Forwarder is the network layer component of QNodes implementing the forwarding phase
     (i.e., entanglement generation and swapping) while the centralized
     routing is done at the controller.
     """
 
-    def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
+    nb: ForwarderNorthbound
+    """Northbound interface to communicate with the controller."""
+
+    cutoff: CutoffScheme
+    """EPR age cut-off scheme."""
+
+    mux: MuxScheme
+    """Multiplexing scheme."""
+
+    fib: Fib
+    """FIB data structure."""
+
+    purif: ForwarderPurifProc
+    """Purification procedure module."""
+
+    swap: ForwarderSwapProc
+    """Swapping procedure module."""
+
+    def __init__(self, *, nb: ForwarderNorthbound, **kwargs: Unpack[ForwarderInitKwargs]):
         """
         This constructor sets up a node's entanglement forwarding logic in a quantum network.
         It configures the swapping success probability and preparing internal
@@ -144,14 +153,12 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         """
         super().__init__()
 
-        self.cutoff: CutoffScheme = copy.deepcopy(kwargs.get("cutoff")) or CutoffSchemeWaitTime()
-        """EPR age cut-off scheme."""
+        self.nb = nb
+        self.cutoff = copy.deepcopy(kwargs.get("cutoff")) or CutoffSchemeWaitTime()
         self.mux: MuxScheme = copy.deepcopy(kwargs.get("mux")) or MuxSchemeBufferSpace()
-        """Multiplexing scheme."""
         self._select_purif_qubit = kwargs.get("select_purif_qubit")
 
         self.fib = Fib()
-        """FIB structure."""
         self.purif = ForwarderPurifProc()
         self.swap = ForwarderSwapProc(
             ps=kwargs.get("p_swap", 1.0),
@@ -181,13 +188,12 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         self.epr_type = self.network.epr_type
         """Network-wide entanglement type."""
 
+        self.nb.install(self)
         self.cutoff.install(self)
         self.mux.install(self)
         self.fib.install(self)
         self.purif.install(self)
         self.swap.install(self)
-
-        self._fib_erase_delay = self.simulator.time(time_slot=4 * self.memory.t_cohere.time_slot)
 
     @event_handler
     def handle_sync_phase(self, event: TimingPhaseEvent):
@@ -210,117 +216,6 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
                 self.waiting_etg.clear()
             case TimingPhase.INTERNAL, False:
                 self.swap.exit_internal_phase()
-
-    @fw_control_cmd_handler("INSTALL_PATH")
-    def handle_install_path(self, msg: InstallPathMsg):
-        """Process an INSTALL_PATH message from the controller."""
-        path_id = msg["path_id"]
-        instructions = msg["instructions"]
-        self.mux.validate_path_instructions(instructions)
-
-        # populate FIB
-        route = instructions["route"]
-        if "swap_cutoff" in instructions:
-            swap_cutoff = [None if t < 0 else self.simulator.time(time_slot=t) for t in instructions["swap_cutoff"]]
-        else:
-            swap_cutoff: list[Time | None] = [None] * (2 * (len(route) - 2))
-        fib_entry = FibEntry(
-            req_id=instructions["req_id"],
-            path_id=path_id,
-            route=route,
-            own_idx=route.index(self.node.name),
-            swap=instructions["swap"],
-            swap_cutoff=swap_cutoff,
-            purif=instructions["purif"],
-        )
-        self.fib.insert_or_replace(fib_entry)
-
-        # identify left/right neighbors
-        # associate path with qchannel and allocate qubits
-        if ch_l := self._find_adj(fib_entry, -1):
-            self.mux.install_path_adj(instructions, fib_entry, PathDirection.L, ch_l)
-        if ch_r := self._find_adj(fib_entry, +1):
-            self.mux.install_path_adj(instructions, fib_entry, PathDirection.R, ch_r)
-
-        # call subclass specialization
-        self.handle_path_change(
-            path_id=path_id,
-            uninstall=False,
-            fib_entry=fib_entry,
-            ch_l=ch_l,
-            ch_r=ch_r,
-        )
-
-    @fw_control_cmd_handler("UNINSTALL_PATH")
-    def handle_uninstall_path(self, msg: UninstallPathMsg):
-        """Process an UNINSTALL_PATH message from the controller."""
-        path_id = msg["path_id"]
-
-        # retrieve and erase FIB entry
-        fib_entry = self.fib.get(path_id)
-        fib_entry.active_until = self.simulator.tc
-        self.simulator.add_event(func_to_event(fib_entry.active_until + self._fib_erase_delay, self.fib.erase, path_id))
-
-        # identify left/right neighbors
-        # disassociate path with qchannel and deallocate qubits
-        if ch_l := self._find_adj(fib_entry, -1):
-            self.mux.uninstall_path_adj(fib_entry, PathDirection.L, ch_l)
-        if ch_r := self._find_adj(fib_entry, +1):
-            self.mux.uninstall_path_adj(fib_entry, PathDirection.R, ch_r)
-
-        # call subclass specialization
-        self.handle_path_change(
-            path_id=path_id,
-            uninstall=True,
-            fib_entry=fib_entry,
-            ch_l=ch_l,
-            ch_r=ch_r,
-        )
-
-    def _find_adj(self, fib_entry: FibEntry, route_offset: int) -> QuantumChannel | None:
-        neigh_idx = fib_entry.own_idx + route_offset
-        if neigh_idx in (-1, len(fib_entry.route)):  # no left/right neighbor if own node is the left/right end node
-            return None
-        neigh = self.network.get_node(fib_entry.route[neigh_idx])
-        return self.node.get_qchannel(neigh)
-
-    @abstractmethod
-    def handle_path_change(
-        self,
-        *,
-        path_id: int,
-        uninstall: bool,
-        fib_entry: FibEntry,
-        ch_l: QuantumChannel | None,
-        ch_r: QuantumChannel | None,
-    ):
-        """
-        Process LinkLayer changes after a path has been installed or uninstalled.
-
-        Args:
-            path_id: Path identifier.
-            uninstall: Whether this is an uninstall command.
-            fib_entry: FIB entry.
-            ch_l: Quantum channel toward left, if exists.
-            ch_r: Quantum channel toward right, if exists.
-        """
-
-    @fw_signaling_cmd_handler("CUTOFF_DISCARD")
-    def _handle_cutoff_discard(self, msg: CutoffDiscardMsg, fib_entry: FibEntry):
-        _ = fib_entry
-        self.cutoff.handle_discard(msg)
-
-    @fw_signaling_cmd_handler("PURIF_SOLICIT")
-    def _handle_purif_solicit(self, msg: PurifSolicitMsg, fib_entry: FibEntry):
-        self.purif.handle_solicit(msg, fib_entry)
-
-    @fw_signaling_cmd_handler("PURIF_RESPONSE")
-    def _handle_purif_response(self, msg: PurifResponseMsg, fib_entry: FibEntry):
-        self.purif.handle_response(msg, fib_entry)
-
-    @fw_signaling_cmd_handler("SWAP_UPDATE")
-    def _handle_swap_update(self, msg: SwapUpdateMsg, fib_entry: FibEntry):
-        self.swap.handle_update(msg, fib_entry)
 
     @event_handler
     def qubit_is_entangled(self, event: QubitEntangledEvent):

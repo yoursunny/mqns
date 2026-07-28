@@ -8,7 +8,7 @@ from mqns.models.delay import DelayModel
 from mqns.models.epr import Entanglement
 from mqns.models.error import ErrorModel
 from mqns.network.fw.fib import FibEntry, FibSwapGroup
-from mqns.network.fw.fw_module import ForwarderModule
+from mqns.network.fw.fw_module import ForwarderModule, fw_signaling_cmd_handler
 from mqns.network.fw.message import SwapUpdateMsg
 from mqns.network.fw.mux import MuxScheme
 from mqns.simulator import Event, Time, func_to_event
@@ -428,7 +428,7 @@ class ForwarderSwapProc(ForwarderModule):
                 raise RuntimeError(f"{self}: cannot herald {h.dest} among paths {h.paths} | {h.su}")
 
             h.su["path_id"] = fib_entry.path_id
-            self.fw.send_msg(self.network.get_node(h.dest), h.su, fib_entry)
+            self.send_msg(self.network.get_node(h.dest), h.su, fib_entry)
 
     def start(self, mq0: MemoryQubit, mq1: MemoryQubit, fib_entry: FibEntry):
         """
@@ -612,6 +612,10 @@ class ForwarderSwapProc(ForwarderModule):
             and su_args
         ):
             self.handle_update(*su_args)
+
+    @fw_signaling_cmd_handler("SWAP_UPDATE")
+    def receive_update(self, msg: SwapUpdateMsg, fib_entry: FibEntry) -> None:
+        self.handle_update(msg, fib_entry)
 
     def handle_update(self, msg: SwapUpdateMsg, fib_entry: FibEntry) -> None:
         """

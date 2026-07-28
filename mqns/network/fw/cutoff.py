@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, ClassVar, final, override
 
 from mqns.entity.memory import MemoryQubit, PathDirection
 from mqns.network.fw.fib import FibEntry
-from mqns.network.fw.fw_module import ForwarderModule
+from mqns.network.fw.fw_module import ForwarderModule, fw_signaling_cmd_handler
 from mqns.network.fw.message import CutoffDiscardMsg
 from mqns.simulator import Event, Time
 
@@ -55,14 +55,16 @@ class CutoffScheme(ForwarderModule, ABC):
             "key": p_key,
             "round": round,
         }
-        fw.send_msg(partner, msg, fib_entry)
+        self.send_msg(partner, msg, fib_entry)
 
-    def handle_discard(self, msg: CutoffDiscardMsg):
+    @fw_signaling_cmd_handler("CUTOFF_DISCARD")
+    def handle_discard(self, msg: CutoffDiscardMsg, fib_entry: FibEntry):
         """
         Discard a qubit that has exceeded cutoff time at the remote forwarder.
 
         This is called by ProactiveForwarder upon receiving a CUTOFF_DISCARD message.
         """
+        _ = fib_entry
         fw = self.fw
         o_key = msg["key"]
         round = msg["round"]

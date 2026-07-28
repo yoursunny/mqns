@@ -15,35 +15,23 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import override
+from typing import Unpack, cast, override
 
-from mqns.network.fw import Forwarder
+from mqns.network.fw import Forwarder, ForwarderInitKwargs, ForwarderNorthbound
 from mqns.network.network import TimingPhase, TimingPhaseEvent
 from mqns.network.protocol.event import ManageActiveChannel
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
 
 
-class ReactiveForwarder(Forwarder):
-    """
-    ReactiveForwarder is the forwarder of QNodes. It continuously generates EPRs on all links,
-    then sends EPR link state to the controller to receive routing instructions.
-    Works only in Synchronous timing mode.
-    It implements the forwarding phase (i.e., entanglement generation and swapping) while the centralized
-    routing is done at the controller.
-    """
-
+class ReactiveForwarderNorthbound(ForwarderNorthbound):
     @override
-    def install(self, node):
-        super().install(node)
+    def install(self, fw):
+        super().install(fw)
 
         # Qchannel activation is called before simulation starts, but EPR generation starts at t=0
         self.activate_qchannels()
 
     def activate_qchannels(self):
-        """
-        Instruct LinkLayer to start generating EPRs on ALL qchannels.
-        This may be called from install() or at the first EXTERNAL phase (for better coordination).
-        """
         for ch in self.node.qchannels:
             self.log_debug("activate qchannel %s", ch.name)
             self.simulator.add_event(
@@ -57,23 +45,7 @@ class ReactiveForwarder(Forwarder):
                 )
             )
 
-    @override
     def handle_sync_phase(self, event: TimingPhaseEvent):
-        """
-        Handle timing phase signals, only used in SYNC timing mode.
-
-        Upon entering ROUTING phase:
-
-        1. Send to controller link states corresponding to entangled qubits that arrived during EXTERNAL phase
-           and wait for routing instructions.
-
-        Upon exiting INTERNAL phase:
-
-        1. Clear path assignments.
-           In reactive forwarding, path assignments are only useful for one slot.
-        """
-        super().handle_sync_phase(event)
-
         match event.action:
             case TimingPhase.ROUTING, True:
                 self.send_link_state()
@@ -97,7 +69,7 @@ class ReactiveForwarder(Forwarder):
         Send link state message to controller. Assumes direct connection to controller.
         """
         link_states: list[LinkStateEntry] = []
-        for event in self.waiting_etg:
+        for event in self.fw.waiting_etg:
             assert event.qubit.key is not None
             link_states.append({"node": event.node.name, "neighbor": event.neighbor.name, "qubit": event.qubit.key})
 
@@ -105,10 +77,41 @@ class ReactiveForwarder(Forwarder):
             self.log_debug("no link_state to send")
             return
         else:
-            self.log_debug("send link_state for %s etg qubits", len(self.waiting_etg))
+            self.log_debug("send link_state for %s etg qubits", len(self.fw.waiting_etg))
 
         msg: LinkStateMsg = {
             "cmd": "LS",
             "ls": link_states,
         }
         self.send_ctrl(msg)
+
+
+class ReactiveForwarder(Forwarder):
+    """
+    ReactiveForwarder is the forwarder of QNodes. It continuously generates EPRs on all links,
+    then sends EPR link state to the controller to receive routing instructions.
+    Works only in Synchronous timing mode.
+    It implements the forwarding phase (i.e., entanglement generation and swapping) while the centralized
+    routing is done at the controller.
+    """
+
+    def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
+        super().__init__(nb=ReactiveForwarderNorthbound(), **kwargs)
+
+    @override
+    def handle_sync_phase(self, event: TimingPhaseEvent):
+        """
+        Handle timing phase signals, only used in SYNC timing mode.
+
+        Upon entering ROUTING phase:
+
+        1. Send to controller link states corresponding to entangled qubits that arrived during EXTERNAL phase
+           and wait for routing instructions.
+
+        Upon exiting INTERNAL phase:
+
+        1. Clear path assignments.
+           In reactive forwarding, path assignments are only useful for one slot.
+        """
+        super().handle_sync_phase(event)
+        cast(ReactiveForwarderNorthbound, self.nb).handle_sync_phase(event)
