@@ -114,7 +114,7 @@ class QuantumMemory(EventDispatcherMixin, Entity):
                 if unassigned and mq.qchannel:
                     errors.append(f"{node.name} {mq} is assigned to {mq.qchannel}")
         if n := len(errors):
-            log.warning(f"QuantumMemory.check_leaks() found {n} errors:\n\t{'\n\t'.join(errors)}")
+            log.warning("QuantumMemory.check_leaks() found %s errors:\n\t%s", n, "\n\t".join(errors))
             raise MemoryError(*errors)
 
     def __init__(self, name: str, **kwargs: Unpack[QuantumMemoryInitKwargs]):

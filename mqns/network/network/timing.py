@@ -23,8 +23,8 @@ class TimingPhaseEvent(Event):
     Event that indicates a timing phase change, emitted in SYNC timing mode only.
     """
 
-    def __init__(self, phase: TimingPhase, *, enter: bool, t: Time, name: str | None = None):
-        super().__init__(t, name)
+    def __init__(self, phase: TimingPhase, *, enter: bool, t: Time):
+        super().__init__(t, f"{'entering' if enter else 'exiting'} {phase.name} phase")
         self.phase = phase
         """Phase."""
         self.enter = enter
@@ -102,7 +102,7 @@ class TimingModeAsync(TimingMode):
     @override
     def install(self, network: "QuantumNetwork"):
         super().install(network)
-        log.info(f"TIME_SYNC: using {self.name} mode")
+        log.info("TIME_SYNC: using %s mode", self.name)
 
     @override
     def is_async(self) -> bool:
@@ -182,8 +182,11 @@ class TimingModeSync(TimingMode):
         """INTERNAL phase duration."""
 
         log.info(
-            f"TIME_SYNC: using {self.name} mode, "
-            f"t_ext={self.t_ext.time_slot}, t_rtg={self.t_rtg.time_slot}, t_int={self.t_int.time_slot}"
+            "TIME_SYNC: using %s mode, t_ext=%s, t_rtg=%s, t_int=%s",
+            self.name,
+            self.t_ext.time_slot,
+            self.t_rtg.time_slot,
+            self.t_int.time_slot,
         )
 
         self._sequence = deque[tuple[TimingPhase, Time]]()
@@ -200,8 +203,8 @@ class TimingModeSync(TimingMode):
         self.simulator.add_event(func_to_event(self.simulator.ts, self._enter_phase))
 
     def _change_phase(self):
-        log.debug(f"TIME_SYNC: exiting {self.phase.name} phase")
         event = TimingPhaseEvent(self.phase, enter=False, t=self.simulator.tc)
+        log.debug("TIME_SYNC: %s", event.name)
         for node in self.network.all_nodes:
             node.handle(event)
 
@@ -218,8 +221,8 @@ class TimingModeSync(TimingMode):
         # schedule next sync signal
         self.simulator.add_event(func_to_event(self.end_time, self._change_phase))
 
-        log.debug(f"TIME_SYNC: entering {phase.name} phase")
         event = TimingPhaseEvent(phase, enter=True, t=self.simulator.tc)
+        log.debug("TIME_SYNC: %s", event.name)
         for node in self.network.all_nodes:
             node.handle(event)
 

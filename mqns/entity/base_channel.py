@@ -4,7 +4,7 @@ from mqns.entity.entity import Entity
 from mqns.entity.node import Node
 from mqns.models.delay import DelayInput, parse_delay
 from mqns.simulator import Event, Simulator, Time
-from mqns.utils import log, rng
+from mqns.utils import rng
 
 default_light_speed: list[float] = [2e5]
 """
@@ -76,7 +76,7 @@ class BaseChannel[N: Node](Entity):
 
             if self.max_buffer_size != 0 and send_time > now + self.max_buffer_size / self.bandwidth:
                 # buffer is overflow
-                log.debug(f"{self}: drop %s due to overflow", packet)
+                self.log_debug("drop %s due to overflow", packet)
                 return True, Time.SENTINEL
 
             self._next_send_time = send_time + packet_len / self.bandwidth
@@ -85,7 +85,7 @@ class BaseChannel[N: Node](Entity):
 
         # random drop
         if self.drop_rate > 0 and rng.random() < self.drop_rate:
-            log.debug(f"{self}: drop %s due to drop rate", packet)
+            self.log_debug("drop %s due to drop rate", packet)
             return True, Time.SENTINEL
 
         # add delay

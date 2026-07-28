@@ -19,12 +19,13 @@ from abc import ABC
 from typing import TYPE_CHECKING, Any, cast
 
 from mqns.simulator import EventDispatcherMixin
+from mqns.utils import LogSelfMixin
 
 if TYPE_CHECKING:
     from mqns.entity.node.node import Node
 
 
-class Application[N: "Node"](EventDispatcherMixin, ABC):
+class Application[N: "Node"](EventDispatcherMixin, LogSelfMixin, ABC):
     """
     Application deployed on a node.
 

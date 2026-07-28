@@ -166,7 +166,7 @@ class RoutingPathSingle(RoutingPath):
     @override
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
         route = net.query_route(self.src, self.dst)[0]
-        log.debug(f"ROUTING: Computed path #{self.path_id}: {route}")
+        log.debug("ROUTING: Computed path #%s: %s", self.path_id, route)
         yield self._make_path_instructions(net, route.path)
 
 
@@ -194,7 +194,7 @@ class RoutingPathMulti(RoutingPath):
                 qchannel_use_count[ch.name] += 1
 
         for path_id, route in enumerate(routes, start=self.path_id):
-            log.debug(f"ROUTING: Computed path #{path_id}: {route}")
+            log.debug("ROUTING: Computed path #%s: %s", path_id, route)
 
             m_v: MultiplexingVector | None = None
 

@@ -1,8 +1,10 @@
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
 from mqns.entity.cchannel.cchannel import ClassicPacket, RecvClassicPacket
 from mqns.simulator import event_handler
+
+type _HandlerFunc = Callable[[Any, ClassicPacket, Any], Any]
 
 
 def classic_cmd_handler(cmd: str):
@@ -10,14 +12,14 @@ def classic_cmd_handler(cmd: str):
     Method decorator to indicate a classic command handler.
     """
 
-    def decorator(f: Callable[[Any, ClassicPacket, Any], Any]):
+    def decorator(f: _HandlerFunc):
         setattr(f, "_classic_cmd", cmd)
         return f
 
     return decorator
 
 
-def _populate_handlers(cls: type):
+def _populate_handlers(cls: type["ClassicCommandDispatcherMixin"]):
     # Identify handler method names.
     handler_names: dict[str, str] = {}
     for base in reversed(cls.mro()):
@@ -35,9 +37,12 @@ class ClassicCommandDispatcherMixin:
     assuming the classic packet contains JSON dict with "cmd" key.
     """
 
+    __slots__ = ()
+    _classic_handlers: ClassVar[dict[str, _HandlerFunc]]
+
     @event_handler
     def handle_classic_command(self, event: RecvClassicPacket) -> bool:
-        cls: type = type(self)
+        cls = type(self)
 
         if "_classic_handlers" not in cls.__dict__:
             _populate_handlers(cls)

@@ -17,7 +17,7 @@
 
 from mqns.utils.autoid import AutoIncrementIdentifier
 from mqns.utils.json import json_default, json_encodable
-from mqns.utils.logger import log
+from mqns.utils.logger import LogSelfMixin, log
 from mqns.utils.random import rng
 from mqns.utils.timeout import WallClockTimeout
 from mqns.utils.types import unwrap, unwrap_cast
@@ -27,6 +27,7 @@ __all__ = [
     "json_default",
     "json_encodable",
     "log",
+    "LogSelfMixin",
     "rng",
     "unwrap_cast",
     "unwrap",

@@ -58,7 +58,6 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
 
     def __init__(
         self,
-        name="dynamic EPR allocation",
         *,
         select_swap_qubit: MuxSchemeFibBase.SelectSwapQubit | None = None,
         select_path: SelectPath = SelectPath_random,
@@ -68,7 +67,7 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
             select_swap_qubit: Function to select a qubit to swap with, default is first.
             select_path: Function to select a path for an entangled qubit, default is random.
         """
-        super().__init__(name, select_swap_qubit)
+        super().__init__(select_swap_qubit)
         self._select_path = select_path
 
     @override

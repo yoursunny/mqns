@@ -21,7 +21,6 @@ from mqns.network.fw import Forwarder
 from mqns.network.network import TimingPhase, TimingPhaseEvent
 from mqns.network.protocol.event import ManageActiveChannel
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
-from mqns.utils import log
 
 
 class ReactiveForwarder(Forwarder):
@@ -46,7 +45,7 @@ class ReactiveForwarder(Forwarder):
         This may be called from install() or at the first EXTERNAL phase (for better coordination).
         """
         for ch in self.node.qchannels:
-            log.debug(f"{self}: activate qchannel {ch.name}")
+            self.log_debug("activate qchannel %s", ch.name)
             self.simulator.add_event(
                 ManageActiveChannel(
                     self.node,
@@ -77,7 +76,6 @@ class ReactiveForwarder(Forwarder):
 
         match event.action:
             case TimingPhase.ROUTING, True:
-                log.debug(f"{self}: send link_state for {len(self.waiting_etg)} etg qubits")
                 self.send_link_state()
             case TimingPhase.INTERNAL, False:
                 self.memory.deallocate(*(qubit.addr for qubit, _ in self.memory.find(lambda q, _: q.path_id is not None)))
@@ -92,9 +90,7 @@ class ReactiveForwarder(Forwarder):
         if uninstall:
             raise ValueError("ReactiveForwarder should not receive UNINSTALL_PATH command")
         if not self.node.timing.is_routing():
-            log.warning(
-                f"{self}: received INSTALL_PATH message for path {path_id} outside of ROUTING phase; t_rtg is too short?"
-            )
+            self.log_warning("received INSTALL_PATH message for path %s outside of ROUTING phase; t_rtg is too short?", path_id)
 
     def send_link_state(self):
         """
@@ -106,8 +102,10 @@ class ReactiveForwarder(Forwarder):
             link_states.append({"node": event.node.name, "neighbor": event.neighbor.name, "qubit": event.qubit.key})
 
         if len(link_states) == 0:
-            log.debug(f"{self}: no link_state to send")
+            self.log_debug("no link_state to send")
             return
+        else:
+            self.log_debug("send link_state for %s etg qubits", len(self.waiting_etg))
 
         msg: LinkStateMsg = {
             "cmd": "LS",

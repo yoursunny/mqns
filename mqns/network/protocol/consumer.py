@@ -8,7 +8,7 @@ from mqns.entity.node import Application, NodePair, QNode, split_node_pair
 from mqns.network.network import QuantumNetwork
 from mqns.network.protocol.event import QubitConsumeEvent, QubitReleasedEvent
 from mqns.simulator import event_handler
-from mqns.utils import json_encodable, log
+from mqns.utils import json_encodable
 
 
 class RequestLike(Protocol):
@@ -181,7 +181,7 @@ class Consumer(Application[QNode]):
         if epr.consume_with_store_decay_side(self.simulator.tc, side=0 if epr.src is self.node else 1):
             role_str = "second"
             self.cnt[req_id].increment_n_consumed(epr.fidelity)
-        log.debug(f"{self}: consume EPR {role_str} for request {req_id}: {epr}")
+        self.log_debug("consume EPR %s for request %s: %s", role_str, req_id, epr)
 
         self.memory.read(qubit.addr, remove=True)
         qubit.state = QubitState.RELEASE

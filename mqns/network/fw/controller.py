@@ -4,7 +4,6 @@ from mqns.entity.cchannel import ClassicPacket
 from mqns.entity.node import Application, Controller
 from mqns.network.fw.message import InstallPathMsg, PathInstructions, UninstallPathMsg
 from mqns.network.fw.routing import MultiplexingVectorInput, RoutingPath
-from mqns.utils import log
 
 
 class RoutingController(Application[Controller]):
@@ -65,4 +64,4 @@ class RoutingController(Application[Controller]):
         for node_name in instructions["route"]:
             qnode = self.net.get_node(node_name)
             self.node.send_cpacket(qnode, ClassicPacket(msg, src=self.node, dest=qnode))
-            log.debug(f"{self}: {msg['cmd']} #{msg['path_id']} at {qnode.name}: {instructions}")
+            self.log_debug("%s #%s at %s: %s", msg["cmd"], msg["path_id"], qnode.name, instructions)

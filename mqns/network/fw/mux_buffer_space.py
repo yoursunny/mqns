@@ -16,7 +16,7 @@ from mqns.network.fw.select import (
     select_swap_qubit_newest,
     select_swap_qubit_oldest,
 )
-from mqns.utils import log, unwrap_cast
+from mqns.utils import unwrap_cast
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
@@ -59,8 +59,8 @@ class MuxSchemeFibBase(MuxScheme):
     Select the qubit that becomes ELIGIBLE in this forwarder the latest, i.e. Last-In-First-Out (LIFO).
     """
 
-    def __init__(self, name: str, select_swap_qubit: SelectSwapQubit | None):
-        super().__init__(name)
+    def __init__(self, select_swap_qubit: SelectSwapQubit | None):
+        super().__init__()
         self._select_swap_qubit = select_swap_qubit
 
     @override
@@ -84,7 +84,6 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
 
     def __init__(
         self,
-        name="buffer-space multiplexing",
         *,
         select_swap_qubit: MuxSchemeFibBase.SelectSwapQubit | None = None,
     ):
@@ -92,7 +91,7 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
         Args:
             select_swap_qubit: Function to select a qubit to swap with, default is first.
         """
-        super().__init__(name, select_swap_qubit)
+        super().__init__(select_swap_qubit)
 
     @override
     def validate_path_instructions(self, instructions: PathInstructions) -> None:
@@ -129,13 +128,13 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
                 direction,
                 n="all" if n_qubits == 0 else n_qubits,
             )
-        log.debug(f"{self.fw}: allocating {direction} qubits: {addrs}")
+        self.fw.log_debug("allocating %s qubits: %s", direction, addrs)
 
     @override
     def uninstall_path_adj(self, fib_entry: FibEntry, direction: PathDirection, qchannel: QuantumChannel) -> None:
         qubits = self.memory.find(lambda q, _: q.path_id == fib_entry.path_id, qchannel=qchannel)
         addrs = [q[0].addr for q in qubits]
-        log.debug(f"{self.fw}: deallocating {direction} qubits: {addrs}")
+        self.fw.log_debug("deallocating %s qubits: %s", direction, addrs)
         # If some qubits are currently ACTIVE or RESERVED IN LinkLayer, deallocation would occur
         # when they next reach RAW state.
         self.memory.deallocate(*addrs)

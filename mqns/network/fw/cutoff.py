@@ -1,39 +1,22 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, ClassVar, final, override
 
 from mqns.entity.memory import MemoryQubit, PathDirection
-from mqns.entity.node import QNode
 from mqns.network.fw.fib import FibEntry
+from mqns.network.fw.fw_module import ForwarderModule
 from mqns.network.fw.message import CutoffDiscardMsg
-from mqns.simulator import Event, Simulator, Time
-from mqns.utils import log
+from mqns.simulator import Event, Time
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
 
 
-class CutoffScheme(ABC):
+class CutoffScheme(ForwarderModule, ABC):
     """
     EPR age cut-off scheme.
 
     This determines how ``PathInstructions.swap_cutoff`` is interpreted.
     """
-
-    fw: "Forwarder"
-    simulator: Simulator
-    node: QNode
-
-    def __init__(self, name: str):
-        self.name = name
-        """Scheme name."""
-
-    def __repr__(self):
-        return f"<{self.name}>"
-
-    def install(self, fw: "Forwarder"):
-        self.fw = fw
-        self.simulator = fw.simulator
-        self.node = fw.node
 
     @classmethod
     def of(cls, fw: "Forwarder"):
@@ -57,8 +40,8 @@ class CutoffScheme(ABC):
         # Find EPR partner.
         assert qubit.partner
         partner, p_key = qubit.partner
-        log.debug(
-            f"{self.fw}: local cutoff discard key={qubit.key} addr={qubit.addr} round={round} partner={partner.name}:{p_key}"
+        self.log_debug(
+            "local cutoff discard key=%s addr=%s round=%s partner=%s:%s", qubit.key, qubit.addr, round, partner.name, p_key
         )
 
         # Discard primary qubit.
@@ -87,10 +70,10 @@ class CutoffScheme(ABC):
         # Find qubit.
         qm_tuple = fw.memory.read(o_key, remove=True)
         if qm_tuple is None:
-            log.debug(f"{self.fw}: remote cutoff discard key={o_key} not exist")
+            self.log_debug("remote cutoff discard key=%s not exist", o_key)
             return
         qubit, _ = qm_tuple
-        log.debug(f"{self.fw}: remote cutoff discard key={o_key} addr={qubit.addr} round={round}")
+        self.log_debug("remote cutoff discard key=%s addr=%s round=%s", o_key, qubit.addr, round)
 
         # Discard secondary qubit.
         fw.cnt.increment_n_cutoff(round, False)
@@ -160,14 +143,12 @@ class CutoffSchemeWaitTime(CutoffScheme):
     Note that ``swap_delay`` does not count against the wait budget.
     """
 
-    _DIR_OFFSET = {
+    _DIR_OFFSET: ClassVar = {
         PathDirection.L: -2,
         PathDirection.R: -1,
     }
 
-    def __init__(self, name="wait-time"):
-        super().__init__(name)
-
+    def __init__(self):
         self.cnt = CutoffSchemeWaitTimeCounters()
 
     @override
@@ -177,10 +158,15 @@ class CutoffSchemeWaitTime(CutoffScheme):
 
         now = self.simulator.tc
         deadline = now + wait_budget
-        log.debug(
-            f"{self.fw}: wait-time key={mq.key} addr={mq.addr} "
-            f"path={fib_entry.path_id}({fib_entry.own_idx}){dir.name} "
-            f"budget={wait_budget} deadline={deadline}"
+        self.log_debug(
+            "wait-time key=%s addr=%s path=%s(%s)%s budget=%s deadline=%s",
+            mq.key,
+            mq.addr,
+            fib_entry.path_id,
+            fib_entry.own_idx,
+            dir.name,
+            wait_budget,
+            deadline,
         )
         self.simulator.add_event(event := CutoffDiscardEvent(self, mq, fib_entry, round=-1, eligible_t=now, t=deadline))
         mq.events.add(event)

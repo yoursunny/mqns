@@ -24,7 +24,7 @@ from mqns.network.fw import RoutingController, RoutingPathStatic
 from mqns.network.network import Request, TimingModeSync, TimingPhase, TimingPhaseEvent
 from mqns.network.reactive.message import LinkStateMsg
 from mqns.simulator import event_handler, func_to_event
-from mqns.utils import json_encodable, log
+from mqns.utils import json_encodable
 
 
 @json_encodable
@@ -93,10 +93,10 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         """
 
         if not self.node.timing.is_routing():  # should be in SYNC timing mode ROUTING phase
-            log.warning(f"{self}: received LS message from {pkt.src} outside of ROUTING phase | {msg}")
+            self.log_warning("received LS message from %s outside of ROUTING phase | %s", pkt.src, msg)
             return True
 
-        log.debug(f"{self.node.name}: received LS message from {pkt.src} | {msg}")
+        self.log_debug("received LS message from %s | %s", pkt.src, msg)
         self.cnt.n_ls += 1
 
         for entry in msg["ls"]:

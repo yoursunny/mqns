@@ -18,9 +18,10 @@
 from abc import ABC, abstractmethod
 
 from mqns.simulator import Event, Simulator
+from mqns.utils import LogSelfMixin
 
 
-class Entity(ABC):
+class Entity(LogSelfMixin, ABC):
     """
     Basic entity class.
 

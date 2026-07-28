@@ -120,7 +120,7 @@ class Simulator:
 
         t = event.t.time_slot
         if t < self._pool.tc:
-            log.warning(f"Event {event} dropped: scheduled for {event.t} but simulator is at {self.tc}")
+            log.warning("Event %s dropped: scheduled for %s but simulator is at %s", event, event.t, self.tc)
             return
         if self._pool.te is not None and t > self._pool.te:
             return
@@ -153,7 +153,7 @@ class Simulator:
             else:
                 self._run()
         except Exception as e:
-            log.error(f"Simulator exception {type(e).__name__} occurred during {self._current_event}: {e}")
+            log.error("Simulator exception %s occurred during %s: %s", type(e).__name__, self._current_event, e)
             raise RuntimeError(f"simulation aborted at [{self.tc}] by exception: {e}") from e
         finally:
             self.stop()  # ensure s.running is False
@@ -235,7 +235,7 @@ class Simulator:
 
     def _update_gate(self, gate: Time) -> None:
         assert gate.accuracy == self.accuracy
-        log.debug(f"Simulator.update_gate({gate.time_slot})")
+        log.debug("Simulator.update_gate(%s)", gate.time_slot)
         self._pool.update_gate(gate.time_slot)
 
     def set_gate_reached_handler(self, h: Callable[[int], None]) -> None:

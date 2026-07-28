@@ -61,6 +61,8 @@ class EventDispatcherMixin:
     Mixin class for event dispatching functionality on event target (e.g. ``Application``).
     """
 
+    __slots__ = ()
+
     def handle(self, event: Event, /) -> bool | None:
         """
         Dispatch an event.
