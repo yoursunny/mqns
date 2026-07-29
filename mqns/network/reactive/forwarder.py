@@ -21,6 +21,7 @@ from mqns.network.fw import Forwarder, ForwarderInitKwargs, ForwarderNorthbound
 from mqns.network.network import TimingPhase, TimingPhaseEvent
 from mqns.network.protocol.event import ManageActiveChannel
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
+from mqns.simulator import event_handler
 
 
 class ReactiveForwarderNorthbound(ForwarderNorthbound):
@@ -99,6 +100,7 @@ class ReactiveForwarder(Forwarder):
         super().__init__(nb=ReactiveForwarderNorthbound(), **kwargs)
 
     @override
+    @event_handler
     def handle_sync_phase(self, event: TimingPhaseEvent):
         """
         Handle timing phase signals, only used in SYNC timing mode.

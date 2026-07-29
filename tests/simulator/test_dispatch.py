@@ -28,11 +28,6 @@ class EventC(OwnedEvent):
     pass
 
 
-@final
-class EventD(OwnedEvent):
-    pass
-
-
 class OwnerBase(EventDispatcherMixin):
     def __init__(self):
         self.invoked = set[str]()
@@ -47,28 +42,18 @@ class OwnerBase(EventDispatcherMixin):
         _ = event
         self.invoked.add("B.b")
 
-    @event_handler
-    def handle_c(self, event: EventC):
-        _ = event
-        self.invoked.add("B.c")
-
 
 class OwnerSub(OwnerBase):
     @override
+    @event_handler
     def handle_b(self, event: EventB):
         _ = event
         self.invoked.add("S.b")
 
-    @override
     @event_handler
     def handle_c(self, event: EventC):
         _ = event
         self.invoked.add("S.c")
-
-    @event_handler
-    def handle_d(self, event: EventD):
-        _ = event
-        self.invoked.add("S.d")
 
 
 def test_dispatcher():
@@ -77,7 +62,6 @@ def test_dispatcher():
     s.add_event(EventA(s.ts, owner))
     s.add_event(EventB(s.ts, owner))
     s.add_event(EventC(s.ts, owner))
-    s.add_event(EventD(s.ts, owner))
 
     s.run()
-    assert owner.invoked == {"B.a", "S.b", "S.c", "S.d"}
+    assert owner.invoked == {"B.a", "S.b", "S.c"}

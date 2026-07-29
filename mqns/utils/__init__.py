@@ -20,10 +20,11 @@ from mqns.utils.json import json_default, json_encodable
 from mqns.utils.logger import LogSelfMixin, log
 from mqns.utils.random import rng
 from mqns.utils.timeout import WallClockTimeout
-from mqns.utils.types import unwrap, unwrap_cast
+from mqns.utils.types import DecoratorDispatchBuilder, unwrap, unwrap_cast
 
 __all__ = [
     "AutoIncrementIdentifier",
+    "DecoratorDispatchBuilder",
     "json_default",
     "json_encodable",
     "log",
