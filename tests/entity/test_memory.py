@@ -210,7 +210,7 @@ def test_memory_async_qubit():
             self.nWrites = 0
 
         @event_handler
-        def handleMemoryRead(self, event: MemoryReadResponseEvent) -> bool | None:
+        def handleMemoryRead(self, event: MemoryReadResponseEvent) -> None:
             self.nReads += 1
             result = event.result
 
@@ -223,7 +223,7 @@ def test_memory_async_qubit():
             assert isinstance(data, Qubit)
 
         @event_handler
-        def handleMemoryWrite(self, event: MemoryWriteResponseEvent) -> bool | None:
+        def handleMemoryWrite(self, event: MemoryWriteResponseEvent) -> None:
             self.nWrites += 1
             result = event.result
 

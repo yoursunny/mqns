@@ -19,7 +19,6 @@ from mqns.network.fw import (
     MuxSchemeBufferSpace,
     MuxSchemeDynamicEpr,
     MuxSchemeStatistical,
-    QubitAllocationType,
     RoutingPathMulti,
     RoutingPathStatic,
 )
@@ -649,8 +648,8 @@ def test_tree2_dynepr(t_edge_etg: float, selected_path: tuple[int, int], n_consu
     )
     fwA, fwB, fwC, fwD, fwE, fwF, fwG = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    rp0 = install_path(net, RoutingPathStatic("DBACF", m_v=QubitAllocationType.DISABLED))
-    rp1 = install_path(net, RoutingPathStatic("EBACG", m_v=QubitAllocationType.DISABLED))
+    rp0 = install_path(net, RoutingPathStatic("DBACF"))
+    rp1 = install_path(net, RoutingPathStatic("EBACG"))
 
     provide_entanglements(
         (t_edge_etg, fwD, fwB),
@@ -730,8 +729,8 @@ def test_tree2_statistical(
     )
     fwA, fwB, fwC, fwD, fwE, fwF, fwG = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    rp0 = install_path(net, RoutingPathStatic("DBACF", m_v=QubitAllocationType.DISABLED))
-    rp1 = install_path(net, RoutingPathStatic("EBACG", m_v=QubitAllocationType.DISABLED))
+    rp0 = install_path(net, RoutingPathStatic("DBACF"))
+    rp1 = install_path(net, RoutingPathStatic("EBACG"))
 
     edges = ((fwD, fwB), (fwE, fwB), (fwB, fwA), (fwA, fwC), (fwC, fwF), (fwC, fwG))
     provide_entanglements(
@@ -816,8 +815,8 @@ def test_tree3_statistical(
     )
     fws = {node.name: node.get_app(ProactiveForwarder) for node in net.nodes}
 
-    rp0 = install_path(net, RoutingPathStatic(path0, m_v=QubitAllocationType.DISABLED))
-    rp1 = install_path(net, RoutingPathStatic(path1, m_v=QubitAllocationType.DISABLED))
+    rp0 = install_path(net, RoutingPathStatic(path0))
+    rp1 = install_path(net, RoutingPathStatic(path1))
 
     def expand_etgs():
         for t, edges in enumerate(etgs.split(":")):

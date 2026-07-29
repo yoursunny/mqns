@@ -114,7 +114,7 @@ class QuantumMemory(EventDispatcherMixin, Entity):
                 if unassigned and mq.qchannel:
                     errors.append(f"{node.name} {mq} is assigned to {mq.qchannel}")
         if n := len(errors):
-            log.warning(f"QuantumMemory.check_leaks() found {n} errors:\n\t{'\n\t'.join(errors)}")
+            log.warning("QuantumMemory.check_leaks() found %s errors:\n\t%s", n, "\n\t".join(errors))
             raise MemoryError(*errors)
 
     def __init__(self, name: str, **kwargs: Unpack[QuantumMemoryInitKwargs]):
@@ -165,26 +165,34 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         """Time based decay function constructed from store error model."""
 
     @event_handler
-    def handle_decohere(self, event: MemoryDecohereEvent):
-        if isinstance(event.qm, Entanglement):
-            event.qm.is_decohered = True
+    def handle_decohere(self, event: MemoryDecohereEvent) -> None:
+        mq = event.qubit
+        qm = event.qm
+        if isinstance(qm, Entanglement):
+            qm.is_decohered = True
 
-        _, new_qm = self.read(event.qubit.addr, must=True, remove=event.qm)
-        if new_qm is not event.qm:
+        # Both .read(remove=qm) and .state=RELEASE would cancel attached events.
+        # Pop the current MemoryDecohereEvent so that it can be dispatched to applications.
+        mq.events.pop(MemoryDecohereEvent)
+
+        _, new_qm = self.read(mq.addr, must=True, remove=qm)
+        if new_qm is not qm:
             # qubit already released via swap/purify or re-entangled
             return
 
-        event.qubit.state = QubitState.RELEASE
+        mq.state = QubitState.RELEASE
         self.node.handle(event)
 
     @event_handler
-    def async_read(self, event: MemoryReadRequestEvent):
+    def async_read(self, event: MemoryReadRequestEvent) -> None:
+        event.cancel()
         result = self.read(event.key)
         t = self.simulator.tc + self.delay.calculate()
         self.simulator.add_event(MemoryReadResponseEvent(self.node, result, request=event, t=t))
 
     @event_handler
-    def async_write(self, event: MemoryWriteRequestEvent):
+    def async_write(self, event: MemoryWriteRequestEvent) -> None:
+        event.cancel()
         qubit = next(self.find(lambda _, v: v is None), None)
         assert qubit is not None, "memory is full"
         result = self.write(qubit[0].addr, event.qubit)

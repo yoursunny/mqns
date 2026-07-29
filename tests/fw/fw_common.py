@@ -1,10 +1,9 @@
 import copy
-import functools
 import itertools
 import os
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping
-from typing import Literal, TypedDict, Unpack, override
+from typing import Literal, TypedDict, Unpack
 
 import pytest
 
@@ -13,9 +12,23 @@ from mqns.entity.memory import QubitState
 from mqns.entity.node import Application, Controller, Node, QNode
 from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk, QuantumChannelInitKwargs
 from mqns.models.epr import Entanglement, WernerStateEntanglement
-from mqns.network.fw import Forwarder, ForwarderInitKwargs, RoutingController, RoutingPath
+from mqns.network.fw import (
+    Forwarder,
+    ForwarderInitKwargs,
+    MultiplexingVectorInput,
+    MuxSchemeBufferSpace,
+    RoutingController,
+    RoutingPath,
+)
 from mqns.network.fw.fw_swap import ForwarderSwapProc
-from mqns.network.network import QuantumNetwork, Request, TimingMode, TimingModeAsync, TimingPhase, TimingPhaseEvent
+from mqns.network.network import (
+    QuantumNetwork,
+    Request,
+    TimingMode,
+    TimingModeAsync,
+    TimingPhase,
+    sync_phase_handler,
+)
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
 from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.event import QubitEntangledEvent, QubitReleasedEvent
@@ -23,7 +36,7 @@ from mqns.network.protocol.link_layer import LinkLayer
 from mqns.network.reactive import ReactiveForwarder, ReactiveRoutingController
 from mqns.network.route import RouteAlgorithm, YenRouteAlgorithm
 from mqns.network.topology import ClassicTopology, GridTopology, LinearTopology, Topology, TopologyInitKwargs, TreeTopology
-from mqns.simulator import Event, Simulator, Time, func_to_event
+from mqns.simulator import Simulator, Time, event_handler, func_to_event
 from mqns.utils import AutoIncrementIdentifier, log, rng
 
 next_seed: list[int] = []
@@ -58,23 +71,12 @@ class QubitReleaseReset(Application[QNode]):
         self.history: list[tuple[int, Time]] = []
         """Qubit address and release time."""
 
-    @override
-    def handle(self, event: Event) -> bool | None:
-        self._handle(event)
-        return False
+    @sync_phase_handler(TimingPhase.INTERNAL, False)
+    def sync_internal_exit(self) -> None:
+        self.node.memory.clear()
 
-    @functools.singledispatchmethod
-    def _handle(self, event: Event):
-        _ = event
-
-    @_handle.register
-    def _(self, event: TimingPhaseEvent):
-        match event.action:
-            case TimingPhase.INTERNAL, False:
-                self.node.memory.clear()
-
-    @_handle.register
-    def _(self, event: QubitReleasedEvent):
+    @event_handler
+    def handle_qubit_released(self, event: QubitReleasedEvent):
         self.history.append((event.qubit.addr, event.t))
         log.debug(f"{self}: RELEASE {event.qubit}")
         event.qubit.state = QubitState.RAW
@@ -161,7 +163,11 @@ def _build_network_finish(
     if (ctrl := d.get("ctrl")) is None:
         match d.get("mode", "P"):
             case "P":
-                ctrl = ProactiveRoutingController()
+                mv_auto: MultiplexingVectorInput = "none"
+                mux = d.get("fw", {}).get("mux")
+                if mux is None or isinstance(mux, MuxSchemeBufferSpace):
+                    mv_auto = "max"
+                ctrl = ProactiveRoutingController(mv_auto=mv_auto)
             case "R":
                 ctrl = ReactiveRoutingController()
     topo.controller = Controller("ctrl", apps=[ctrl])

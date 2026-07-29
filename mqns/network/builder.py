@@ -20,8 +20,8 @@ from mqns.models.error import TimeDecayInput
 from mqns.models.error.input import ErrorModelInputBasic, ErrorModelInputLength, ErrorModelInputTime
 from mqns.network.fw import (
     ForwarderInitKwargs,
+    MultiplexingVectorInput,
     MuxSchemeBufferSpace,
-    QubitAllocationType,
     RoutingPath,
     RoutingPathInitArgs,
 )
@@ -471,10 +471,10 @@ class NetworkBuilder:
         self._extract_apps_common_args(kwargs)
         kwargs.setdefault("p_swap", 0.5)
 
-        qubit_allocation = QubitAllocationType.DISABLED
         mux = kwargs.get("mux")
+        mv_auto: MultiplexingVectorInput = "none"
         if mux is None or isinstance(mux, MuxSchemeBufferSpace):
-            qubit_allocation = QubitAllocationType.FOLLOW_QCHANNEL
+            mv_auto = "max"
         elif isinstance(self.route, YenRouteAlgorithm):
             raise TypeError("YenRouteAlgorithm is only compatible with MuxSchemeBufferSpace")
 
@@ -484,7 +484,7 @@ class NetworkBuilder:
         )
         self._add_consumer()
         self.controller_apps.append(
-            ProactiveRoutingController(qubit_allocation=qubit_allocation),
+            ProactiveRoutingController(mv_auto=mv_auto),
         )
         return self
 

@@ -1,10 +1,11 @@
+import functools
+import itertools
 from abc import ABC, abstractmethod
-from collections import deque
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from enum import Enum, auto
-from typing import TYPE_CHECKING, final, overload, override
+from typing import TYPE_CHECKING, Any, overload, override
 
-from mqns.simulator import Event, Time, func_to_event
+from mqns.simulator import Event, Time, event_handler, func_to_event
 from mqns.utils import log
 
 if TYPE_CHECKING:
@@ -15,30 +16,6 @@ class TimingPhase(Enum):
     EXTERNAL = auto()
     ROUTING = auto()
     INTERNAL = auto()
-
-
-@final
-class TimingPhaseEvent(Event):
-    """
-    Event that indicates a timing phase change, emitted in SYNC timing mode only.
-    """
-
-    def __init__(self, phase: TimingPhase, *, enter: bool, t: Time, name: str | None = None):
-        super().__init__(t, name)
-        self.phase = phase
-        """Phase."""
-        self.enter = enter
-        """True when entering a phase, False when exiting a phase."""
-
-    @override
-    def invoke(self) -> None:
-        # This event is directly dispatched onto nodes without going through the scheduler
-        # for performance reasons, so that the invoke() method is unused.
-        raise RuntimeError
-
-    @property
-    def action(self) -> tuple[TimingPhase, bool]:
-        return self.phase, self.enter
 
 
 class TimingMode(ABC):
@@ -102,7 +79,7 @@ class TimingModeAsync(TimingMode):
     @override
     def install(self, network: "QuantumNetwork"):
         super().install(network)
-        log.info(f"TIME_SYNC: using {self.name} mode")
+        log.info("TIME_SYNC: using %s mode", self.name)
 
     @override
     def is_async(self) -> bool:
@@ -182,46 +159,59 @@ class TimingModeSync(TimingMode):
         """INTERNAL phase duration."""
 
         log.info(
-            f"TIME_SYNC: using {self.name} mode, "
-            f"t_ext={self.t_ext.time_slot}, t_rtg={self.t_rtg.time_slot}, t_int={self.t_int.time_slot}"
+            "TIME_SYNC: using %s mode, t_ext=%s, t_rtg=%s, t_int=%s",
+            self.name,
+            self.t_ext.time_slot,
+            self.t_rtg.time_slot,
+            self.t_int.time_slot,
         )
 
-        self._sequence = deque[tuple[TimingPhase, Time]]()
-        self._sequence.append((TimingPhase.EXTERNAL, self.t_ext))
-        if t_rtg > 0:
-            self._sequence.append((TimingPhase.ROUTING, self.t_rtg))
-        self._sequence.append((TimingPhase.INTERNAL, self.t_int))
+        self._sequence = [
+            (phase, duration, _PHASE_EVENTS[phase, True], _PHASE_EVENTS[phase, False])
+            for (phase, duration) in [
+                (TimingPhase.EXTERNAL, self.t_ext),
+                (TimingPhase.ROUTING, self.t_rtg),
+                (TimingPhase.INTERNAL, self.t_int),
+            ]
+            if duration.time_slot > 0
+        ]
+        self._pos = -1
 
-        self.phase = self._sequence[-1][0]
-        """Current phase."""
         self.end_time = self.simulator.ts
         """Current phase end time (exclusive)."""
 
         self.simulator.add_event(func_to_event(self.simulator.ts, self._enter_phase))
 
-    def _change_phase(self):
-        log.debug(f"TIME_SYNC: exiting {self.phase.name} phase")
-        event = TimingPhaseEvent(self.phase, enter=False, t=self.simulator.tc)
+    @property
+    def phase(self) -> TimingPhase:
+        """Current phase."""
+        return self._sequence[self._pos][0]
+
+    def _broadcast_event(self, EventType: type[Event]) -> None:
+        event = EventType(self.simulator.tc)
         for node in self.network.all_nodes:
             node.handle(event)
+
+    def _change_phase(self):
+        phase, _, _, ExitEvent = self._sequence[self._pos]
+        log.debug("TIME_SYNC: exiting %s phase", phase.name)
+
+        self._broadcast_event(ExitEvent)
 
         self._enter_phase()
 
     def _enter_phase(self):
-        this_phase = self._sequence.popleft()
-        self._sequence.append(this_phase)
-        phase, duration = this_phase
+        self._pos += 1
+        if self._pos >= len(self._sequence):
+            self._pos = 0
 
-        self.phase = phase
+        phase, duration, EnterEvent, _ = self._sequence[self._pos]
+        log.debug("TIME_SYNC: entering %s phase", phase.name)
+
         self.end_time = self.simulator.tc + duration
-
-        # schedule next sync signal
         self.simulator.add_event(func_to_event(self.end_time, self._change_phase))
 
-        log.debug(f"TIME_SYNC: entering {phase.name} phase")
-        event = TimingPhaseEvent(phase, enter=True, t=self.simulator.tc)
-        for node in self.network.all_nodes:
-            node.handle(event)
+        self._broadcast_event(EnterEvent)
 
     @override
     def is_async(self) -> bool:
@@ -230,3 +220,45 @@ class TimingModeSync(TimingMode):
     @override
     def _is_phase(self, phase: TimingPhase, t: Time | None = None) -> bool:
         return self.phase is phase and (t is None or t < self.end_time)
+
+
+def _phase_event_invoke(self: Event) -> None:
+    _ = self
+    # Phase events are directly dispatched onto nodes without going through the scheduler
+    # for performance reasons, so that the invoke() method is unused.
+    raise RuntimeError("TimingPhaseEvent.invoke() is unused")
+
+
+def _phase_event_cancel(self: Event) -> None:
+    _ = self
+    # Phase events must be dispatched to every application on a node,
+    # so that cancellation is disallowed.
+    raise RuntimeError("TimingPhaseEvent cannot be canceled")
+
+
+_PHASE_EVENTS: dict[tuple[TimingPhase, bool], type[Event]] = {}
+for phase, enter in itertools.product(TimingPhase, (False, True)):
+    _PHASE_EVENTS[phase, enter] = type(
+        f"TimingPhaseEvent{'Enter' if enter else 'Exit'}{phase.name}",
+        (Event,),
+        {"invoke": _phase_event_invoke, "cancel": _phase_event_cancel},
+    )
+
+
+def sync_phase_handler(phase: TimingPhase, enter: bool):
+    """
+    Method decorator for entering or exiting a timing phase in SYNC timing mode.
+
+    Args:
+        phase: Timing phase.
+        enter: True for entering, False for exiting.
+    """
+
+    def decorator(f: Callable[[Any], None]):
+        @functools.wraps(f)
+        def wrapper(self: Any, _: Event) -> None:
+            f(self)
+
+        return event_handler(_PHASE_EVENTS[phase, enter])(wrapper)
+
+    return decorator

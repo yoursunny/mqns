@@ -34,30 +34,30 @@ from mqns.simulator import Event, Time
 
 
 class ClassicPacket:
-    """ClassicPacket is the message that transfer on a ClassicChannel"""
+    """A classical packet that is encodable as string or bytes."""
+
+    __slots__ = ("src", "dest", "msg", "is_json")
 
     def __init__(self, msg: Any, *, src: Node, dest: Node):
         """
         Args:
-            msg: the message content.
-                 It can be a ``str`` or ``bytes`` type or can be serialized as JSON.
-            src: the source of this message.
-            dest: the destination of this message,
-
+            msg: The message content, ``str`` or ``bytes`` or JSON-serializable.
+            src: Source node.
+            dest: Destination node,
         """
         self.is_json, self.msg = (False, msg) if isinstance(msg, (str, bytes)) else (True, json.dumps(msg))
         self.src = src
         self.dest = dest
 
     def encode(self) -> bytes:
-        """Encode the self.msg if it is a ``str``."""
+        """Encode the message to ``bytes`` if it is ``str``."""
         if isinstance(self.msg, str):
             return self.msg.encode(encoding="utf-8")
         assert isinstance(self.msg, bytes)
         return self.msg
 
     def get(self) -> Any:
-        """Get the message from packet."""
+        """Retrieve the message, decoding JSON if necessary."""
         return json.loads(self.msg) if self.is_json else self.msg
 
     def __len__(self) -> int:
@@ -69,36 +69,34 @@ class ClassicChannelInitKwargs(BaseChannelInitKwargs):
 
 
 class ClassicChannel(BaseChannel[Node]):
-    """ClassicChannel is the channel for classic message"""
+    """
+    A channel for classical communication.
+
+    Note: while this class permits more than two nodes in a classical channel,
+    most simulator modules expect exactly two nodes in a classical channel.
+    """
 
     def __init__(self, name: str, **kwargs: Unpack[ClassicChannelInitKwargs]):
         super().__init__(name, **kwargs)
 
-    @override
-    def handle(self, event: Event):
-        raise RuntimeError(f"unexpected event {event}")
-
     def send(self, packet: ClassicPacket, next_hop: Node):
-        """Send a classic packet to the next_hop
+        """
+        Send a classical packet.
 
         Args:
-            packet (ClassicPacket): the packet
-            next_hop (Node): the next hop Node
-        Raises:
-            NextHopNotConnectionException: the next_hop is not connected to this channel
+            packet: A classical packet.
+            next_hop: Next hop node.
 
+        Raises:
+            LookupError: The next_hop is not connected to this channel.
         """
-        drop, recv_time = self._send(
-            packet_repr=f"packet {packet}",
-            packet_len=len(packet),
-            next_hop=next_hop,
-        )
+        drop, recv_time = self._send(packet, len(packet), next_hop)
 
         if drop:
             return
 
-        send_event = RecvClassicPacket(t=recv_time, cchannel=self, packet=packet, dest=next_hop)
-        self.simulator.add_event(send_event)
+        event = RecvClassicPacket(self, packet, next_hop, t=recv_time)
+        self.simulator.add_event(event)
 
     def __repr__(self) -> str:
         return "<cchannel " + self.name + ">"
@@ -108,8 +106,8 @@ class ClassicChannel(BaseChannel[Node]):
 class RecvClassicPacket(Event):
     """The event for a Node to receive a classic packet"""
 
-    def __init__(self, *, t: Time, name: str | None = None, cchannel: ClassicChannel, packet: ClassicPacket, dest: Node):
-        super().__init__(t, name)
+    def __init__(self, cchannel: ClassicChannel, packet: ClassicPacket, dest: Node, *, t: Time):
+        super().__init__(t)
         self.cchannel = cchannel
         self.packet = packet
         self.dest = dest
@@ -117,3 +115,7 @@ class RecvClassicPacket(Event):
     @override
     def invoke(self) -> None:
         self.dest.handle(self)
+
+    @override
+    def __repr__(self) -> str:
+        return f"RecvClassicPacket dest={self.dest.name} | {self.packet.get()}"

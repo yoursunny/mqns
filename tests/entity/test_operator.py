@@ -32,7 +32,7 @@ class RecvOperateApp(Application[QNode]):
         self.count = 0
 
     @event_handler
-    def OperateResponseEventhandler(self, event: OperateResponseEvent) -> bool | None:
+    def OperateResponseEventhandler(self, event: OperateResponseEvent) -> None:
         result = event.result
         assert self.simulator.tc.sec == 0.5
         assert result in [0, 1]

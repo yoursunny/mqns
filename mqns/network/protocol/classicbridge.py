@@ -124,7 +124,7 @@ class ClassicConnector:
         assert nats
         try:
             nc = await nats.connect(self.nats_servers, connect_timeout=10, allow_reconnect=True)
-            log.info(f"ClassicConnector connected to NATS server {nc.connected_url} as client_id={nc.client_id}")
+            log.info("ClassicConnector connected to NATS server %s as client_id=%s", nc.connected_url, nc.client_id)
             async with nc:
                 self._js = nc.jetstream()
                 self._sub = await self._js.pull_subscribe(f"{self.nats_prefix}.I.*.*")
@@ -142,7 +142,7 @@ class ClassicConnector:
                         raise exception
 
         except Exception as e:
-            log.error(f"NATS Worker Thread failed: {e}")
+            log.error("NATS Worker Thread failed: %s", e)
             self.simulator.stop()
 
     async def _tx_loop(self):
@@ -166,9 +166,9 @@ class ClassicConnector:
             ack = await self._js.publish(subject, payload, headers=headers)
             _ = ack.seq
         except BadRequestError:
-            log.error(f"JetStream Error: Subject {subject} does not match a stream.")
+            log.error("JetStream Error: Subject %s does not match a stream.", subject)
         except Exception as e:
-            log.error(f"Failed to publish to JetStream: {e}")
+            log.error("Failed to publish to JetStream: %s", e)
         finally:
             self.queue.task_done()
 
@@ -209,7 +209,7 @@ class ClassicConnector:
                     self.simulator.add_event(event)
                     self.simulator.update_gate(t)
                 case _:
-                    log.error(f"ClassicConnector received unexpected special subject ._.{src}")
+                    log.error("ClassicConnector received unexpected special subject ._.%s", src)
             return
 
         if not (bridge := self.bridges.get(src)):
@@ -255,10 +255,11 @@ class ClassicBridge(Application[Node]):
         self.conn.bridges[self.node.name] = self
 
     @event_handler
-    def handle_packet(self, event: RecvClassicPacket) -> bool:
+    def handle_packet(self, event: RecvClassicPacket) -> None:
         pkt = event.packet
         if pkt.dest is not self.node:
-            return False
+            return
+        event.cancel()
 
         cbp = ClassicBridgePacket(
             t=event.t.time_slot,
@@ -271,13 +272,11 @@ class ClassicBridge(Application[Node]):
         try:
             self.conn.queue.put_nowait(cbp)
         except queue.Full:
-            log.error(f"{self}: drop packet from {cbp.src} | {pkt.msg}")
-
-        return True
+            self.log_error("drop packet from %s | %s", cbp.src, pkt.msg)
 
     def inject(self, cbp: ClassicBridgePacket) -> None:
         dst = self.node.network.get_node(cbp.dst)
         pkt = ClassicPacket(cbp.payload, src=self.node, dest=dst)
         pkt.is_json = cbp.is_json
-        log.debug(f"{self}: inject packet to {cbp.dst} | {pkt.msg}")
+        self.log_debug("inject packet to %s | %s", cbp.dst, pkt.msg)
         self.node.send_cpacket(dst, pkt)

@@ -1,7 +1,7 @@
 import os
 import sys
-from logging import Logger, LoggerAdapter, StreamHandler, getLogger
-from typing import TYPE_CHECKING, Literal, cast, override
+from logging import DEBUG, ERROR, INFO, WARNING, Logger, LoggerAdapter, StreamHandler, getLogger
+from typing import TYPE_CHECKING, Any, Literal, cast, override
 
 if TYPE_CHECKING:
     from mqns.simulator import Simulator
@@ -45,3 +45,27 @@ The default ``logger`` used by MQNS.
 
 log.set_default_level("INFO")
 cast(Logger, log.logger).addHandler(StreamHandler(sys.stdout))
+
+
+class LogSelfMixin:
+    """
+    Mixin class for prepending ``self`` onto each log message.
+    """
+
+    __slots__ = ()
+
+    def log_debug(self, msg: str, *args: Any) -> None:
+        if log.isEnabledFor(DEBUG):
+            log.debug("%s: " + msg, self, *args)
+
+    def log_info(self, msg: str, *args: Any) -> None:
+        if log.isEnabledFor(INFO):
+            log.info("%s: " + msg, self, *args)
+
+    def log_warning(self, msg: str, *args: Any) -> None:
+        if log.isEnabledFor(WARNING):
+            log.warning("%s: " + msg, self, *args)
+
+    def log_error(self, msg: str, *args: Any) -> None:
+        if log.isEnabledFor(ERROR):
+            log.error("%s: " + msg, self, *args)

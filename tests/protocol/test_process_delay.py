@@ -27,7 +27,7 @@ class ProcessApp(Application[Node]):
             self.simulator.add_event(event)
 
     @event_handler
-    def EventHandler(self, event: ProcessEvent) -> bool | None:
+    def EventHandler(self, event: ProcessEvent) -> None:
         expected_recv_time = [i + 0.5 for i in range(0, 10)]
         print(f"recv event at {event.t}")
         assert event.t.sec in expected_recv_time

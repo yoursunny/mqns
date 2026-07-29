@@ -35,23 +35,23 @@ class ClassicPacketForwardApp(Application[Node]):
         self.route = route
 
     @event_handler
-    def handleClassicPacket(self, event: RecvClassicPacket):
+    def handleClassicPacket(self, event: RecvClassicPacket) -> None:
         packet = event.packet
 
         dst = packet.dest
         if dst == self.node:
             # The destination is this node, return to let later application to handle this packet
-            return False
+            return
+        event.cancel()
 
         # If destination is not this node, forward this packet
         routes = self.route.query(self.node, dst)
         if not routes:
             # no routing result or error format, drop this packet
-            return True
+            return
         next_hop = routes[0].next_hop
         try:
             self.node.send_cpacket(next_hop, packet)
         except LookupError:
             # not found the classic channel, drop the packet
-            return True
-        return True
+            return

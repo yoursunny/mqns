@@ -1,4 +1,3 @@
-from mqns.entity.base_channel import NextHopNotConnectionException
 from mqns.entity.qchannel.link_arch import LinkArch, LinkArchAlways, LinkArchParameters
 from mqns.entity.qchannel.link_arch_dim import LinkArchDimBk, LinkArchDimBkSeq, LinkArchDimDual
 from mqns.entity.qchannel.link_arch_sim import LinkArchSim
@@ -14,13 +13,10 @@ __all__ = [
     "LinkArchParameters",
     "LinkArchSim",
     "LinkArchSr",
-    "NextHopNotConnectionException",
     "QuantumChannel",
     "QuantumChannelInitKwargs",
     "RecvQubitPacket",
 ]
 
 for name in __all__:
-    if name in ("NextHopNotConnectionException",):
-        continue
     globals()[name].__module__ = __name__

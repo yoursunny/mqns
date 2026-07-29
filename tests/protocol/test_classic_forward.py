@@ -42,7 +42,7 @@ class SendApp(Application[Node]):
 # the receiving application
 class RecvApp(Application[Node]):
     @event_handler
-    def RecvClassicPacketHandler(self, event: RecvClassicPacket):
+    def RecvClassicPacketHandler(self, event: RecvClassicPacket) -> None:
         packet = event.packet
         msg = packet.get()
         output = f"{self.node} recv packet: {msg} from {packet.src}->{packet.dest}"

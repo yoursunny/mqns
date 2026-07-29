@@ -24,7 +24,7 @@ from mqns.entity.memory import MemoryQubit, QubitState
 from mqns.entity.node import Application, QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
-from mqns.network.network import TimingPhase, TimingPhaseEvent
+from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import (
     LinkArchNotifyDstEvent,
     LinkArchNotifySrcEvent,
@@ -33,7 +33,7 @@ from mqns.network.protocol.event import (
     QubitReleasedEvent,
 )
 from mqns.simulator import event_handler
-from mqns.utils import AutoIncrementIdentifier, json_encodable, log, rng, unwrap, unwrap_cast
+from mqns.utils import AutoIncrementIdentifier, json_encodable, rng, unwrap, unwrap_cast
 
 _AUTOID = AutoIncrementIdentifier("llk_")
 """
@@ -229,39 +229,39 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         self.memory = self.node.memory
         """Quantum memory of the node."""
 
-    @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent):
+    @sync_phase_handler(TimingPhase.EXTERNAL, True)
+    def sync_external_enter(self) -> None:
         """
-        Handle timing phase signals, only used in SYNC timing mode.
-
-        Upon entering EXTERNAL phase:
-
-        1. Start reservation for each active channel where this node is primary.
-
-        Upon exiting EXTERNAL phase:
-
-        1. Clear incomplete reservations.
-        2. Clear unsatisfied reservation requests.
-
-        Upon exiting INTERNAL phase:
-
-        1. Clear existing memory qubits.
+        In SYNC timing mode, enter EXTERNAL phase.
         """
-        match event.action:
-            case TimingPhase.EXTERNAL, True:
-                for ac in self.channels.values():
-                    if ac.is_primary:
-                        self.run_channel(ac)
-            case TimingPhase.EXTERNAL, False:
-                for ac in self.channels.values():
-                    for ap in ac.paths.values():
-                        ap.oreq_table.clear()
-                        ap.ireq_queue.clear()
-            case TimingPhase.INTERNAL, False:
-                self.memory.clear()
+        # Start reservation for each active channel where this node is primary.
+        for ac in self.channels.values():
+            if ac.is_primary:
+                self.run_channel(ac)
+
+    @sync_phase_handler(TimingPhase.EXTERNAL, False)
+    def sync_external_exit(self) -> None:
+        """
+        In SYNC timing mode, exit EXTERNAL phase.
+        """
+        for ac in self.channels.values():
+            for ap in ac.paths.values():
+                # Clear incomplete reservations.
+                ap.oreq_table.clear()
+                # Clear unsatisfied reservation requests.
+                ap.ireq_queue.clear()
+
+    @sync_phase_handler(TimingPhase.INTERNAL, False)
+    def sync_internal_exit(self) -> None:
+        """
+        In SYNC timing mode, exit INTERNAL phase.
+        """
+        # Clear existing memory qubits.
+        self.memory.clear()
 
     @event_handler
     def handle_manage_active_channels(self, event: ManageActiveChannel) -> None:
+        event.cancel()
         if event.start:
             self._activate_channel(event.qchannel, event.is_primary, event.path_id)
         else:
@@ -293,7 +293,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             ac.paths[path_id] = ap
 
             addrs = list(q.addr for q, _ in self.memory.find(lambda *_: True, qchannel=ch))
-            log.debug(f"{self}: adding path {path_id} in qchannel {ch.name}, assigned qubits {addrs}")
+            self.log_debug("adding path %s in qchannel %s, assigned qubits %s", path_id, ch.name, addrs)
 
         ap.insertion_count += 1
 
@@ -303,7 +303,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
     def _activate_channel_new(self, ac: _ActiveChannel) -> None:
         ch = ac.qchannel
         if not ac.is_primary:
-            log.debug(f"{self}: activating qchannel {ch.name} as secondary with partner {ac.partner.name}")
+            self.log_debug("activating qchannel %s as secondary with partner %s", ch.name, ac.partner.name)
             return
 
         # link_arch.set() may be called multiple times in several situations:
@@ -324,10 +324,14 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
 
         epr_tpl, t_notify_a, t_notify_b = ch.link_arch.make_epr(1, self.simulator.ts, src=self.node, dst=ac.partner, key=None)
 
-        log.debug(
-            f"{self}: activating qchannel {ch.name} as primary with partner {ac.partner.name},"
-            f" link arch {ch.link_arch.name}, "
-            f"EPR template {epr_tpl} t_notify_a={t_notify_a} t_notify_b={t_notify_b}"
+        self.log_debug(
+            "activating qchannel %s as primary with partner %s, link arch %s, EPR template %s t_notify_a=%s t_notify_b=%s",
+            ch.name,
+            ac.partner.name,
+            ch.link_arch.name,
+            epr_tpl,
+            t_notify_a,
+            t_notify_b,
         )
 
     def _deactivate_channel(self, ch: QuantumChannel, path_id: int | None) -> None:
@@ -356,14 +360,13 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             addrs.append(mq.addr)
 
         del ac.paths[path_id]
-        log.debug(f"{self}: removing path {path_id} in qchannel {ch.name}, reset-addrs={addrs}")
+        self.log_debug("removing path %s in qchannel %s, reset-addrs=%s", path_id, ch.name, addrs)
         if len(ac.paths) > 0:
             return
 
         del self.channels[partner.name]
-        log.debug(
-            f"{self}: deactivating qchannel {ch.name} as {ManageActiveChannel.ROLE_STR[ac.is_primary]} "
-            f"with partner {partner.name}"
+        self.log_debug(
+            "deactivating qchannel %s as %s with partner %s", ch.name, ManageActiveChannel.ROLE_STR[ac.is_primary], partner.name
         )
 
     def run_channel(self, ac: _ActiveChannel, ap: _ActivePath | None = None) -> None:
@@ -403,8 +406,8 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         # Remember the pending reservation in ActivePath record.
         ap = ac.paths[mq.path_id]
         ap.oreq_table[mq.key] = mq.addr
-        log.debug(
-            f"{self}: RESERVE_REQ({self.node.name}:{mq.path_id}, {mq.key}) sent addr={mq.addr} secondary={ac.partner.name}"
+        self.log_debug(
+            "RESERVE_REQ(%s:%s, %s) sent addr=%s secondary=%s", self.node.name, mq.path_id, mq.key, mq.addr, ac.partner.name
         )
 
         # Transmit RESERVE_REQ message to the secondary node.
@@ -420,18 +423,18 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         path_id = msg["path_id"]
 
         if not self.node.timing.is_external():
-            log.debug(f"{self}: RESERVE_REQ({pkt.src.name}:{path_id}, {key}) ignored reason=not-external-phase")
+            self.log_debug("RESERVE_REQ(%s:%s, %s) ignored reason=not-external-phase", pkt.src.name, path_id, key)
             return
 
         ac = self.channels.get(pkt.src.name)
         if ac is None:
-            log.debug(f"{self}: RESERVE_REQ({pkt.src.name}:{path_id}, {key}) ignored reason=no-active-channel")
+            self.log_debug("RESERVE_REQ(%s:%s, %s) ignored reason=no-active-channel", pkt.src.name, path_id, key)
             return
         assert not ac.is_primary
 
         ap = ac.paths.get(path_id)
         if ap is None:
-            log.debug(f"{self}: RESERVE_REQ({pkt.src.name}:{path_id}, {key}) ignored reason=no-active-path")
+            self.log_debug("RESERVE_REQ(%s:%s, %s) ignored reason=no-active-path", pkt.src.name, path_id, key)
             return
 
         if len(ap.ireq_queue) > 0 or not self.try_accept_reservation(ac, ap, key):
@@ -477,7 +480,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         if mq is None:
             return False
 
-        log.debug(f"{self}: RESERVE_REQ({ac.partner.name}:{ap.path_id}, {key}) accepted addr={mq.addr}")
+        self.log_debug("RESERVE_REQ(%s:%s, %s) accepted addr=%s", ac.partner.name, ap.path_id, key, mq.addr)
         mq.state = QubitState.RESERVED
         mq.key = key
         msg = ReserveMsg(cmd="RESERVE_RES", key=key, path_id=ap.path_id)
@@ -493,28 +496,28 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         path_id = msg["path_id"]
 
         if not self.node.timing.is_external():
-            log.debug(f"{self}: RESERVE_RES({pkt.src.name}:{path_id}, {key}) ignored reason=not-external-phase")
+            self.log_debug("RESERVE_RES(%s:%s, %s) ignored reason=not-external-phase", pkt.src.name, path_id, key)
             return
 
         ac = self.channels.get(pkt.src.name)
         if ac is None:
-            log.debug(f"{self}: RESERVE_RES({pkt.src.name}:{path_id}, {key}) ignored reason=no-active-channel")
+            self.log_debug("RESERVE_RES(%s:%s, %s) ignored reason=no-active-channel", pkt.src.name, path_id, key)
             return
 
         ap = ac.paths.get(path_id)
         if ap is None:
-            log.debug(f"{self}: RESERVE_RES({pkt.src.name}:{path_id}, {key}) ignored reason=no-active-path")
+            self.log_debug("RESERVE_RES(%s:%s, %s) ignored reason=no-active-path", pkt.src.name, path_id, key)
             return
 
         addr = ap.oreq_table.pop(key, None)
         if addr is None:
-            log.debug(f"{self}: RESERVE_RES({pkt.src.name}:{path_id}, {key}) ignored reason=no-active-key")
+            self.log_debug("RESERVE_RES(%s:%s, %s) ignored reason=no-active-key", pkt.src.name, path_id, key)
             return
 
         mq, _ = self.memory.read(addr, must=True)
         assert mq.key == key
         mq.state = QubitState.RESERVED
-        log.debug(f"{self}: RESERVE_RES({pkt.src.name}:{path_id}, {key}) processed addr={mq.addr}")
+        self.log_debug("RESERVE_RES(%s:%s, %s) processed addr=%s", pkt.src.name, path_id, key, mq.addr)
         self.generate_entanglement(ac, mq)
 
     def generate_entanglement(self, ac: _ActiveChannel, mq: MemoryQubit) -> None:
@@ -540,16 +543,21 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         # If the network uses SYNC timing mode but the successful attempt would exceed the current EXTERNAL phase,
         # the EPR would not arrive in time, and therefore is not scheduled.
         if not src.timing.is_external(max(t_notify_a, t_notify_b)):
-            log.debug(
-                f"{self}: skip prepare EPR {epr.name} key={key} dst={dst.name} attempts={k} "
-                f"notify-times={t_notify_a},{t_notify_b} reason=beyond-external-phase"
+            self.log_debug(
+                "skip prepare EPR %s key=%s dst=%s attempts=%s notify-times=%s,%s reason=beyond-external-phase",
+                epr.name,
+                key,
+                dst.name,
+                k,
+                t_notify_a,
+                t_notify_b,
             )
             return
 
         # If the network uses ASYNC timing mode or the successful attempt can complete within the current EXTERNAL phase,
         # schedule the EPR arrival on both nodes via LinkArchSuccessEvents.
-        log.debug(
-            f"{self}: prepare EPR {epr.name} key={key} dst={dst.name} attempts={k} notify-times={t_notify_a},{t_notify_b}"
+        self.log_debug(
+            "prepare EPR %s key=%s dst=%s attempts=%s notify-times=%s,%s", epr.name, key, dst.name, k, t_notify_a, t_notify_b
         )
 
         self.simulator.add_event(LinkArchNotifySrcEvent(key, epr, t=t_notify_a, attempts=k))
@@ -559,13 +567,15 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         return rng.geometric(qchannel.link_arch.success_prob)
 
     @event_handler
-    def _la_notify_src(self, event: LinkArchNotifySrcEvent):
+    def _la_notify_src(self, event: LinkArchNotifySrcEvent) -> None:
+        event.cancel()
         self.cnt.increment_n_etg(event.attempts)
         epr = event.epr
         self._la_notify(event.key, epr, "primary", "dst", unwrap_cast(epr.dst))
 
     @event_handler
-    def _la_notify_dst(self, event: LinkArchNotifyDstEvent):
+    def _la_notify_dst(self, event: LinkArchNotifyDstEvent) -> None:
+        event.cancel()
         epr = event.epr
         self._la_notify(event.key, epr, "secondary", "src", unwrap_cast(epr.src))
 
@@ -575,12 +585,18 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             mq = self.memory.write(key, epr)
         except LookupError:
             # Path was deactivated and qubit was deallocated.
-            log.debug(f"{self}: EPR-notify-{own_role} {epr.name} ignored key={key} reason=qubit-not-found")
+            self.log_debug("EPR-notify-%s %s ignored key=%s reason=qubit-not-found", own_role, epr.name, key)
             return
 
-        log.debug(
-            f"{self}: EPR-notify-{own_role} {epr.name} delivered key={key} "
-            f"{partner_role}={partner} addr={mq.addr} path={mq.path_id}"
+        self.log_debug(
+            "EPR-notify-%s %s delivered key=%s %s=%s addr=%s path=%s",
+            own_role,
+            epr.name,
+            key,
+            partner_role,
+            partner,
+            mq.addr,
+            mq.path_id,
         )
         assert epr.decohere_time > self.simulator.tc
 
@@ -596,21 +612,21 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
 
         ac = self.channels.get(partner.name)
         if ac is None:
-            log.debug(f"{self}: {event} ignored reason=no-active-channel")
+            self.log_debug("%s ignored reason=no-active-channel", event)
             return
 
         ap = ac.paths.get(mq.path_id)
         if ap is None:
-            log.debug(f"{self}: {event} ignored reason=no-active-path")
+            self.log_debug("%s ignored reason=no-active-path", event)
             return
 
         if ac.is_primary:
-            log.debug(f"{self}: {event} processed role=primary")
+            self.log_debug("%s processed role=primary", event)
             if event.is_decoh:
                 self.cnt.n_decoh += 1
             if self.node.timing.is_async():
                 self.start_reservation(ac, mq)
         else:
-            log.debug(f"{self}: {event} processed role=secondary")
+            self.log_debug("%s processed role=secondary", event)
             if ap.ireq_queue and self.try_accept_reservation(ac, ap, ap.ireq_queue[0], hint=mq):
                 ap.ireq_queue.popleft()

@@ -16,36 +16,26 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import copy
-from abc import abstractmethod
 from typing import Literal, TypedDict, Unpack, override
 
+from mqns.entity.cchannel import ClassicCommandDispatcherMixin
 from mqns.entity.memory import MemoryDecohereEvent, MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import Application, QNode
-from mqns.entity.qchannel import QuantumChannel
 from mqns.models.delay import DelayInput, parse_delay
 from mqns.models.epr import Entanglement
 from mqns.models.error import PerfectErrorModel
 from mqns.models.error.input import ErrorModelInputBasic, parse_error
 from mqns.network.fw.cutoff import CutoffScheme, CutoffSchemeWaitTime
 from mqns.network.fw.fib import Fib, FibEntry
-from mqns.network.fw.fw_classic import ForwarderClassicMixin, fw_control_cmd_handler, fw_signaling_cmd_handler
 from mqns.network.fw.fw_purif import ForwarderPurifProc
 from mqns.network.fw.fw_swap import ForwarderSwapProc
-from mqns.network.fw.message import (
-    CutoffDiscardMsg,
-    InstallPathMsg,
-    PurifResponseMsg,
-    PurifSolicitMsg,
-    SwapUpdateMsg,
-    UninstallPathMsg,
-)
 from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
 from mqns.network.fw.select import SelectPurifQubit, call_select_purif_qubit
-from mqns.network.network import TimingPhase, TimingPhaseEvent
+from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
-from mqns.simulator import Time, event_handler, func_to_event
-from mqns.utils import json_encodable, log, unwrap_cast
+from mqns.simulator import event_handler
+from mqns.utils import json_encodable, unwrap_cast
 
 
 class ForwarderInitKwargs(TypedDict, total=False):
@@ -128,12 +118,27 @@ class ForwarderCounters:
         )
 
 
-class Forwarder(ForwarderClassicMixin, Application[QNode]):
+class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
     """
     Forwarder is the network layer component of QNodes implementing the forwarding phase
     (i.e., entanglement generation and swapping) while the centralized
     routing is done at the controller.
     """
+
+    cutoff: CutoffScheme
+    """EPR age cut-off scheme."""
+
+    mux: MuxScheme
+    """Multiplexing scheme."""
+
+    fib: Fib
+    """FIB data structure."""
+
+    purif: ForwarderPurifProc
+    """Purification procedure module."""
+
+    swap: ForwarderSwapProc
+    """Swapping procedure module."""
 
     def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
         """
@@ -144,14 +149,11 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         """
         super().__init__()
 
-        self.cutoff: CutoffScheme = copy.deepcopy(kwargs.get("cutoff")) or CutoffSchemeWaitTime()
-        """EPR age cut-off scheme."""
+        self.cutoff = copy.deepcopy(kwargs.get("cutoff")) or CutoffSchemeWaitTime()
         self.mux: MuxScheme = copy.deepcopy(kwargs.get("mux")) or MuxSchemeBufferSpace()
-        """Multiplexing scheme."""
         self._select_purif_qubit = kwargs.get("select_purif_qubit")
 
         self.fib = Fib()
-        """FIB structure."""
         self.purif = ForwarderPurifProc()
         self.swap = ForwarderSwapProc(
             ps=kwargs.get("p_swap", 1.0),
@@ -187,144 +189,25 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         self.purif.install(self)
         self.swap.install(self)
 
-        self._fib_erase_delay = self.simulator.time(time_slot=4 * self.memory.t_cohere.time_slot)
+    @sync_phase_handler(TimingPhase.INTERNAL, True)
+    def sync_internal_enter(self) -> None:
+        """
+        In SYNC timing mode, enter INTERNAL phase.
+        """
+        # Start processing elementary entanglements that arrived during EXTERNAL phase.
+        for etg_event in self.waiting_etg:
+            self.qubit_is_entangled(etg_event)
+        self.waiting_etg.clear()
+
+    @sync_phase_handler(TimingPhase.INTERNAL, False)
+    def sync_internal_exit(self) -> None:
+        """
+        In SYNC timing mode, exit INTERNAL phase.
+        """
+        self.swap.sync_internal_exit()
 
     @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent):
-        """
-        Handle timing phase signals, only used in SYNC timing mode.
-
-        Upon entering INTERNAL phase:
-
-        1. Start processing elementary entanglements that arrived during EXTERNAL phase.
-
-        Upon exiting INTERNAL phase:
-
-        1. Clear state in the swap module.
-           All memory qubits are being discarded by LinkLayer, so that these have become useless.
-        """
-        match event.action:
-            case TimingPhase.INTERNAL, True:
-                log.debug(f"{self}: there are {len(self.waiting_etg)} etg qubits to process")
-                for etg_event in self.waiting_etg:
-                    self.qubit_is_entangled(etg_event)
-                self.waiting_etg.clear()
-            case TimingPhase.INTERNAL, False:
-                self.swap.exit_internal_phase()
-
-    @fw_control_cmd_handler("INSTALL_PATH")
-    def handle_install_path(self, msg: InstallPathMsg):
-        """Process an INSTALL_PATH message from the controller."""
-        path_id = msg["path_id"]
-        instructions = msg["instructions"]
-        self.mux.validate_path_instructions(instructions)
-
-        # populate FIB
-        route = instructions["route"]
-        if "swap_cutoff" in instructions:
-            swap_cutoff = [None if t < 0 else self.simulator.time(time_slot=t) for t in instructions["swap_cutoff"]]
-        else:
-            swap_cutoff: list[Time | None] = [None] * (2 * (len(route) - 2))
-        fib_entry = FibEntry(
-            req_id=instructions["req_id"],
-            path_id=path_id,
-            route=route,
-            own_idx=route.index(self.node.name),
-            swap=instructions["swap"],
-            swap_cutoff=swap_cutoff,
-            purif=instructions["purif"],
-        )
-        self.fib.insert_or_replace(fib_entry)
-
-        # identify left/right neighbors
-        # associate path with qchannel and allocate qubits
-        if ch_l := self._find_adj(fib_entry, -1):
-            self.mux.install_path_adj(instructions, fib_entry, PathDirection.L, ch_l)
-        if ch_r := self._find_adj(fib_entry, +1):
-            self.mux.install_path_adj(instructions, fib_entry, PathDirection.R, ch_r)
-
-        # call subclass specialization
-        self.handle_path_change(
-            path_id=path_id,
-            uninstall=False,
-            fib_entry=fib_entry,
-            ch_l=ch_l,
-            ch_r=ch_r,
-        )
-
-    @fw_control_cmd_handler("UNINSTALL_PATH")
-    def handle_uninstall_path(self, msg: UninstallPathMsg):
-        """Process an UNINSTALL_PATH message from the controller."""
-        path_id = msg["path_id"]
-
-        # retrieve and erase FIB entry
-        fib_entry = self.fib.get(path_id)
-        fib_entry.active_until = self.simulator.tc
-        self.simulator.add_event(func_to_event(fib_entry.active_until + self._fib_erase_delay, self.fib.erase, path_id))
-
-        # identify left/right neighbors
-        # disassociate path with qchannel and deallocate qubits
-        if ch_l := self._find_adj(fib_entry, -1):
-            self.mux.uninstall_path_adj(fib_entry, PathDirection.L, ch_l)
-        if ch_r := self._find_adj(fib_entry, +1):
-            self.mux.uninstall_path_adj(fib_entry, PathDirection.R, ch_r)
-
-        # call subclass specialization
-        self.handle_path_change(
-            path_id=path_id,
-            uninstall=True,
-            fib_entry=fib_entry,
-            ch_l=ch_l,
-            ch_r=ch_r,
-        )
-
-    def _find_adj(self, fib_entry: FibEntry, route_offset: int) -> QuantumChannel | None:
-        neigh_idx = fib_entry.own_idx + route_offset
-        if neigh_idx in (-1, len(fib_entry.route)):  # no left/right neighbor if own node is the left/right end node
-            return None
-        neigh = self.network.get_node(fib_entry.route[neigh_idx])
-        return self.node.get_qchannel(neigh)
-
-    @abstractmethod
-    def handle_path_change(
-        self,
-        *,
-        path_id: int,
-        uninstall: bool,
-        fib_entry: FibEntry,
-        ch_l: QuantumChannel | None,
-        ch_r: QuantumChannel | None,
-    ):
-        """
-        Process LinkLayer changes after a path has been installed or uninstalled.
-
-        Args:
-            path_id: Path identifier.
-            uninstall: Whether this is an uninstall command.
-            fib_entry: FIB entry.
-            ch_l: Quantum channel toward left, if exists.
-            ch_r: Quantum channel toward right, if exists.
-        """
-
-    @fw_signaling_cmd_handler("CUTOFF_DISCARD")
-    def _handle_cutoff_discard(self, msg: CutoffDiscardMsg, fib_entry: FibEntry):
-        _ = fib_entry
-        self.cutoff.handle_discard(msg)
-
-    @fw_signaling_cmd_handler("PURIF_SOLICIT")
-    def _handle_purif_solicit(self, msg: PurifSolicitMsg, fib_entry: FibEntry):
-        self.purif.handle_solicit(msg, fib_entry)
-
-    @fw_signaling_cmd_handler("PURIF_RESPONSE")
-    def _handle_purif_response(self, msg: PurifResponseMsg, fib_entry: FibEntry):
-        self.purif.handle_response(msg, fib_entry)
-
-    @fw_signaling_cmd_handler("SWAP_UPDATE")
-    def _handle_swap_update(self, msg: SwapUpdateMsg, fib_entry: FibEntry):
-        self.swap.handle_update(msg, fib_entry)
-
-    @event_handler
-    def qubit_is_entangled(self, event: QubitEntangledEvent):
+    def qubit_is_entangled(self, event: QubitEntangledEvent) -> None:
         """
         Handle a qubit entering ENTANGLED state, i.e. having an elementary entanglement.
 
@@ -341,6 +224,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
             event: Event containing the entangled qubit and its associated metadata (e.g., neighbor).
 
         """
+        event.cancel()
         if not self.node.timing.is_internal():  # in SYNC timing mode EXTERNAL phase
             self.waiting_etg.append(event)
             return
@@ -354,14 +238,14 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
 
         mq.epr_path_ids = self.mux.list_qubit_epr_path_ids(mq)
         if not mq.epr_path_ids:
-            log.debug(f"{self}: ENTANGLED_RELEASING reason=uninstalled-path {mq}")
+            self.log_debug("ENTANGLED_RELEASING reason=uninstalled-path %s", mq)
             self.release_qubit(mq, need_remove=True)
             return
 
         _, epr = self.memory.read(mq.addr, has=self.epr_type)
         assert not epr.orig_eprs, f"{mq} is not elementary entanglement"
         fib_entry = self.mux.qubit_is_entangled(mq, epr, event.neighbor)
-        log.debug(f"{self}: ENTANGLED {mq} fib_entry={fib_entry} | {epr}")
+        self.log_debug("ENTANGLED %s fib_entry=%s | %s", mq, fib_entry, epr)
 
         match mq.state:
             case QubitState.PURIF:
@@ -398,9 +282,8 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
 
         segment_name = f"{self.node.name}-{partner.name}" if own_idx < partner_idx else f"{partner.name}-{self.node.name}"
         want_rounds = fib_entry.purif.get(segment_name, 0)
-        log.debug(
-            f"{self}: segment {segment_name} (qubit {qubit.addr}) has "
-            + f"{qubit.purif_rounds} and needs {want_rounds} purif rounds"
+        self.log_debug(
+            "segment %s (qubit %s) has %s and needs %s purif rounds", segment_name, qubit.addr, qubit.purif_rounds, want_rounds
         )
 
         if qubit.purif_rounds == want_rounds:
@@ -411,7 +294,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
 
         is_primary = (own_rank, own_idx) < (partner_rank, partner_idx)
         if not is_primary:
-            log.debug(f"{self}: is not primary node for segment {segment_name} purif")
+            self.log_debug("is not primary node for segment %s purif", segment_name)
             return
 
         candidates = self.memory.find(
@@ -426,7 +309,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         )
         found = call_select_purif_qubit(self._select_purif_qubit, qubit, fib_entry, partner, candidates)
         if not found:
-            log.debug(f"{self}: no candidate EPR for segment {segment_name} purif round {1 + qubit.purif_rounds}")
+            self.log_debug("no candidate EPR for segment %s purif round %s", segment_name, 1 + qubit.purif_rounds)
             return
 
         self.purif.start(qubit, found[0], fib_entry, partner)
@@ -453,7 +336,7 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         qubit.eligible_time = self.simulator.tc
 
         if not self.node.timing.is_internal():
-            log.debug(f"{self}: INT phase is over -> stop swaps")
+            self.log_debug("INT phase is over -> stop swaps")
             return
 
         _, epr = self.memory.read(qubit.addr, has=self.epr_type)
@@ -495,7 +378,8 @@ class Forwarder(ForwarderClassicMixin, Application[QNode]):
         return True
 
     @event_handler
-    def qubit_is_decohered(self, event: MemoryDecohereEvent):
+    def qubit_is_decohered(self, event: MemoryDecohereEvent) -> None:
+        event.cancel()
         assert self.node.timing.is_async(), f"unexpected {event} in SYNC timing mode, (t_ext+t_int) too high"
         self.release_qubit(event.qubit, is_decoh=True)
 

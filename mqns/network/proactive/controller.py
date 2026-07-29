@@ -16,7 +16,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from mqns.network.fw import QubitAllocationType, RoutingController, RoutingPath, RoutingPathMulti, RoutingPathSingle
+from mqns.network.fw import RoutingController, RoutingPath, RoutingPathMulti, RoutingPathSingle
 from mqns.network.network import Request, RequestActiveEvent
 from mqns.network.route import YenRouteAlgorithm
 from mqns.simulator import event_handler
@@ -30,19 +30,6 @@ class ProactiveRoutingController(RoutingController):
     This controller does not pick up requests from ``QuantumNetwork.requests`` list.
     If desired, scenario script should manually pass requests to ``ProactiveRoutingController.install_path()``.
     """
-
-    def __init__(
-        self,
-        *,
-        qubit_allocation: QubitAllocationType = QubitAllocationType.DISABLED,
-    ):
-        """
-        Args:
-            qubit_allocation: QubitAllocationType passed to ``RoutingPathSingle`` constructor
-                              when converting from ``Request``.
-        """
-        super().__init__()
-        self.qubit_allocation = qubit_allocation
 
     @event_handler
     def handle_request(self, event: RequestActiveEvent) -> None:
@@ -59,4 +46,4 @@ class ProactiveRoutingController(RoutingController):
             return req.rp
         if isinstance(self.net.route, YenRouteAlgorithm):
             return RoutingPathMulti(req.src, req.dst, **req.rp_args)
-        return RoutingPathSingle(req.src, req.dst, qubit_allocation=self.qubit_allocation, **req.rp_args)
+        return RoutingPathSingle(req.src, req.dst, **req.rp_args)

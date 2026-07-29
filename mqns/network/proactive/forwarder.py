@@ -15,20 +15,14 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import override
+from typing import Unpack, override
 
 from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw import Forwarder
+from mqns.network.fw import Forwarder, ForwarderInitKwargs, ForwarderNorthbound
 from mqns.network.protocol.event import ManageActiveChannel
 
 
-class ProactiveForwarder(Forwarder):
-    """
-    ProactiveForwarder is the forwarder of QNodes and receives routing instructions from the controller.
-    It implements the forwarding phase (i.e., entanglement generation and swapping) while the centralized
-    routing is done at the controller.
-    """
-
+class ProactiveForwarderNorthbound(ForwarderNorthbound):
     @override
     def handle_path_change(
         self,
@@ -63,3 +57,23 @@ class ProactiveForwarder(Forwarder):
                     t=self.simulator.tc,
                 )
             )
+
+
+class ProactiveForwarder(Forwarder):
+    """
+    ProactiveForwarder is the forwarder of QNodes and receives routing instructions from the controller.
+    It implements the forwarding phase (i.e., entanglement generation and swapping) while the centralized
+    routing is done at the controller.
+    """
+
+    nb: ProactiveForwarderNorthbound
+    """Northbound interface to communicate with the ProactiveRoutingController."""
+
+    def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
+        super().__init__(**kwargs)
+        self.nb = ProactiveForwarderNorthbound()
+
+    @override
+    def install(self, node):
+        super().install(node)
+        self.nb.install(self)

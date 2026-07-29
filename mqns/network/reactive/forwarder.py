@@ -15,13 +15,47 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import override
+from typing import Unpack, override
 
-from mqns.network.fw import Forwarder
-from mqns.network.network import TimingPhase, TimingPhaseEvent
+from mqns.network.fw import Forwarder, ForwarderInitKwargs, ForwarderNorthbound
+from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import ManageActiveChannel
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
-from mqns.utils import log
+
+
+class ReactiveForwarderNorthbound(ForwarderNorthbound):
+    @override
+    def handle_path_change(self, *, path_id: int, uninstall: bool, **_):
+        """
+        Process LinkLayer changes after a path has been installed or uninstalled.
+
+        This does nothing because LinkLayer is always running based on topology.
+        """
+        if uninstall:
+            raise ValueError("ReactiveForwarder should not receive UNINSTALL_PATH command")
+        if not self.node.timing.is_routing():
+            self.log_warning("received INSTALL_PATH message for path %s outside of ROUTING phase; t_rtg is too short?", path_id)
+
+    def send_link_state(self):
+        """
+        Send link state message to controller. Assumes direct connection to controller.
+        """
+        link_states: list[LinkStateEntry] = []
+        for event in self.fw.waiting_etg:
+            assert event.qubit.key is not None
+            link_states.append({"node": event.node.name, "neighbor": event.neighbor.name, "qubit": event.qubit.key})
+
+        if len(link_states) == 0:
+            self.log_debug("no link_state to send")
+            return
+        else:
+            self.log_debug("send link_state for %s etg qubits", len(self.fw.waiting_etg))
+
+        msg: LinkStateMsg = {
+            "cmd": "LS",
+            "ls": link_states,
+        }
+        self.send_ctrl(msg)
 
 
 class ReactiveForwarder(Forwarder):
@@ -33,20 +67,24 @@ class ReactiveForwarder(Forwarder):
     routing is done at the controller.
     """
 
+    nb: ReactiveForwarderNorthbound
+    """Northbound interface to communicate with the ReactiveRoutingController."""
+
+    def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
+        super().__init__(**kwargs)
+        self.nb = ReactiveForwarderNorthbound()
+
     @override
     def install(self, node):
         super().install(node)
+        self.nb.install(self)
 
         # Qchannel activation is called before simulation starts, but EPR generation starts at t=0
         self.activate_qchannels()
 
     def activate_qchannels(self):
-        """
-        Instruct LinkLayer to start generating EPRs on ALL qchannels.
-        This may be called from install() or at the first EXTERNAL phase (for better coordination).
-        """
         for ch in self.node.qchannels:
-            log.debug(f"{self}: activate qchannel {ch.name}")
+            self.log_debug("activate qchannel %s", ch.name)
             self.simulator.add_event(
                 ManageActiveChannel(
                     self.node,
@@ -58,59 +96,18 @@ class ReactiveForwarder(Forwarder):
                 )
             )
 
-    @override
-    def handle_sync_phase(self, event: TimingPhaseEvent):
+    @sync_phase_handler(TimingPhase.ROUTING, True)
+    def sync_routing_enter(self):
         """
-        Handle timing phase signals, only used in SYNC timing mode.
-
-        Upon entering ROUTING phase:
-
-        1. Send to controller link states corresponding to entangled qubits that arrived during EXTERNAL phase
-           and wait for routing instructions.
-
-        Upon exiting INTERNAL phase:
-
-        1. Clear path assignments.
-           In reactive forwarding, path assignments are only useful for one slot.
+        In SYNC timing mode, enter ROUTING phase.
         """
-        super().handle_sync_phase(event)
+        # Transmit link states based on entangled qubits arrived during EXTERNAL phase.
+        self.nb.send_link_state()
 
-        match event.action:
-            case TimingPhase.ROUTING, True:
-                log.debug(f"{self}: send link_state for {len(self.waiting_etg)} etg qubits")
-                self.send_link_state()
-            case TimingPhase.INTERNAL, False:
-                self.memory.deallocate(*(qubit.addr for qubit, _ in self.memory.find(lambda q, _: q.path_id is not None)))
-
-    @override
-    def handle_path_change(self, *, path_id: int, uninstall: bool, **_):
+    @sync_phase_handler(TimingPhase.INTERNAL, False)
+    def sync_internal_exit(self):
         """
-        Process LinkLayer changes after a path has been installed or uninstalled.
-
-        This does nothing because LinkLayer is always running based on topology.
+        In SYNC timing mode, exit INTERNAL phase.
         """
-        if uninstall:
-            raise ValueError("ReactiveForwarder should not receive UNINSTALL_PATH command")
-        if not self.node.timing.is_routing():
-            log.warning(
-                f"{self}: received INSTALL_PATH message for path {path_id} outside of ROUTING phase; t_rtg is too short?"
-            )
-
-    def send_link_state(self):
-        """
-        Send link state message to controller. Assumes direct connection to controller.
-        """
-        link_states: list[LinkStateEntry] = []
-        for event in self.waiting_etg:
-            assert event.qubit.key is not None
-            link_states.append({"node": event.node.name, "neighbor": event.neighbor.name, "qubit": event.qubit.key})
-
-        if len(link_states) == 0:
-            log.debug(f"{self}: no link_state to send")
-            return
-
-        msg: LinkStateMsg = {
-            "cmd": "LS",
-            "ls": link_states,
-        }
-        self.send_ctrl(msg)
+        # Clear path assignments, as these are only useful for one slot.
+        self.memory.deallocate(*(qubit.addr for qubit, _ in self.memory.find(lambda q, _: q.path_id is not None)))

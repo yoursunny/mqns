@@ -208,7 +208,7 @@ def test_gate():
     assert not th.is_alive()
 
 
-def test_handle_set():
+def test_handle_set_add():
     class EventA(SimpleEvent):
         pass
 
@@ -240,3 +240,29 @@ def test_handle_set():
     assert len(SimpleEvent.invokes["A1"]) == 1
     assert len(SimpleEvent.invokes["B0"]) == 0
     assert len(SimpleEvent.invokes["C0"]) == 1
+
+
+def test_handle_set_pop():
+    class EventA(SimpleEvent):
+        pass
+
+    class EventB(SimpleEvent):
+        pass
+
+    s = Simulator(0, 1, accuracy=1000)
+
+    hs = EventHandleSet()
+
+    s.add_event(event := EventA(s.ts, "A0"))
+    hs.add(event)
+
+    s.add_event(event := EventB(s.ts, "B0"))
+    hs.add(event)
+    hs.pop(EventB)
+
+    hs.clear()
+
+    s.run()
+
+    assert len(SimpleEvent.invokes["A0"]) == 0
+    assert len(SimpleEvent.invokes["B0"]) == 1

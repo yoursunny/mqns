@@ -18,9 +18,10 @@
 from abc import ABC, abstractmethod
 
 from mqns.simulator import Event, Simulator
+from mqns.utils import LogSelfMixin
 
 
-class Entity(ABC):
+class Entity(LogSelfMixin, ABC):
     """
     Basic entity class.
 
@@ -56,11 +57,9 @@ class Entity(ABC):
         """Global simulator instance."""
 
     @abstractmethod
-    def handle(self, event: Event, /) -> bool | None:
+    def handle(self, event: Event, /) -> None:
         """
         Process an event.
-
-        The return value is ignored.
         """
 
     def __repr__(self) -> str:

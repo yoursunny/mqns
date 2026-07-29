@@ -1,38 +1,17 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 
-from mqns.entity.memory import MemoryQubit, PathDirection, QuantumMemory
+from mqns.entity.memory import MemoryQubit, PathDirection
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
-from mqns.network.fw.fib import Fib, FibEntry
+from mqns.network.fw.fib import FibEntry
+from mqns.network.fw.fw_module import ForwarderModule
 from mqns.network.fw.message import PathInstructions
 from mqns.network.fw.select import MemoryEprIterator
 
-if TYPE_CHECKING:
-    from mqns.network.fw import Forwarder
 
-
-class MuxScheme(ABC):
+class MuxScheme(ForwarderModule, ABC):
     """Path multiplexing scheme."""
-
-    fw: "Forwarder"
-    node: QNode
-    memory: QuantumMemory
-    fib: Fib
-
-    def __init__(self, name: str):
-        self.name = name
-        """Scheme name."""
-
-    def __repr__(self):
-        return f"<{self.name}>"
-
-    def install(self, fw: "Forwarder"):
-        self.fw = fw
-        self.node = fw.node
-        self.memory = fw.memory
-        self.fib = fw.fib
 
     @abstractmethod
     def validate_path_instructions(self, instructions: PathInstructions) -> None:

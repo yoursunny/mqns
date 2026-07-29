@@ -24,8 +24,8 @@ if TYPE_CHECKING:
 
 
 class MuxSchemeDynamicBase(MuxScheme):
-    def __init__(self, name: str):
-        super().__init__(name)
+    def __init__(self):
+        super().__init__()
         self.qchannel_paths_map = defaultdict[str, list[int]](lambda: [])
         """stores path-qchannel relationship"""
 
@@ -90,7 +90,6 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
 
     def __init__(
         self,
-        name="statistical multiplexing",
         *,
         select_swap_qubit: SelectSwapQubit | None = None,
         coordinated_decisions=False,
@@ -108,7 +107,7 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
             select_path: Function to select a path (FIB entry) to swap into, default is first.
                 This has no effect unless coordinated_decisions is True.
         """
-        super().__init__(name)
+        super().__init__()
         self._select_swap_qubit = select_swap_qubit
         self.coordinated_decisions = coordinated_decisions
         self._select_path = select_path

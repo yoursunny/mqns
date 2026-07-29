@@ -1,59 +1,65 @@
 import inspect
 from collections.abc import Callable
-from typing import Any, get_type_hints
+from typing import Any, ClassVar, get_type_hints, overload
 
 from mqns.simulator.event import Event
+from mqns.utils import DecoratorDispatchBuilder
+
+type _HandlerFunc[E: Event] = Callable[[Any, E], None]
+
+_builder = DecoratorDispatchBuilder[type[Event], _HandlerFunc](
+    classvar_name="_event_handlers",
+    decorator_attr="_event_handler",
+)
 
 
-def _extract_event_type(f: Callable) -> type[Event]:
+def _extract_event_type(f: _HandlerFunc) -> type[Event]:
     sig = inspect.signature(f)
     params = list(sig.parameters.values())
     if len(params) != 2:
-        raise TypeError("register_handler: handler must accept two parameters")
+        raise TypeError("@event_handler: handler must accept two parameters")
 
     hints = get_type_hints(f)
     typ = hints.get(params[1].name)
     if not (isinstance(typ, type) and issubclass(typ, Event)):
-        raise TypeError("register_handler: handler must accept Event subclass")
+        raise TypeError("@event_handler: handler must accept Event subclass")
     if not getattr(typ, "__final__", False):
-        raise TypeError(f"register_handler: {typ} must be marked @final")
+        raise TypeError(f"@event_handler: {typ} must be marked @final")
     return typ
 
 
-def event_handler[E: Event](f: Callable[[Any, E], bool | None]):
+@overload
+def event_handler[E: Event](f: _HandlerFunc[E], /) -> _HandlerFunc[E]:
     """
     Method decorator to register an event handler.
 
     Args:
-        f: Handler function, ``def handle_event_a(self, event: EventA) -> bool|None``.
+        f: Handler function, ``def handle_event_a(self, event: EventA) -> Any``.
 
-    This decorator is effective only if ``EventDispatcher.handle`` is not overridden.
-    See ``EventDispatcher.handle`` for the semantics of ``f``'s return value.
+    This decorator must be used with ``EventDispatcherMixin``.
 
-    The event handler registry is per class and supports inheritance.
-    Handlers may be registered both from the base class and the subclass.
-    If a subclass overrides an event handler in the base class, it must keep the same function signature.
+    The handler registry is per class.
+    Each class may have multiple handlers for the same event.
+    Handlers in the subclass are called before those in the base class.
+    The invocation order among handlers in the same class is not guaranteed.
+    If a handler cancels the event, subsequent handlers will not be called.
     """
-    typ = _extract_event_type(f)
-    setattr(f, "_event_handler", typ)
-    return f
 
 
-def _populate_handlers(cls: type):
-    # Identify handler method names.
-    handler_names = set[str]()
-    for base in reversed(cls.mro()):
-        for name, attr in base.__dict__.items():
-            if getattr(attr, "_event_handler", None):
-                handler_names.add(name)
+@overload
+def event_handler[E: Event](typ: type[E], /) -> Callable[[_HandlerFunc[E]], _HandlerFunc[E]]:
+    """
+    Build a decorator of specific event type.
 
-    # Map commands to the most specific implementation in this class.
-    handler_map: dict[type[Event], Callable] = {}
-    for name in handler_names:
-        handler = getattr(cls, name)
-        typ = getattr(handler, "_event_handler", None) or _extract_event_type(handler)
-        handler_map[typ] = handler
-    cls._event_handlers = handler_map
+    Args:
+        typ: Event type.
+    """
+
+
+def event_handler(arg1: _HandlerFunc | type[Event]):
+    if isinstance(arg1, type):
+        return _builder.make_decorator(arg1)
+    return _builder.make_decorator(_extract_event_type(arg1))(arg1)
 
 
 class EventDispatcherMixin:
@@ -61,24 +67,21 @@ class EventDispatcherMixin:
     Mixin class for event dispatching functionality on event target (e.g. ``Application``).
     """
 
-    def handle(self, event: Event, /) -> bool | None:
+    __slots__ = ()
+    _event_handlers: ClassVar[dict[type[Event], list[_HandlerFunc]]]
+
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        cls._event_handlers = _builder.gather(cls)
+
+    def handle(self, event: Event, /) -> None:
         """
         Dispatch an event.
-
-        Args:
-            event: Event instance.
-
-        Returns:
-        * If True, the event is fully handled and not passed to the next event target.
-        * Otherwise, the event is passed to the next event target.
         """
-        cls: type = type(self)
-
-        if "_event_handlers" not in cls.__dict__:
-            _populate_handlers(cls)
-
-        handler = cls._event_handlers.get(type(event))
-        if handler:
-            return handler(self, event)
-
-        return False
+        handlers = self._event_handlers.get(type(event))
+        if not handlers:
+            return
+        for func in handlers:
+            if event.is_canceled:
+                return
+            func(self, event)

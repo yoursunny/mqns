@@ -21,10 +21,10 @@ from typing import cast, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
 from mqns.network.fw import RoutingController, RoutingPathStatic
-from mqns.network.network import Request, TimingModeSync, TimingPhase, TimingPhaseEvent
+from mqns.network.network import Request, TimingModeSync, TimingPhase, sync_phase_handler
 from mqns.network.reactive.message import LinkStateMsg
-from mqns.simulator import event_handler, func_to_event
-from mqns.utils import json_encodable, log
+from mqns.simulator import func_to_event
+from mqns.utils import json_encodable
 
 
 @json_encodable
@@ -55,7 +55,7 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         Args:
             swap: Swapping policy applied to all paths.
         """
-        super().__init__()
+        super().__init__(mv_auto="max")
 
         self.cnt = ReactiveRoutingControllerCounters()
         """
@@ -79,12 +79,15 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         self.timing = cast(TimingModeSync, self.node.timing)
         self.d_rtg = self.simulator.time(time_slot=self.timing.t_rtg.time_slot // 2)
 
-    @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent):
-        match event.action:
-            case TimingPhase.ROUTING, True:
-                self._tls.clear()
-                self.simulator.add_event(func_to_event(self.simulator.tc + self.d_rtg, self.do_routing))
+    @sync_phase_handler(TimingPhase.ROUTING, True)
+    def handle_sync_phase(self) -> None:
+        """
+        In SYNC timing mode, enter ROUTING phase.
+        """
+        # Delete topology link state from previous time slot.
+        self._tls.clear()
+        # Wait half of ROUTING phase, then perform routing computation.
+        self.simulator.add_event(func_to_event(self.simulator.tc + self.d_rtg, self.do_routing))
 
     @classic_cmd_handler("LS")
     def handle_ls(self, pkt: ClassicPacket, msg: LinkStateMsg):
@@ -93,10 +96,10 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         """
 
         if not self.node.timing.is_routing():  # should be in SYNC timing mode ROUTING phase
-            log.warning(f"{self}: received LS message from {pkt.src} outside of ROUTING phase | {msg}")
+            self.log_warning("received LS message from %s outside of ROUTING phase | %s", pkt.src, msg)
             return True
 
-        log.debug(f"{self.node.name}: received LS message from {pkt.src} | {msg}")
+        self.log_debug("received LS message from %s | %s", pkt.src, msg)
         self.cnt.n_ls += 1
 
         for entry in msg["ls"]:
@@ -129,7 +132,7 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
             if (qubits := self._try_consume(route.path)) is None:
                 continue
 
-            self.install_path(RoutingPathStatic(route.path, m_v=qubits, **req.rp_args))
+            self.install_path(RoutingPathStatic(route.path, **(req.rp_args | {"m_v": qubits})))
             return True
 
         return False

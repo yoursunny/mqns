@@ -94,11 +94,15 @@ class EventHandleSet:
         self.discard(typ)
         self._events[typ] = evt
 
+    def pop[T: Event](self, typ: type[T]) -> T | None:
+        """Remove event of specified type without canceling."""
+        return cast(T, self._events.pop(typ, None))
+
     def discard[T: Event](self, typ: type[T]) -> T | None:
         """Cancel event of specified type if it exists."""
-        if (evt := self._events.pop(typ, None)) and not evt.is_canceled:
+        if (evt := self.pop(typ)) and not evt.is_canceled:
             evt.cancel()
-            return cast(T, evt)
+            return evt
         return None
 
     def clear(self) -> None:

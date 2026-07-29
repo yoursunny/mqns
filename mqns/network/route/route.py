@@ -72,6 +72,9 @@ class RouteQueryResult[N: Node]:
     def next_hop(self) -> N:
         return self.nodes[1]
 
+    def __repr__(self) -> str:
+        return f"{'-'.join(self.path)}(metric={self.metric})"
+
 
 class RouteAlgorithm[N: Node, C: BaseChannel](ABC):
     """
