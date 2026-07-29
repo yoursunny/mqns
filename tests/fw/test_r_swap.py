@@ -9,11 +9,11 @@ import pytest
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
 from mqns.network.fw import RoutingController, RoutingPathStatic
-from mqns.network.network import Request, TimingModeSync, TimingPhase, TimingPhaseEvent
+from mqns.network.network import Request, TimingModeSync, TimingPhase, sync_phase_handler
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.reactive import ReactiveForwarder, ReactiveRoutingController
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
-from mqns.simulator import event_handler, func_to_event
+from mqns.simulator import func_to_event
 
 from .fw_common import (
     build_linear_network,
@@ -31,12 +31,10 @@ class ManualController(ClassicCommandDispatcherMixin, RoutingController):
         self.ls_pkts: list[tuple[ClassicPacket, LinkStateMsg]] = []
         self.ls_entries: list[LinkStateEntry] = []
 
-    @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent) -> None:
-        match event.action:
-            case TimingPhase.ROUTING, False:
-                self.ls_pkts.clear()
-                self.ls_entries.clear()
+    @sync_phase_handler(TimingPhase.ROUTING, False)
+    def sync_routing_exit(self) -> None:
+        self.ls_pkts.clear()
+        self.ls_entries.clear()
 
     @classic_cmd_handler("LS")
     def handle_ls(self, pkt: ClassicPacket, msg: LinkStateMsg):

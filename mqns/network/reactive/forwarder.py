@@ -15,44 +15,15 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Unpack, cast, override
+from typing import Unpack, override
 
 from mqns.network.fw import Forwarder, ForwarderInitKwargs, ForwarderNorthbound
-from mqns.network.network import TimingPhase, TimingPhaseEvent
+from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import ManageActiveChannel
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
-from mqns.simulator import event_handler
 
 
 class ReactiveForwarderNorthbound(ForwarderNorthbound):
-    @override
-    def install(self, fw):
-        super().install(fw)
-
-        # Qchannel activation is called before simulation starts, but EPR generation starts at t=0
-        self.activate_qchannels()
-
-    def activate_qchannels(self):
-        for ch in self.node.qchannels:
-            self.log_debug("activate qchannel %s", ch.name)
-            self.simulator.add_event(
-                ManageActiveChannel(
-                    self.node,
-                    ch,
-                    path_id=None,
-                    start=True,
-                    is_primary=ch.node_list[0] is self.node,
-                    t=self.simulator.tc,
-                )
-            )
-
-    def handle_sync_phase(self, event: TimingPhaseEvent):
-        match event.action:
-            case TimingPhase.ROUTING, True:
-                self.send_link_state()
-            case TimingPhase.INTERNAL, False:
-                self.memory.deallocate(*(qubit.addr for qubit, _ in self.memory.find(lambda q, _: q.path_id is not None)))
-
     @override
     def handle_path_change(self, *, path_id: int, uninstall: bool, **_):
         """
@@ -96,24 +67,47 @@ class ReactiveForwarder(Forwarder):
     routing is done at the controller.
     """
 
+    nb: ReactiveForwarderNorthbound
+    """Northbound interface to communicate with the ReactiveRoutingController."""
+
     def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
-        super().__init__(nb=ReactiveForwarderNorthbound(), **kwargs)
+        super().__init__(**kwargs)
+        self.nb = ReactiveForwarderNorthbound()
 
     @override
-    @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent) -> None:
+    def install(self, node):
+        super().install(node)
+        self.nb.install(self)
+
+        # Qchannel activation is called before simulation starts, but EPR generation starts at t=0
+        self.activate_qchannels()
+
+    def activate_qchannels(self):
+        for ch in self.node.qchannels:
+            self.log_debug("activate qchannel %s", ch.name)
+            self.simulator.add_event(
+                ManageActiveChannel(
+                    self.node,
+                    ch,
+                    path_id=None,
+                    start=True,
+                    is_primary=ch.node_list[0] is self.node,
+                    t=self.simulator.tc,
+                )
+            )
+
+    @sync_phase_handler(TimingPhase.ROUTING, True)
+    def sync_routing_enter(self):
         """
-        Handle timing phase signals, only used in SYNC timing mode.
-
-        Upon entering ROUTING phase:
-
-        1. Send to controller link states corresponding to entangled qubits that arrived during EXTERNAL phase
-           and wait for routing instructions.
-
-        Upon exiting INTERNAL phase:
-
-        1. Clear path assignments.
-           In reactive forwarding, path assignments are only useful for one slot.
+        In SYNC timing mode, enter ROUTING phase.
         """
-        super().handle_sync_phase(event)
-        cast(ReactiveForwarderNorthbound, self.nb).handle_sync_phase(event)
+        # Transmit link states based on entangled qubits arrived during EXTERNAL phase.
+        self.nb.send_link_state()
+
+    @sync_phase_handler(TimingPhase.INTERNAL, False)
+    def sync_internal_exit(self):
+        """
+        In SYNC timing mode, exit INTERNAL phase.
+        """
+        # Clear path assignments, as these are only useful for one slot.
+        self.memory.deallocate(*(qubit.addr for qubit, _ in self.memory.find(lambda q, _: q.path_id is not None)))

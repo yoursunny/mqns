@@ -27,13 +27,12 @@ from mqns.models.error import PerfectErrorModel
 from mqns.models.error.input import ErrorModelInputBasic, parse_error
 from mqns.network.fw.cutoff import CutoffScheme, CutoffSchemeWaitTime
 from mqns.network.fw.fib import Fib, FibEntry
-from mqns.network.fw.fw_nb import ForwarderNorthbound
 from mqns.network.fw.fw_purif import ForwarderPurifProc
 from mqns.network.fw.fw_swap import ForwarderSwapProc
 from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
 from mqns.network.fw.select import SelectPurifQubit, call_select_purif_qubit
-from mqns.network.network import TimingPhase, TimingPhaseEvent
+from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
 from mqns.simulator import event_handler
 from mqns.utils import json_encodable, unwrap_cast
@@ -126,9 +125,6 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
     routing is done at the controller.
     """
 
-    nb: ForwarderNorthbound
-    """Northbound interface to communicate with the controller."""
-
     cutoff: CutoffScheme
     """EPR age cut-off scheme."""
 
@@ -144,7 +140,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
     swap: ForwarderSwapProc
     """Swapping procedure module."""
 
-    def __init__(self, *, nb: ForwarderNorthbound, **kwargs: Unpack[ForwarderInitKwargs]):
+    def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
         """
         This constructor sets up a node's entanglement forwarding logic in a quantum network.
         It configures the swapping success probability and preparing internal
@@ -153,7 +149,6 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         """
         super().__init__()
 
-        self.nb = nb
         self.cutoff = copy.deepcopy(kwargs.get("cutoff")) or CutoffSchemeWaitTime()
         self.mux: MuxScheme = copy.deepcopy(kwargs.get("mux")) or MuxSchemeBufferSpace()
         self._select_purif_qubit = kwargs.get("select_purif_qubit")
@@ -188,34 +183,28 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         self.epr_type = self.network.epr_type
         """Network-wide entanglement type."""
 
-        self.nb.install(self)
         self.cutoff.install(self)
         self.mux.install(self)
         self.fib.install(self)
         self.purif.install(self)
         self.swap.install(self)
 
-    @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent) -> None:
+    @sync_phase_handler(TimingPhase.INTERNAL, True)
+    def sync_internal_enter(self) -> None:
         """
-        Handle timing phase signals, only used in SYNC timing mode.
-
-        Upon entering INTERNAL phase:
-
-        1. Start processing elementary entanglements that arrived during EXTERNAL phase.
-
-        Upon exiting INTERNAL phase:
-
-        1. Clear state in the swap module.
-           All memory qubits are being discarded by LinkLayer, so that these have become useless.
+        In SYNC timing mode, enter INTERNAL phase.
         """
-        match event.action:
-            case TimingPhase.INTERNAL, True:
-                for etg_event in self.waiting_etg:
-                    self.qubit_is_entangled(etg_event)
-                self.waiting_etg.clear()
-            case TimingPhase.INTERNAL, False:
-                self.swap.exit_internal_phase()
+        # Start processing elementary entanglements that arrived during EXTERNAL phase.
+        for etg_event in self.waiting_etg:
+            self.qubit_is_entangled(etg_event)
+        self.waiting_etg.clear()
+
+    @sync_phase_handler(TimingPhase.INTERNAL, False)
+    def sync_internal_exit(self) -> None:
+        """
+        In SYNC timing mode, exit INTERNAL phase.
+        """
+        self.swap.sync_internal_exit()
 
     @event_handler
     def qubit_is_entangled(self, event: QubitEntangledEvent) -> None:

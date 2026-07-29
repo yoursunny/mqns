@@ -21,7 +21,14 @@ from mqns.network.fw import (
     RoutingPath,
 )
 from mqns.network.fw.fw_swap import ForwarderSwapProc
-from mqns.network.network import QuantumNetwork, Request, TimingMode, TimingModeAsync, TimingPhase, TimingPhaseEvent
+from mqns.network.network import (
+    QuantumNetwork,
+    Request,
+    TimingMode,
+    TimingModeAsync,
+    TimingPhase,
+    sync_phase_handler,
+)
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
 from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.event import QubitEntangledEvent, QubitReleasedEvent
@@ -64,11 +71,9 @@ class QubitReleaseReset(Application[QNode]):
         self.history: list[tuple[int, Time]] = []
         """Qubit address and release time."""
 
-    @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent):
-        match event.action:
-            case TimingPhase.INTERNAL, False:
-                self.node.memory.clear()
+    @sync_phase_handler(TimingPhase.INTERNAL, False)
+    def sync_internal_exit(self) -> None:
+        self.node.memory.clear()
 
     @event_handler
     def handle_qubit_released(self, event: QubitReleasedEvent):

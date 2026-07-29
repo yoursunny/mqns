@@ -1,6 +1,6 @@
 import inspect
 from collections.abc import Callable
-from typing import Any, ClassVar, get_type_hints
+from typing import Any, ClassVar, get_type_hints, overload
 
 from mqns.simulator.event import Event
 from mqns.utils import DecoratorDispatchBuilder
@@ -28,7 +28,8 @@ def _extract_event_type(f: _HandlerFunc) -> type[Event]:
     return typ
 
 
-def event_handler[E: Event](f: _HandlerFunc[E]) -> _HandlerFunc[E]:
+@overload
+def event_handler[E: Event](f: _HandlerFunc[E], /) -> _HandlerFunc[E]:
     """
     Method decorator to register an event handler.
 
@@ -43,7 +44,22 @@ def event_handler[E: Event](f: _HandlerFunc[E]) -> _HandlerFunc[E]:
     The invocation order among handlers in the same class is not guaranteed.
     If a handler cancels the event, subsequent handlers will not be called.
     """
-    return _builder.make_decorator(_extract_event_type(f))(f)
+
+
+@overload
+def event_handler[E: Event](typ: type[E], /) -> Callable[[_HandlerFunc[E]], _HandlerFunc[E]]:
+    """
+    Build a decorator of specific event type.
+
+    Args:
+        typ: Event type.
+    """
+
+
+def event_handler(arg1: _HandlerFunc | type[Event]):
+    if isinstance(arg1, type):
+        return _builder.make_decorator(arg1)
+    return _builder.make_decorator(_extract_event_type(arg1))(arg1)
 
 
 class EventDispatcherMixin:

@@ -21,9 +21,9 @@ from typing import cast, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
 from mqns.network.fw import RoutingController, RoutingPathStatic
-from mqns.network.network import Request, TimingModeSync, TimingPhase, TimingPhaseEvent
+from mqns.network.network import Request, TimingModeSync, TimingPhase, sync_phase_handler
 from mqns.network.reactive.message import LinkStateMsg
-from mqns.simulator import event_handler, func_to_event
+from mqns.simulator import func_to_event
 from mqns.utils import json_encodable
 
 
@@ -79,12 +79,15 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         self.timing = cast(TimingModeSync, self.node.timing)
         self.d_rtg = self.simulator.time(time_slot=self.timing.t_rtg.time_slot // 2)
 
-    @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent) -> None:
-        match event.action:
-            case TimingPhase.ROUTING, True:
-                self._tls.clear()
-                self.simulator.add_event(func_to_event(self.simulator.tc + self.d_rtg, self.do_routing))
+    @sync_phase_handler(TimingPhase.ROUTING, True)
+    def handle_sync_phase(self) -> None:
+        """
+        In SYNC timing mode, enter ROUTING phase.
+        """
+        # Delete topology link state from previous time slot.
+        self._tls.clear()
+        # Wait half of ROUTING phase, then perform routing computation.
+        self.simulator.add_event(func_to_event(self.simulator.tc + self.d_rtg, self.do_routing))
 
     @classic_cmd_handler("LS")
     def handle_ls(self, pkt: ClassicPacket, msg: LinkStateMsg):

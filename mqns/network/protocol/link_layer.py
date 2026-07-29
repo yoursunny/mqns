@@ -24,7 +24,7 @@ from mqns.entity.memory import MemoryQubit, QubitState
 from mqns.entity.node import Application, QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
-from mqns.network.network import TimingPhase, TimingPhaseEvent
+from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import (
     LinkArchNotifyDstEvent,
     LinkArchNotifySrcEvent,
@@ -229,36 +229,35 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         self.memory = self.node.memory
         """Quantum memory of the node."""
 
-    @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent) -> None:
+    @sync_phase_handler(TimingPhase.EXTERNAL, True)
+    def sync_external_enter(self) -> None:
         """
-        Handle timing phase signals, only used in SYNC timing mode.
-
-        Upon entering EXTERNAL phase:
-
-        1. Start reservation for each active channel where this node is primary.
-
-        Upon exiting EXTERNAL phase:
-
-        1. Clear incomplete reservations.
-        2. Clear unsatisfied reservation requests.
-
-        Upon exiting INTERNAL phase:
-
-        1. Clear existing memory qubits.
+        In SYNC timing mode, enter EXTERNAL phase.
         """
-        match event.action:
-            case TimingPhase.EXTERNAL, True:
-                for ac in self.channels.values():
-                    if ac.is_primary:
-                        self.run_channel(ac)
-            case TimingPhase.EXTERNAL, False:
-                for ac in self.channels.values():
-                    for ap in ac.paths.values():
-                        ap.oreq_table.clear()
-                        ap.ireq_queue.clear()
-            case TimingPhase.INTERNAL, False:
-                self.memory.clear()
+        # Start reservation for each active channel where this node is primary.
+        for ac in self.channels.values():
+            if ac.is_primary:
+                self.run_channel(ac)
+
+    @sync_phase_handler(TimingPhase.EXTERNAL, False)
+    def sync_external_exit(self) -> None:
+        """
+        In SYNC timing mode, exit EXTERNAL phase.
+        """
+        for ac in self.channels.values():
+            for ap in ac.paths.values():
+                # Clear incomplete reservations.
+                ap.oreq_table.clear()
+                # Clear unsatisfied reservation requests.
+                ap.ireq_queue.clear()
+
+    @sync_phase_handler(TimingPhase.INTERNAL, False)
+    def sync_internal_exit(self) -> None:
+        """
+        In SYNC timing mode, exit INTERNAL phase.
+        """
+        # Clear existing memory qubits.
+        self.memory.clear()
 
     @event_handler
     def handle_manage_active_channels(self, event: ManageActiveChannel) -> None:

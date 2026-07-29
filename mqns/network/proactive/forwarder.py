@@ -66,5 +66,14 @@ class ProactiveForwarder(Forwarder):
     routing is done at the controller.
     """
 
+    nb: ProactiveForwarderNorthbound
+    """Northbound interface to communicate with the ProactiveRoutingController."""
+
     def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
-        super().__init__(nb=ProactiveForwarderNorthbound(), **kwargs)
+        super().__init__(**kwargs)
+        self.nb = ProactiveForwarderNorthbound()
+
+    @override
+    def install(self, node):
+        super().install(node)
+        self.nb.install(self)

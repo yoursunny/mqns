@@ -391,10 +391,12 @@ class ForwarderSwapProc(ForwarderModule):
         if self.table_leak_tol >= 0 and max_table_size > self.table_leak_tol:
             raise MemoryError("memory leak detected in data structures")
 
-    def exit_internal_phase(self) -> None:
+    def sync_internal_exit(self) -> None:
         """
-        Called when the forwarder in SYNC timing mode exits an internal phase.
+        In SYNC timing mode, exit INTERNAL phase.
         """
+        # Clear states.
+        # All memory qubits are being discarded by LinkLayer, so that these have become useless.
         assert not self.waiting_su, f"waiting_su is not empty {self.waiting_su}"
         self.remote_swapped.clear()
         self.task_by_qubit.clear()

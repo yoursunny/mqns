@@ -11,8 +11,8 @@ from mqns.network.network import (
     RequestActiveEvent,
     TimingModeSync,
     TimingPhase,
-    TimingPhaseEvent,
     TrafficMatrixMapping,
+    sync_phase_handler,
 )
 from mqns.network.topology import BasicTopology
 from mqns.simulator import Simulator, event_handler, func_to_event
@@ -21,18 +21,27 @@ from mqns.simulator import Simulator, event_handler, func_to_event
 class SyncCheckApp(Application[Node]):
     def __init__(self):
         super().__init__()
-        self.enters = 0
-        self.exits = 0
+        self.records: list[str] = []
 
-    @event_handler
-    def handle_sync_signal(self, event: TimingPhaseEvent) -> None:
-        t = self.simulator.tc.sec
-        if event.enter:
-            assert (t % 5 == 0 and event.phase is TimingPhase.EXTERNAL) or (t % 5 == 4 and event.phase is TimingPhase.INTERNAL)
-            self.enters += 1
-        else:
-            assert (t % 5 == 0 and event.phase is TimingPhase.INTERNAL) or (t % 5 == 4 and event.phase is TimingPhase.EXTERNAL)
-            self.exits += 1
+    @sync_phase_handler(TimingPhase.EXTERNAL, True)
+    def sync_external_enter(self) -> None:
+        assert self.simulator.tc.time_slot % 5000 == 0
+        self.records.append("E+")
+
+    @sync_phase_handler(TimingPhase.EXTERNAL, False)
+    def sync_external_exit(self) -> None:
+        assert self.simulator.tc.time_slot % 5000 == 4000
+        self.records.append("E-")
+
+    @sync_phase_handler(TimingPhase.INTERNAL, True)
+    def sync_internal_enter(self) -> None:
+        assert self.simulator.tc.time_slot % 5000 == 4000
+        self.records.append("I+")
+
+    @sync_phase_handler(TimingPhase.INTERNAL, False)
+    def sync_internal_exit(self) -> None:
+        assert self.simulator.tc.time_slot % 5000 == 0
+        self.records.append("I-")
 
 
 def test_timing_mode_sync():
@@ -51,8 +60,7 @@ def test_timing_mode_sync():
 
     for node in net.all_nodes:
         app = node.get_app(SyncCheckApp)
-        assert app.enters == 12
-        assert app.exits == 11
+        assert app.records == ["E+", "E-", "I+", "I-"] * 5 + ["E+", "E-", "I+"]
 
 
 @pytest.mark.parametrize(
