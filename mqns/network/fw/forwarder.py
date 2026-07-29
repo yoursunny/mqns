@@ -245,7 +245,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         _, epr = self.memory.read(mq.addr, has=self.epr_type)
         assert not epr.orig_eprs, f"{mq} is not elementary entanglement"
         fib_entry = self.mux.qubit_is_entangled(mq, epr, event.neighbor)
-        self.log_debug("ENTANGLED %s fib_entry=%s | %s", mq, fib_entry, epr)
+        self.log_debug("ENTANGLED %s path_id=%s | %s", mq, fib_entry.path_id if fib_entry else None, epr)
 
         match mq.state:
             case QubitState.PURIF:

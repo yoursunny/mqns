@@ -35,28 +35,17 @@ class MuxSchemeDynamicBase(MuxScheme):
         assert "m_v" not in instructions
 
     @override
-    def install_path_adj(
-        self,
-        instructions: PathInstructions,
-        fib_entry: FibEntry,
-        direction: PathDirection,
-        qchannel: QuantumChannel,
-    ) -> None:
-        _ = instructions, direction
-        self.qchannel_paths_map[qchannel.name].append(fib_entry.path_id)
+    def install_path_adj(self, inst: PathInstructions, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+        _ = inst, dir
+        self.qchannel_paths_map[ch.name].append(fib_entry.path_id)
 
     @override
-    def uninstall_path_adj(
-        self,
-        fib_entry: FibEntry,
-        direction: PathDirection,
-        qchannel: QuantumChannel,
-    ) -> None:
-        _ = direction
-        paths = self.qchannel_paths_map[qchannel.name]
+    def uninstall_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+        _ = dir
+        paths = self.qchannel_paths_map[ch.name]
         paths.remove(fib_entry.path_id)
         if len(paths) == 0:
-            del self.qchannel_paths_map[qchannel.name]
+            del self.qchannel_paths_map[ch.name]
 
     @override
     def qubit_has_path_id(self) -> bool:

@@ -18,13 +18,7 @@ class MuxScheme(ForwarderModule, ABC):
         """Validate install_path instructions are compatible."""
 
     @abstractmethod
-    def install_path_adj(
-        self,
-        instructions: PathInstructions,
-        fib_entry: FibEntry,
-        direction: PathDirection,
-        qchannel: QuantumChannel,
-    ) -> None:
+    def install_path_adj(self, inst: PathInstructions, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
         """
         Store information about adjacent quantum channel and allocate resources.
 
@@ -36,12 +30,7 @@ class MuxScheme(ForwarderModule, ABC):
         """
 
     @abstractmethod
-    def uninstall_path_adj(
-        self,
-        fib_entry: FibEntry,
-        direction: PathDirection,
-        qchannel: QuantumChannel,
-    ) -> None:
+    def uninstall_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
         """
         Erase information about adjacent quantum channel and deallocate resources.
 

@@ -28,7 +28,8 @@ from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import (
     LinkArchNotifyDstEvent,
     LinkArchNotifySrcEvent,
-    ManageActiveChannel,
+    PathActivateEvent,
+    PathDeactivateEvent,
     QubitEntangledEvent,
     QubitReleasedEvent,
 )
@@ -260,23 +261,15 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         self.memory.clear()
 
     @event_handler
-    def handle_manage_active_channels(self, event: ManageActiveChannel) -> None:
+    def path_activate(self, event: PathActivateEvent) -> None:
+        """
+        Handle path activation command.
+        """
         event.cancel()
-        if event.start:
-            self._activate_channel(event.qchannel, event.is_primary, event.path_id)
-        else:
-            self._deactivate_channel(event.qchannel, event.path_id)
-
-    def _activate_channel(self, ch: QuantumChannel, is_primary: bool, path_id: int | None) -> None:
-        """
-        Handle channel activation command from ``ManageActiveChannel`` event.
-
-        Args:
-            ch: Quantum channel.
-            is_primary: Role of this node on this channel.
-            path_id: Act only on qubits allocated to a path.
-        """
+        ch = event.qchannel
         partner = ch.find_peer(self.node)
+        path_id = event.path_id
+        is_primary = event.is_primary
 
         ac = self.channels.get(partner.name)
         if ac:
@@ -285,7 +278,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             ac = _ActiveChannel(ch, partner, is_primary)
             self.channels[partner.name] = ac
 
-            self._activate_channel_new(ac)
+            self._path_activate_new(ac)
 
         ap = ac.paths.get(path_id)
         if not ap:
@@ -300,7 +293,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         if is_primary and self.node.timing.is_async():
             self.run_channel(ac, ap)
 
-    def _activate_channel_new(self, ac: _ActiveChannel) -> None:
+    def _path_activate_new(self, ac: _ActiveChannel) -> None:
         ch = ac.qchannel
         if not ac.is_primary:
             self.log_debug("activating qchannel %s as secondary with partner %s", ch.name, ac.partner.name)
@@ -334,15 +327,20 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             t_notify_b,
         )
 
-    def _deactivate_channel(self, ch: QuantumChannel, path_id: int | None) -> None:
+    @event_handler
+    def path_deactivate(self, event: PathDeactivateEvent) -> None:
         """
-        Handle channel deactivation command from ``ManageActiveChannel`` event.
+        Handle path deactivation command.
 
         Args:
             ch: Quantum channel.
             path_id: Act only on qubits allocated to a path.
         """
+        event.cancel()
+        ch = event.qchannel
         partner = ch.find_peer(self.node)
+        path_id = event.path_id
+
         ac = self.channels[partner.name]
         assert ac.qchannel is ch
 
@@ -366,7 +364,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
 
         del self.channels[partner.name]
         self.log_debug(
-            "deactivating qchannel %s as %s with partner %s", ch.name, ManageActiveChannel.ROLE_STR[ac.is_primary], partner.name
+            "deactivating qchannel %s as %s with partner %s", ch.name, PathActivateEvent.ROLE_STR[ac.is_primary], partner.name
         )
 
     def run_channel(self, ac: _ActiveChannel, ap: _ActivePath | None = None) -> None:

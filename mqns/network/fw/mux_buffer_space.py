@@ -99,16 +99,10 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
         assert "m_v" in instructions
 
     @override
-    def install_path_adj(
-        self,
-        instructions: PathInstructions,
-        fib_entry: FibEntry,
-        direction: PathDirection,
-        qchannel: QuantumChannel,
-    ) -> None:
-        assert "m_v" in instructions
-        mv = instructions["m_v"]
-        mv_offset, ch_side = (-1, 1) if direction == PathDirection.L else (0, 0)
+    def install_path_adj(self, inst: PathInstructions, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+        assert "m_v" in inst
+        mv = inst["m_v"]
+        mv_offset, ch_side = (-1, 1) if dir == PathDirection.L else (0, 0)
         mv_index = fib_entry.own_idx + mv_offset
         mv_element = mv[mv_index]
 
@@ -117,24 +111,24 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
             qubit, _ = next(self.memory.find(lambda q, _: q.key == mv_element), (None, None))
             if qubit is None:
                 raise ValueError(f"m_v[{mv_index}] refers to non-existent qubit {mv_element}")
-            qubit.path_id, qubit.path_direction = fib_entry.path_id, direction
+            qubit.path_id, qubit.path_direction = fib_entry.path_id, dir
             addrs = [qubit.addr]
         else:
             # allocate memory qubit(s) assigned to the channel (typically used in proactive forwarding)
             n_qubits = mv_element[ch_side]
             addrs = self.memory.allocate(
-                qchannel,
+                ch,
                 fib_entry.path_id,
-                direction,
+                dir,
                 n="all" if n_qubits == 0 else n_qubits,
             )
-        self.fw.log_debug("allocating %s qubits: %s", direction, addrs)
+        self.fw.log_debug("allocating %s qubits: %s", dir, addrs)
 
     @override
-    def uninstall_path_adj(self, fib_entry: FibEntry, direction: PathDirection, qchannel: QuantumChannel) -> None:
-        qubits = self.memory.find(lambda q, _: q.path_id == fib_entry.path_id, qchannel=qchannel)
+    def uninstall_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+        qubits = self.memory.find(lambda q, _: q.path_id == fib_entry.path_id, qchannel=ch)
         addrs = [q[0].addr for q in qubits]
-        self.fw.log_debug("deallocating %s qubits: %s", direction, addrs)
+        self.fw.log_debug("deallocating %s qubits: %s", dir, addrs)
         # If some qubits are currently ACTIVE or RESERVED IN LinkLayer, deallocation would occur
         # when they next reach RAW state.
         self.memory.deallocate(*addrs)

@@ -17,46 +17,39 @@
 
 from typing import Unpack, override
 
+from mqns.entity.memory import PathDirection
 from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw import Forwarder, ForwarderInitKwargs, ForwarderNorthbound
-from mqns.network.protocol.event import ManageActiveChannel
+from mqns.network.fw import FibEntry, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
+from mqns.network.protocol.event import PathActivateEvent, PathDeactivateEvent
 
 
 class ProactiveForwarderNorthbound(ForwarderNorthbound):
     @override
-    def handle_path_change(
-        self,
-        *,
-        path_id: int,
-        uninstall: bool,
-        ch_l: QuantumChannel | None,
-        ch_r: QuantumChannel | None,
-        **_,
-    ):
-        """
-        Process LinkLayer changes after a path has been installed or uninstalled.
-
-        If a path has been installed and it has a right neighbor:
-
-        1. Notify LinkLayer to start elementary EPR generation toward the right neighbor.
-
-        If a path has been uninstalled and it has a right neighbor:
-
-        1. Notify LinkLayer to stop elementary EPR generation toward the right neighbor.
-        """
-        for i, ch in enumerate((ch_l, ch_r)):
-            if ch is None:
-                continue
-            self.simulator.add_event(
-                ManageActiveChannel(
-                    self.node,
-                    ch,
-                    path_id=path_id if self.mux.qubit_has_path_id() else None,
-                    start=not uninstall,
-                    is_primary=i == 1,
-                    t=self.simulator.tc,
-                )
+    def install_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+        self.simulator.add_event(
+            PathActivateEvent(
+                self.node,
+                ch,
+                self._ll_path_id(fib_entry),
+                t=self.simulator.tc,
+                is_primary=dir is PathDirection.R,
             )
+        )
+
+    @override
+    def uninstall_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+        _ = dir
+        self.simulator.add_event(
+            PathDeactivateEvent(
+                self.node,
+                ch,
+                self._ll_path_id(fib_entry),
+                t=self.simulator.tc,
+            )
+        )
+
+    def _ll_path_id(self, fib_entry: FibEntry) -> int | None:
+        return fib_entry.path_id if self.mux.qubit_has_path_id() else None
 
 
 class ProactiveForwarder(Forwarder):

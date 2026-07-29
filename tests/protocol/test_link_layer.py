@@ -1,14 +1,14 @@
-from collections import deque
+from collections import defaultdict, deque
 from typing import override
 
 import pytest
 
-from mqns.entity.memory import MemoryDecohereEvent, MemoryQubit, QuantumMemory, QubitState
+from mqns.entity.memory import MemoryDecohereEvent, MemoryQubit, PathDirection, QuantumMemory, QubitState
 from mqns.entity.node import Application, QNode
 from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk, LinkArchSr
 from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
 from mqns.network.network import QuantumNetwork, TimingModeSync
-from mqns.network.protocol.event import ManageActiveChannel, QubitEntangledEvent, QubitReleasedEvent
+from mqns.network.protocol.event import PathActivateEvent, PathDeactivateEvent, QubitEntangledEvent, QubitReleasedEvent
 from mqns.network.protocol.link_layer import LinkLayer, LinkLayerCounters
 from mqns.network.topology import ClassicTopology, CustomTopology, LinearTopology
 from mqns.simulator import Simulator, event_handler, func_to_event
@@ -22,6 +22,8 @@ class NetworkLayer(Application[QNode]):
         """If non-empty, ``QubitReleasedEvent`` would be emitted after specified duration for the next entanglement."""
         self.entangle: list[tuple[float, float]] = []
         """Entanglement events, each entry contains entanglement time and EPR creation time."""
+        self.path_entangle = defaultdict[int | None, list[float]](lambda: [])
+        """Entanglement times per path_id."""
         self.decohere: list[float] = []
         """Decoherence events, each entry is event time."""
 
@@ -37,6 +39,7 @@ class NetworkLayer(Application[QNode]):
         assert mq is event.qubit
         t_create = epr.decohere_time - self.memory.t_cohere
         self.entangle.append((event.t.sec, t_create.sec))
+        self.path_entangle[mq.path_id].append(event.t.sec)
 
         try:
             release_after = self.release_after.popleft()
@@ -57,12 +60,22 @@ class NetworkLayer(Application[QNode]):
         self.simulator.add_event(QubitReleasedEvent(self.node, event.qubit, is_decoh=True, t=event.t))
 
 
-def manage_active_channel(t: float, src: NetworkLayer, dst: NetworkLayer, *, start=True):
+def activate_path(t0: float | None, t1: float | None, src: Application[QNode], dst: Application[QNode], path_id: int | None):
+    """
+    Schedule ``PathActivateEvent`` and ``PathDeactivateEvent``.
+    """
     simulator = src.simulator
     ch = src.node.get_qchannel(dst.node)
-    time = simulator.time(sec=t)
-    simulator.add_event(ManageActiveChannel(src.node, ch, path_id=None, start=start, is_primary=True, t=time))
-    simulator.add_event(ManageActiveChannel(dst.node, ch, path_id=None, start=start, is_primary=False, t=time))
+
+    if t0 is not None:
+        t = simulator.time(sec=t0)
+        simulator.add_event(PathActivateEvent(src.node, ch, path_id, t=t, is_primary=True))
+        simulator.add_event(PathActivateEvent(dst.node, ch, path_id, t=t, is_primary=False))
+
+    if t1 is not None:
+        t = simulator.time(sec=t1)
+        simulator.add_event(PathDeactivateEvent(src.node, ch, path_id, t=t))
+        simulator.add_event(PathDeactivateEvent(dst.node, ch, path_id, t=t))
 
 
 @pytest.mark.parametrize("epr_type", [WernerStateEntanglement, MixedStateEntanglement])
@@ -82,8 +95,7 @@ def test_basic(epr_type: type[Entanglement]):
 
     ll1, ll2 = (node.get_app(LinkLayer) for node in net.nodes)
     nl1, nl2 = (node.get_app(NetworkLayer) for node in net.nodes)
-    manage_active_channel(0.5, nl1, nl2)
-    manage_active_channel(8.8, nl1, nl2, start=False)
+    activate_path(0.5, 8.8, nl1, nl2, None)
     nl1.release_after.append(2.9)
     nl2.release_after.append(3.2)
 
@@ -133,6 +145,47 @@ def test_basic(epr_type: type[Entanglement]):
     QuantumMemory.check_leaks(net.nodes)
 
 
+def test_multiple_paths():
+    """
+    Test multiple active paths.
+    """
+    topo = LinearTopology(
+        nodes_number=2,
+        nodes_apps=[NetworkLayer(), LinkLayer()],
+        qchannel_args={"delay": 0.005},
+        cchannel_args={"delay": 0.005},
+        memory_args={"capacity": 1 + 2 + 3 + 4, "t_cohere": 0.1},
+    )
+    net = QuantumNetwork(topo, classic_topo=ClassicTopology.Follow)
+    net.build_route()
+    ch = net.get_qchannel("n1", "n2")
+    ch.assign_memory_qubits(capacity=1 + 2 + 3 + 4)
+
+    simulator = Simulator(0.0, 10.0, install_to=(log, net))
+
+    ll1, ll2 = (node.get_app(LinkLayer) for node in net.nodes)
+    nl1, nl2 = (node.get_app(NetworkLayer) for node in net.nodes)
+
+    def alloc_activate_path(src: NetworkLayer, dst: NetworkLayer, path_id: int, n: int) -> None:
+        src.memory.allocate(ch, path_id, PathDirection.R, n=path_id)
+        dst.memory.allocate(ch, path_id, PathDirection.L, n=path_id)
+        activate_path(0.1, 9.9, src, dst, path_id)
+
+    alloc_activate_path(nl1, nl2, 1, 1)
+    alloc_activate_path(nl1, nl2, 2, 2)
+    alloc_activate_path(nl1, nl2, 3, 3)
+    alloc_activate_path(nl1, nl2, 4, 4)
+
+    simulator.run()
+
+    for ll, nl in (ll1, nl1), (ll2, nl2):
+        path_entangle_cnts = [len(nl.path_entangle[path_id]) for path_id in range(1, 5)]
+        print(ll.node.name, ll.cnt, f"path_entangle_cnts={path_entangle_cnts}")
+        assert all(c > 0 for c in path_entangle_cnts)
+
+    assert ll2.cnt.n_attempts == 0
+
+
 @pytest.mark.parametrize(
     ("uninstall_t", "qubits_state", "n_entangle"),
     [
@@ -171,8 +224,7 @@ def test_uninstall(uninstall_t: float, qubits_state: tuple[QubitState, QubitStat
     simulator = Simulator(0.0, 6.5, install_to=(log, net))
 
     nl1, nl2 = (node.get_app(NetworkLayer) for node in net.nodes)
-    manage_active_channel(0.1, nl1, nl2)
-    manage_active_channel(uninstall_t, nl1, nl2, start=False)
+    activate_path(0.1, uninstall_t, nl1, nl2, None)
 
     def assert_states(expected: tuple[QubitState, QubitState]) -> None:
         mq1 = nl1.memory.read(0, must=True)
@@ -254,7 +306,7 @@ def test_skip_ahead():
 
     ll1, ll2 = (node.get_app(LinkLayer) for node in net.nodes)
     nl1, nl2 = (node.get_app(NetworkLayer) for node in net.nodes)
-    manage_active_channel(0.5, nl1, nl2)
+    activate_path(0.5, None, nl1, nl2, None)
 
     simulator.run()
 
@@ -293,11 +345,9 @@ def test_timing_mode_sync():
     simulator = Simulator(0.0, 6.1, install_to=(log, net))
 
     nl0, nl1, nl2, nl3 = (node.get_app(NetworkLayer) for node in net.nodes)
-    manage_active_channel(0.1, nl0, nl1)
-    manage_active_channel(0.1, nl2, nl3)  # insertion_count=1, start entanglements
-    manage_active_channel(1.1, nl2, nl3)  # insertion_count=2, no change
-    manage_active_channel(4.1, nl2, nl3, start=False)  # insertion_count=1, no change
-    manage_active_channel(5.9, nl2, nl3, start=False)  # insertion_count=0, stop entanglements
+    activate_path(0.1, None, nl0, nl1, None)
+    activate_path(0.1, 5.9, nl2, nl3, None)  # insertion_count=1
+    activate_path(1.1, 4.1, nl2, nl3, None)  # insertion_count=2
 
     simulator.run()
 

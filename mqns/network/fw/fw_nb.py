@@ -26,13 +26,13 @@ class ForwarderNorthbound(ForwarderModule):
         self._fib_erase_delay = self.simulator.time(time_slot=4 * self.memory.t_cohere.time_slot)
 
     @fw_control_cmd_handler("INSTALL_PATH")
-    def handle_install_path(self, msg: InstallPathMsg):
+    def handle_install_path(self, msg: InstallPathMsg) -> None:
         """Process an INSTALL_PATH control command."""
         path_id = msg["path_id"]
         instructions = msg["instructions"]
         self.mux.validate_path_instructions(instructions)
 
-        # populate FIB
+        # Insert FIB entry.
         route = instructions["route"]
         if "swap_cutoff" in instructions:
             swap_cutoff = [None if t < 0 else self.simulator.time(time_slot=t) for t in instructions["swap_cutoff"]]
@@ -49,47 +49,43 @@ class ForwarderNorthbound(ForwarderModule):
         )
         self.fib.insert_or_replace(fib_entry)
 
-        # identify left/right neighbors
-        # associate path with qchannel and allocate qubits
-        if ch_l := self._find_adj(fib_entry, -1):
-            self.mux.install_path_adj(instructions, fib_entry, PathDirection.L, ch_l)
-        if ch_r := self._find_adj(fib_entry, +1):
-            self.mux.install_path_adj(instructions, fib_entry, PathDirection.R, ch_r)
+        # Identify left/right channels, allocate qubits and process LinkLayer changes.
+        if ch := self._find_adj(fib_entry, -1):
+            self.mux.install_path_adj(instructions, fib_entry, PathDirection.L, ch)
+            self.install_path_adj(fib_entry, PathDirection.L, ch)
+        if ch := self._find_adj(fib_entry, +1):
+            self.mux.install_path_adj(instructions, fib_entry, PathDirection.R, ch)
+            self.install_path_adj(fib_entry, PathDirection.R, ch)
 
-        # call subclass specialization
-        self.handle_path_change(
-            path_id=path_id,
-            uninstall=False,
-            fib_entry=fib_entry,
-            ch_l=ch_l,
-            ch_r=ch_r,
-        )
+    @abstractmethod
+    def install_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+        """
+        Process LinkLayer changes for an adjacency after a path has been installed.
+        """
 
     @fw_control_cmd_handler("UNINSTALL_PATH")
-    def handle_uninstall_path(self, msg: UninstallPathMsg):
+    def handle_uninstall_path(self, msg: UninstallPathMsg) -> None:
         """Process an UNINSTALL_PATH control command."""
         path_id = msg["path_id"]
 
-        # retrieve and erase FIB entry
+        # Retrieve and erase FIB entry.
         fib_entry = self.fib.get(path_id)
         fib_entry.active_until = self.simulator.tc
         self.simulator.add_event(func_to_event(fib_entry.active_until + self._fib_erase_delay, self.fib.erase, path_id))
 
-        # identify left/right neighbors
-        # disassociate path with qchannel and deallocate qubits
-        if ch_l := self._find_adj(fib_entry, -1):
-            self.mux.uninstall_path_adj(fib_entry, PathDirection.L, ch_l)
-        if ch_r := self._find_adj(fib_entry, +1):
-            self.mux.uninstall_path_adj(fib_entry, PathDirection.R, ch_r)
+        # Identify left/right channels, deallocate qubits and process LinkLayer changes.
+        if ch := self._find_adj(fib_entry, -1):
+            self.mux.uninstall_path_adj(fib_entry, PathDirection.L, ch)
+            self.uninstall_path_adj(fib_entry, PathDirection.L, ch)
+        if ch := self._find_adj(fib_entry, +1):
+            self.mux.uninstall_path_adj(fib_entry, PathDirection.R, ch)
+            self.uninstall_path_adj(fib_entry, PathDirection.R, ch)
 
-        # call subclass specialization
-        self.handle_path_change(
-            path_id=path_id,
-            uninstall=True,
-            fib_entry=fib_entry,
-            ch_l=ch_l,
-            ch_r=ch_r,
-        )
+    @abstractmethod
+    def uninstall_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+        """
+        Process LinkLayer changes for an adjacency after a path has been installed.
+        """
 
     def _find_adj(self, fib_entry: FibEntry, route_offset: int) -> QuantumChannel | None:
         neigh_idx = fib_entry.own_idx + route_offset
@@ -97,24 +93,3 @@ class ForwarderNorthbound(ForwarderModule):
             return None
         neigh = self.network.get_node(fib_entry.route[neigh_idx])
         return self.node.get_qchannel(neigh)
-
-    @abstractmethod
-    def handle_path_change(
-        self,
-        *,
-        path_id: int,
-        uninstall: bool,
-        fib_entry: FibEntry,
-        ch_l: QuantumChannel | None,
-        ch_r: QuantumChannel | None,
-    ):
-        """
-        Process LinkLayer changes after a path has been installed or uninstalled.
-
-        Args:
-            path_id: Path identifier.
-            uninstall: Whether this is an uninstall command.
-            fib_entry: FIB entry.
-            ch_l: Quantum channel toward left, if exists.
-            ch_r: Quantum channel toward right, if exists.
-        """

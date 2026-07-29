@@ -15,40 +15,62 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import ClassVar, cast, final, override
+from typing import ClassVar, final, override
 
 from mqns.entity.memory import MemoryQubit, QubitState
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
 from mqns.simulator import Event, Time
+from mqns.utils import unwrap_cast
 
 
 @final
-class ManageActiveChannel(Event):
+class PathActivateEvent(Event):
     """
-    Event to instruct LinkLayer to start/stop generating EPRs over a quantum channel for a path_id.
+    Instruct LinkLayer to start entanglement generation on a channel for a path.
     """
 
-    ACTION_STR: ClassVar = {True: "start", False: "stop"}
     ROLE_STR: ClassVar = {True: "primary", False: "secondary"}
 
     def __init__(
         self,
         node: QNode,
         qchannel: QuantumChannel,
-        *,
         path_id: int | None,
-        start: bool,
-        is_primary: bool,
+        *,
         t: Time,
+        is_primary: bool,
     ):
-        super().__init__(t, f"{node.name}, {self.ACTION_STR[start]} {qchannel.name}, {self.ROLE_STR[is_primary]}")
+        super().__init__(t, f"ch={qchannel.name}, node={node.name}, role={self.ROLE_STR[is_primary]}")
         self.node = node
         self.qchannel = qchannel
         self.path_id = path_id
-        self.start = start
         self.is_primary = is_primary
+
+    @override
+    def invoke(self) -> None:
+        self.node.handle(self)
+
+
+@final
+class PathDeactivateEvent(Event):
+    """
+    Instruct LinkLayer to stop entanglement generation on a channel for a path.
+    """
+
+    def __init__(
+        self,
+        node: QNode,
+        qchannel: QuantumChannel,
+        path_id: int | None,
+        *,
+        t: Time,
+    ):
+        super().__init__(t, f"ch={qchannel.name}, node={node.name}")
+        self.node = node
+        self.qchannel = qchannel
+        self.path_id = path_id
 
     @override
     def invoke(self) -> None:
@@ -62,14 +84,14 @@ class LinkArchNotifySrcEvent(Event):
     """
 
     def __init__(self, key: str, epr: Entanglement, *, t: Time, attempts: int):
-        super().__init__(t, f"{cast(QNode, epr.src).name}, key={key}, epr={epr.name}")
+        super().__init__(t, f"{unwrap_cast(epr.src).name}, key={key}, epr={epr.name}")
         self.key = key
         self.epr = epr
         self.attempts = attempts
 
     @override
     def invoke(self) -> None:
-        cast(QNode, self.epr.src).handle(self)
+        unwrap_cast(self.epr.src).handle(self)
 
 
 @final
@@ -79,13 +101,13 @@ class LinkArchNotifyDstEvent(Event):
     """
 
     def __init__(self, key: str, epr: Entanglement, *, t: Time):
-        super().__init__(t, f"{cast(QNode, epr.dst).name}, key={key}, epr={epr.name}")
+        super().__init__(t, f"{unwrap_cast(epr.dst).name}, key={key}, epr={epr.name}")
         self.key = key
         self.epr = epr
 
     @override
     def invoke(self) -> None:
-        cast(QNode, self.epr.dst).handle(self)
+        unwrap_cast(self.epr.dst).handle(self)
 
 
 @final
