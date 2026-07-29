@@ -25,7 +25,7 @@ class SyncCheckApp(Application[Node]):
         self.exits = 0
 
     @event_handler
-    def handle_sync_signal(self, event: TimingPhaseEvent):
+    def handle_sync_signal(self, event: TimingPhaseEvent) -> None:
         t = self.simulator.tc.sec
         if event.enter:
             assert (t % 5 == 0 and event.phase is TimingPhase.EXTERNAL) or (t % 5 == 4 and event.phase is TimingPhase.INTERNAL)
@@ -91,7 +91,7 @@ class RequestCheckApp(Application[Controller]):
         self.exits = 0
 
     @event_handler
-    def handle_request_active(self, event: RequestActiveEvent):
+    def handle_request_active(self, event: RequestActiveEvent) -> None:
         req = event.req
         assert (req.src, req.dst) == ("A", "C")
         assert req.is_active(event.t) is event.enter

@@ -255,10 +255,11 @@ class ClassicBridge(Application[Node]):
         self.conn.bridges[self.node.name] = self
 
     @event_handler
-    def handle_packet(self, event: RecvClassicPacket) -> bool:
+    def handle_packet(self, event: RecvClassicPacket) -> None:
         pkt = event.packet
         if pkt.dest is not self.node:
-            return False
+            return
+        event.cancel()
 
         cbp = ClassicBridgePacket(
             t=event.t.time_slot,
@@ -272,8 +273,6 @@ class ClassicBridge(Application[Node]):
             self.conn.queue.put_nowait(cbp)
         except queue.Full:
             self.log_error("drop packet from %s | %s", cbp.src, pkt.msg)
-
-        return True
 
     def inject(self, cbp: ClassicBridgePacket) -> None:
         dst = self.node.network.get_node(cbp.dst)

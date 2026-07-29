@@ -34,7 +34,7 @@ class RecvApp(Application[QNode]):
         self.count = 0
 
     @event_handler
-    def RecvQubitHandler(self, _: RecvQubitPacket) -> bool | None:
+    def RecvQubitHandler(self, _: RecvQubitPacket) -> None:
         self.count += 1
 
 

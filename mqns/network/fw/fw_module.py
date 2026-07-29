@@ -27,7 +27,6 @@ def fw_control_cmd_handler(cmd: str):
         def wrapper(self: "Forwarder|ForwarderModule", pkt: ClassicPacket, msg: dict):
             self.log_debug("received control message from %s | %s", pkt.src.name, msg)
             f(self, msg)
-            return True
 
         return classic_cmd_handler(cmd)(wrapper)
 
@@ -49,15 +48,14 @@ def fw_signaling_cmd_handler(cmd: str):
                 fib_entry = self.fib.get(path_id)
             except LookupError:
                 self.log_debug("dropping signaling message from %s, reason=no-fib-entry | %s", pkt.src.name, msg)
-                return True
+                return
 
             if pkt.dest != self.node:
                 self.send_msg(pkt.dest, msg, fib_entry, forward_from=pkt.src)
-                return True
+                return
 
             self.log_debug("received signaling message from %s | %s", pkt.src.name, msg)
             f(self, msg, fib_entry)
-            return True
 
         return classic_cmd_handler(cmd)(wrapper)
 

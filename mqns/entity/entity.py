@@ -57,11 +57,9 @@ class Entity(LogSelfMixin, ABC):
         """Global simulator instance."""
 
     @abstractmethod
-    def handle(self, event: Event, /) -> bool | None:
+    def handle(self, event: Event, /) -> None:
         """
         Process an event.
-
-        The return value is ignored.
         """
 
     def __repr__(self) -> str:

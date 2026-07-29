@@ -115,3 +115,7 @@ class RecvClassicPacket(Event):
     @override
     def invoke(self) -> None:
         self.dest.handle(self)
+
+    @override
+    def __repr__(self) -> str:
+        return f"RecvClassicPacket dest={self.dest.name} | {self.packet.get()}"

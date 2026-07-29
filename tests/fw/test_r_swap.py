@@ -32,7 +32,7 @@ class ManualController(ClassicCommandDispatcherMixin, RoutingController):
         self.ls_entries: list[LinkStateEntry] = []
 
     @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent):
+    def handle_sync_phase(self, event: TimingPhaseEvent) -> None:
         match event.action:
             case TimingPhase.ROUTING, False:
                 self.ls_pkts.clear()

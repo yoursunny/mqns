@@ -230,7 +230,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         """Quantum memory of the node."""
 
     @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent):
+    def handle_sync_phase(self, event: TimingPhaseEvent) -> None:
         """
         Handle timing phase signals, only used in SYNC timing mode.
 
@@ -262,6 +262,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
 
     @event_handler
     def handle_manage_active_channels(self, event: ManageActiveChannel) -> None:
+        event.cancel()
         if event.start:
             self._activate_channel(event.qchannel, event.is_primary, event.path_id)
         else:
@@ -567,13 +568,15 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         return rng.geometric(qchannel.link_arch.success_prob)
 
     @event_handler
-    def _la_notify_src(self, event: LinkArchNotifySrcEvent):
+    def _la_notify_src(self, event: LinkArchNotifySrcEvent) -> None:
+        event.cancel()
         self.cnt.increment_n_etg(event.attempts)
         epr = event.epr
         self._la_notify(event.key, epr, "primary", "dst", unwrap_cast(epr.dst))
 
     @event_handler
-    def _la_notify_dst(self, event: LinkArchNotifyDstEvent):
+    def _la_notify_dst(self, event: LinkArchNotifyDstEvent) -> None:
+        event.cancel()
         epr = event.epr
         self._la_notify(event.key, epr, "secondary", "src", unwrap_cast(epr.src))
 

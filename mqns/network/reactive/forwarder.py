@@ -101,7 +101,7 @@ class ReactiveForwarder(Forwarder):
 
     @override
     @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent):
+    def handle_sync_phase(self, event: TimingPhaseEvent) -> None:
         """
         Handle timing phase signals, only used in SYNC timing mode.
 

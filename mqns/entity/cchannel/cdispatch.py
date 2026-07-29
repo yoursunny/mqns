@@ -56,13 +56,12 @@ class ClassicCommandDispatcherMixin(ClassicCommandModule):
     __slots__ = ()
 
     @event_handler
-    def handle_classic_command(self, event: RecvClassicPacket) -> bool:
+    def handle_classic_command(self, event: RecvClassicPacket) -> None:
         pkt = event.packet
         msg = pkt.get()
 
         if isinstance(msg, dict) and (cmd := msg.get("cmd")):
             handler = self._classic_cmd_handlers.get(cmd)
             if handler:
-                return handler[0](self, pkt, msg)
-
-        return False
+                event.cancel()
+                handler[0](self, pkt, msg)

@@ -28,40 +28,57 @@ class EventC(OwnedEvent):
     pass
 
 
+@final
+class EventD(OwnedEvent):
+    pass
+
+
 class OwnerBase(EventDispatcherMixin):
     def __init__(self):
-        self.invoked = set[str]()
+        self.invoked: list[str] = []
 
     @event_handler
-    def handle_a(self, event: "EventA"):
+    def handle_a(self, event: "EventA") -> None:
         _ = event
-        self.invoked.add("B.a")
+        self.invoked.append("B.a")
 
     @event_handler
-    def handle_b(self, event: EventB):
+    def handle_b(self, event: EventB) -> None:
         _ = event
-        self.invoked.add("B.b")
+        self.invoked.append("B.b")
+
+    @event_handler
+    def handle_c(self, event: EventC) -> None:
+        _ = event
+        self.invoked.append("B.c")
 
 
 class OwnerSub(OwnerBase):
     @override
     @event_handler
-    def handle_b(self, event: EventB):
+    def handle_b(self, event: EventB) -> None:
         _ = event
-        self.invoked.add("S.b")
+        self.invoked.append("S.b")
+
+    @override
+    @event_handler
+    def handle_c(self, event: EventC) -> None:
+        event.cancel()
+        self.invoked.append("S.c")
 
     @event_handler
-    def handle_c(self, event: EventC):
+    def handle_d(self, event: EventD) -> None:
         _ = event
-        self.invoked.add("S.c")
+        self.invoked.append("S.d")
 
 
 def test_dispatcher():
-    s = Simulator(0, 1, accuracy=1000)
+    simulator = Simulator(0, 1, accuracy=1000)
     owner = OwnerSub()
-    s.add_event(EventA(s.ts, owner))
-    s.add_event(EventB(s.ts, owner))
-    s.add_event(EventC(s.ts, owner))
+    simulator.add_event(EventA(simulator.time(time_slot=1), owner))
+    simulator.add_event(EventB(simulator.time(time_slot=2), owner))
+    simulator.add_event(EventC(simulator.time(time_slot=3), owner))
+    simulator.add_event(EventD(simulator.time(time_slot=4), owner))
 
-    s.run()
-    assert owner.invoked == {"B.a", "S.b", "S.c"}
+    simulator.run()
+    assert owner.invoked == ["B.a", "S.b", "B.b", "S.c", "S.d"]

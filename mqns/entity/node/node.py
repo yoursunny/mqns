@@ -79,16 +79,16 @@ class Node(Entity):
     @override
     def handle(self, event: Event) -> None:
         """
-        Dispatch an ``Event`` that happens on this Node.
-        This event is passed to every application in apps list in order.
+        Dispatch an event to applications.
 
-        Args:
-            event: the event that happens on this Node.
+        Multiple applications may have handlers for the same event.
+        They are called in the order as they appear in ``self.apps`` list.
+        If an application cancel the event, subsequent applications will not be called.
         """
         for app in self.apps:
-            skip = app.handle(event)
-            if skip:
-                break
+            if event.is_canceled:
+                return
+            app.handle(event)
 
     def add_apps(self, app: Application | Iterable[Application]):
         """

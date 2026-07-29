@@ -45,13 +45,13 @@ class NodeProcessDelayApp(Application[Node]):
         return isinstance(event, self.delay_event_list)
 
     @override
-    def handle(self, event: Event) -> bool:
+    def handle(self, event: Event) -> None:
         if not self.check_in_delay_event_list(event):
-            return False
+            return
 
         if event in self.wait_rehandle_event_list:
             self.wait_rehandle_event_list.remove(event)
-            return False
+            return
 
         # first handle the event
         # add to list
@@ -61,4 +61,3 @@ class NodeProcessDelayApp(Application[Node]):
         # reset event's occur time
         event.t = t
         self.simulator.add_event(event)
-        return True

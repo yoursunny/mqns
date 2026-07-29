@@ -5,7 +5,7 @@ from typing import Any, ClassVar, get_type_hints
 from mqns.simulator.event import Event
 from mqns.utils import DecoratorDispatchBuilder
 
-type _HandlerFunc[E: Event] = Callable[[Any, E], bool | None]
+type _HandlerFunc[E: Event] = Callable[[Any, E], None]
 
 _builder = DecoratorDispatchBuilder[type[Event], _HandlerFunc](
     classvar_name="_event_handlers",
@@ -33,14 +33,15 @@ def event_handler[E: Event](f: _HandlerFunc[E]) -> _HandlerFunc[E]:
     Method decorator to register an event handler.
 
     Args:
-        f: Handler function, ``def handle_event_a(self, event: EventA) -> bool|None``.
+        f: Handler function, ``def handle_event_a(self, event: EventA) -> Any``.
 
     This decorator must be used with ``EventDispatcherMixin``.
-    See ``EventDispatcherMixin.handle`` for the semantics of ``f``'s return value.
 
     The handler registry is per class.
-    Only one handler is allowed per event type, which could be registered from anywhere in the class hierarchy.
-    If a subclass overrides a method, the overriding method must also have this decorator.
+    Each class may have multiple handlers for the same event.
+    Handlers in the subclass are called before those in the base class.
+    The invocation order among handlers in the same class is not guaranteed.
+    If a handler cancels the event, subsequent handlers will not be called.
     """
     return _builder.make_decorator(_extract_event_type(f))(f)
 
@@ -57,20 +58,14 @@ class EventDispatcherMixin:
         super().__init_subclass__()
         cls._event_handlers = _builder.gather(cls)
 
-    def handle(self, event: Event, /) -> bool | None:
+    def handle(self, event: Event, /) -> None:
         """
         Dispatch an event.
-
-        Args:
-            event: Event instance.
-
-        Returns:
-
-        * If True, the event is fully handled and not passed to the next event target.
-        * Otherwise, the event is passed to the next event target.
         """
-        handler = self._event_handlers.get(type(event))
-        if handler:
-            return handler[0](self, event)
-
-        return False
+        handlers = self._event_handlers.get(type(event))
+        if not handlers:
+            return
+        for func in handlers:
+            if event.is_canceled:
+                return
+            func(self, event)

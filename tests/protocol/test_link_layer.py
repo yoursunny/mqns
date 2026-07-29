@@ -32,7 +32,7 @@ class NetworkLayer(Application[QNode]):
         self.epr_type = self.node.network.epr_type
 
     @event_handler
-    def handle_entangle(self, event: QubitEntangledEvent):
+    def handle_entangle(self, event: QubitEntangledEvent) -> None:
         mq, epr = self.memory.read(event.qubit.addr, has=self.epr_type)
         assert mq is event.qubit
         t_create = epr.decohere_time - self.memory.t_cohere
@@ -51,7 +51,7 @@ class NetworkLayer(Application[QNode]):
         self.simulator.add_event(QubitReleasedEvent(self.node, mq, t=self.simulator.tc))
 
     @event_handler
-    def handle_decohere(self, event: MemoryDecohereEvent):
+    def handle_decohere(self, event: MemoryDecohereEvent) -> None:
         self.decohere.append(event.t.sec)
         event.qubit.state = QubitState.RELEASE
         self.simulator.add_event(QubitReleasedEvent(self.node, event.qubit, is_decoh=True, t=event.t))

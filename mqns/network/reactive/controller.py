@@ -80,7 +80,7 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         self.d_rtg = self.simulator.time(time_slot=self.timing.t_rtg.time_slot // 2)
 
     @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent):
+    def handle_sync_phase(self, event: TimingPhaseEvent) -> None:
         match event.action:
             case TimingPhase.ROUTING, True:
                 self._tls.clear()

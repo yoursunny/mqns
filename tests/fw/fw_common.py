@@ -1,10 +1,9 @@
 import copy
-import functools
 import itertools
 import os
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping
-from typing import Literal, TypedDict, Unpack, override
+from typing import Literal, TypedDict, Unpack
 
 import pytest
 
@@ -30,7 +29,7 @@ from mqns.network.protocol.link_layer import LinkLayer
 from mqns.network.reactive import ReactiveForwarder, ReactiveRoutingController
 from mqns.network.route import RouteAlgorithm, YenRouteAlgorithm
 from mqns.network.topology import ClassicTopology, GridTopology, LinearTopology, Topology, TopologyInitKwargs, TreeTopology
-from mqns.simulator import Event, Simulator, Time, func_to_event
+from mqns.simulator import Simulator, Time, event_handler, func_to_event
 from mqns.utils import AutoIncrementIdentifier, log, rng
 
 next_seed: list[int] = []
@@ -65,23 +64,14 @@ class QubitReleaseReset(Application[QNode]):
         self.history: list[tuple[int, Time]] = []
         """Qubit address and release time."""
 
-    @override
-    def handle(self, event: Event) -> bool | None:
-        self._handle(event)
-        return False
-
-    @functools.singledispatchmethod
-    def _handle(self, event: Event):
-        _ = event
-
-    @_handle.register
-    def _(self, event: TimingPhaseEvent):
+    @event_handler
+    def handle_sync_phase(self, event: TimingPhaseEvent):
         match event.action:
             case TimingPhase.INTERNAL, False:
                 self.node.memory.clear()
 
-    @_handle.register
-    def _(self, event: QubitReleasedEvent):
+    @event_handler
+    def handle_qubit_released(self, event: QubitReleasedEvent):
         self.history.append((event.qubit.addr, event.t))
         log.debug(f"{self}: RELEASE {event.qubit}")
         event.qubit.state = QubitState.RAW

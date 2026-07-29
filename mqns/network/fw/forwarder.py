@@ -196,7 +196,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         self.swap.install(self)
 
     @event_handler
-    def handle_sync_phase(self, event: TimingPhaseEvent):
+    def handle_sync_phase(self, event: TimingPhaseEvent) -> None:
         """
         Handle timing phase signals, only used in SYNC timing mode.
 
@@ -218,7 +218,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
                 self.swap.exit_internal_phase()
 
     @event_handler
-    def qubit_is_entangled(self, event: QubitEntangledEvent):
+    def qubit_is_entangled(self, event: QubitEntangledEvent) -> None:
         """
         Handle a qubit entering ENTANGLED state, i.e. having an elementary entanglement.
 
@@ -235,6 +235,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
             event: Event containing the entangled qubit and its associated metadata (e.g., neighbor).
 
         """
+        event.cancel()
         if not self.node.timing.is_internal():  # in SYNC timing mode EXTERNAL phase
             self.waiting_etg.append(event)
             return
@@ -388,7 +389,8 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         return True
 
     @event_handler
-    def qubit_is_decohered(self, event: MemoryDecohereEvent):
+    def qubit_is_decohered(self, event: MemoryDecohereEvent) -> None:
+        event.cancel()
         assert self.node.timing.is_async(), f"unexpected {event} in SYNC timing mode, (t_ext+t_int) too high"
         self.release_qubit(event.qubit, is_decoh=True)
 

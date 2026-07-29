@@ -114,16 +114,18 @@ class BB84SendApp(Application[QNode]):
         #     self._simulator.add_event(event)
 
     @event_handler
-    def handleClassicPacket(self, event: RecvClassicPacket):
+    def handleClassicPacket(self, event: RecvClassicPacket) -> None:
         if event.cchannel is not self.cchannel:
-            return False
-        return (
+            return
+        accepted = (
             self.check_basis(event)
             or self.recv_error_estimate_packet(event)
             or self.recv_cascade_ask_packet(event)
             or self.recv_check_error_ask_packet(event)
             or self.recv_privacy_amplification_ask_packet(event)
         )
+        if accepted:
+            event.cancel()
 
     def check_basis(self, event: RecvClassicPacket):
         packet = event.packet
@@ -405,21 +407,23 @@ class BB84RecvApp(Application[QNode]):
         self.successful_key = []
 
     @event_handler
-    def handleQuantumPacket(self, event: RecvQubitPacket):
+    def handleQuantumPacket(self, event: RecvQubitPacket) -> None:
         if event.qchannel is not self.qchannel:
-            return False
-        return self.recv(event)
+            return
+        self.recv(event)
 
     @event_handler
-    def handleClassicPacket(self, event: RecvClassicPacket):
+    def handleClassicPacket(self, event: RecvClassicPacket) -> None:
         if event.cchannel is not self.cchannel:
-            return False
-        return (
+            return
+        accepted = (
             self.check_basis(event)
             or self.recv_error_estimate_reply_packet(event)
             or self.recv_cascade_reply_packet(event)
             or self.recv_check_error_reply_packet(event)
         )
+        if accepted:
+            event.cancel()
 
     def check_basis(self, event: RecvClassicPacket):
         packet = event.packet
