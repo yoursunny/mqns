@@ -13,16 +13,16 @@ from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Time
 from mqns.utils import rng
 
-from .fw_common import (
-    build_linear_network,
-    check_fw_counters,
-    install_path,
-    print_node_counters,
-    provide_entanglements,
-)
+from .fw_common import build_linear_network, check_fw_counters, install_path, print_node_counters, provide_entanglements
 
 
 def force_purify_outcome(monkeypatch: pytest.MonkeyPatch, *success: bool):
+    """
+    Force purification attempts to succeed or fail.
+
+    Args:
+        success: A list of outcomes for upcoming purification attempts.
+    """
     l = list(success)
 
     def new_random() -> float:
@@ -177,6 +177,7 @@ def test_3_uninstall(
         mq_reset_state_old(self, state)
 
     monkeypatch.setattr(MemoryQubit, "reset_state", mq_reset_state_new)
+    force_purify_outcome(monkeypatch, True)
 
     simulator.run()
     print_node_counters(net)
