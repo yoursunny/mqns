@@ -31,7 +31,7 @@ class PathActivateEvent(Event):
     Instruct LinkLayer to start entanglement generation on a channel for a path.
     """
 
-    ROLE_STR: ClassVar = {True: "primary", False: "secondary"}
+    ROLE_STR: ClassVar = {True: "pri", False: "2nd"}
 
     def __init__(
         self,
@@ -42,6 +42,15 @@ class PathActivateEvent(Event):
         t: Time,
         is_primary: bool,
     ):
+        """
+        Args:
+            node: Node where LinkLayer is installed.
+            qchannel: Quantum channel for entanglement generation.
+            path_id: Only consider qubits allocated to this path_id.
+                If ``None``, only consider unallocated qubits.
+            is_primary: Role of this LinkLayer instance.
+                This is ignored if the same channel is already activated.
+        """
         super().__init__(t, f"ch={qchannel.name}, node={node.name}, role={self.ROLE_STR[is_primary]}")
         self.node = node
         self.qchannel = qchannel
@@ -67,6 +76,13 @@ class PathDeactivateEvent(Event):
         *,
         t: Time,
     ):
+        """
+        Args:
+            node: Node where LinkLayer is installed.
+            qchannel: Quantum channel for entanglement generation.
+            path_id: Only consider qubits allocated to this path_id.
+                If ``None``, only consider unallocated qubits.
+        """
         super().__init__(t, f"ch={qchannel.name}, node={node.name}")
         self.node = node
         self.qchannel = qchannel
