@@ -139,7 +139,7 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
 
     @override
     def list_qubit_epr_path_ids(self, mq: MemoryQubit) -> list[int]:
-        if mq.path_id is None:
+        if mq.path_id is None:  # path has been uninstalled
             return []
         return [mq.path_id]
 

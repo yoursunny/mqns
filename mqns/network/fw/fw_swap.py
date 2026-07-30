@@ -10,9 +10,8 @@ from mqns.models.error import ErrorModel
 from mqns.network.fw.fib import FibEntry, FibSwapGroup
 from mqns.network.fw.fw_module import ForwarderModule, fw_signaling_cmd_handler
 from mqns.network.fw.message import SwapUpdateMsg
-from mqns.network.fw.mux import MuxScheme
 from mqns.simulator import Event, Time, func_to_event
-from mqns.utils import unwrap_cast
+from mqns.utils import unwrap, unwrap_cast
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
@@ -24,12 +23,7 @@ def _intersect_path_ids(a: Iterable[int] | None, b: Iterable[int]) -> list[int]:
     return sorted(i for i in a if i in b)
 
 
-def _qubit_key(mq: MemoryQubit) -> str:
-    assert mq.key, f"missing reservation key in {mq}"
-    return mq.key
-
-
-class SwapArm(NamedTuple):
+class _SwapArm(NamedTuple):
     mq: MemoryQubit
     """Local qubit entangled with partner."""
     o_key: str
@@ -37,11 +31,17 @@ class SwapArm(NamedTuple):
     p_key: str
     """Partner qubit reservation key."""
 
+    @staticmethod
+    def new(mq: MemoryQubit) -> "_SwapArm":
+        o_key = unwrap(mq.key)
+        p_key = o_key if mq.partner is None else mq.partner[1]
+        return _SwapArm(mq, o_key, p_key)
+
     def __repr__(self) -> str:
         return f"SwapArm(qubit={self.mq.addr}, o-key={self.o_key}, p-key={self.p_key})"
 
 
-class SwapHerald(NamedTuple):
+class _SwapHerald(NamedTuple):
     """Heralding instruction."""
 
     su: SwapUpdateMsg
@@ -56,7 +56,7 @@ class SwapHerald(NamedTuple):
     """Possible path IDs for classical signaling, must be non-empty."""
 
 
-class SwapTask:
+class _SwapTask:
     """
     Track the logical progress of a swap process within a swap group.
 
@@ -112,10 +112,9 @@ class SwapTask:
 
     def __init__(self, proc: "ForwarderSwapProc", fib_entry: FibEntry):
         self.proc = proc
-        assert fib_entry.sg
-        self.sg = fib_entry.sg
+        self.sg = unwrap(fib_entry.sg)
 
-    def begin_local_swap(self, la: SwapArm, ra: SwapArm) -> None:
+    def begin_local_swap(self, la: _SwapArm, ra: _SwapArm) -> None:
         """
         Record start of local swap.
 
@@ -148,7 +147,7 @@ class SwapTask:
         if self.sg.r_most:
             self.rb_key = self.ra_key
 
-    def end_local_swap(self, expiry: int) -> list[SwapHerald]:
+    def end_local_swap(self, expiry: int) -> list[_SwapHerald]:
         """
         Save local swap outcome.
 
@@ -156,8 +155,7 @@ class SwapTask:
             expiry: Zero on swap failure, otherwise time slot for swapped EPR expiration time.
 
         Returns:
-            [0]: Instruction to herald left node, if allowed.
-            [1]: Instruction to herald right node, if allowed.
+            Heralding instructions, if any.
         """
         assert self.o_started, "{self}: end_local_swap without start_local_swap"
 
@@ -172,7 +170,7 @@ class SwapTask:
 
         return self._check_triggers()
 
-    def notify_remote_swap(self, su: SwapUpdateMsg) -> list[SwapHerald]:
+    def notify_remote_swap(self, su: SwapUpdateMsg) -> list[_SwapHerald]:
         """
         Save heralded swap outcome.
 
@@ -180,8 +178,7 @@ class SwapTask:
             su: SWAP_UPDATE message.
 
         Returns:
-            [0]: Instruction to herald left node, if allowed.
-            [1]: Instruction to herald right node, if allowed.
+            Heralding instructions, if any.
         """
         expiry = su["expiry"]
         self._update_expiry(expiry)
@@ -229,9 +226,9 @@ class SwapTask:
         assert fib_entry.sg
         self.sg = fib_entry.sg
 
-    def _check_triggers(self) -> list[SwapHerald]:
+    def _check_triggers(self) -> list[_SwapHerald]:
         sg = self.sg
-        heralds: list[SwapHerald] = []
+        heralds: list[_SwapHerald] = []
 
         if (
             not self.l_sent  # leftward herald is allowed at most once
@@ -251,7 +248,7 @@ class SwapTask:
                 l_node=sg.l_adj,
                 l_key=self.lb_key if sg.l_most else self.la_key,
             )
-            heralds.append(SwapHerald(su, sg.l_adj, unwrap_cast(self.lc_paths)))
+            heralds.append(_SwapHerald(su, sg.l_adj, unwrap_cast(self.lc_paths)))
             self.l_sent = True
 
         if not self.r_sent and (
@@ -262,7 +259,7 @@ class SwapTask:
                 r_node=sg.r_adj,
                 r_key=self.rb_key if sg.r_most else self.ra_key,
             )
-            heralds.append(SwapHerald(su, sg.r_adj, unwrap_cast(self.rc_paths)))
+            heralds.append(_SwapHerald(su, sg.r_adj, unwrap_cast(self.rc_paths)))
             self.r_sent = True
 
         return heralds
@@ -285,7 +282,7 @@ class SwapTask:
 
     def __repr__(self) -> str:
         return (
-            f"SwapTask(path_id={self.sg.path_id}, group={self.sg.nodes}, "
+            f"SwapTask(path_id={self.sg.path_id}, group={self.sg.repr_route()}, "
             f"c-paths={self.lc_paths}:{self.rc_paths}, q-paths={self.q_paths}, "
             f"complete={self.l_complete and 'l' or '_'}"
             f"{self.o_complete and 'o' or (self.o_started and 'O' or '_')}"
@@ -295,8 +292,8 @@ class SwapTask:
         )
 
 
-class SwapTaskExpireEvent(Event):
-    def __init__(self, task: SwapTask, *, t: Time):
+class _SwapTaskExpireEvent(Event):
+    def __init__(self, task: _SwapTask, *, t: Time):
         super().__init__(t)
         self.task = task
 
@@ -329,8 +326,6 @@ class ForwarderSwapProc(ForwarderModule):
     This has no effect if set to a negative number or the simulation is continuous.
     """
 
-    mux: MuxScheme
-
     def __init__(self, *, ps: float, delay: DelayModel, error: ErrorModel, error_at_finish: bool):
         self.ps = ps
         """Probability of successful entanglement swapping."""
@@ -358,7 +353,7 @@ class ForwarderSwapProc(ForwarderModule):
         * Value: Physical EPR object.
         """
 
-        self.task_by_qubit: dict[str, SwapTask] = {}
+        self.task_by_qubit: dict[str, _SwapTask] = {}
         """
         SwapTask associated with a memory qubit.
 
@@ -368,7 +363,6 @@ class ForwarderSwapProc(ForwarderModule):
 
     def install(self, fw: "Forwarder"):
         super().install(fw)
-        self.mux = fw.mux
 
         if not self.simulator.is_continuous:
             event = func_to_event(self.simulator.te, self.check_table_leak)
@@ -414,7 +408,7 @@ class ForwarderSwapProc(ForwarderModule):
             deleted_from.append(f"task_by_qubit[{key}]")
         self.log_debug("DECOHERE key=%s deleted-from=%s", mq.key, deleted_from)
 
-    def _heralds(self, heralds: list[SwapHerald]) -> None:
+    def _heralds(self, heralds: list[_SwapHerald]) -> None:
         """
         Send heralding messages.
         """
@@ -465,14 +459,12 @@ class ForwarderSwapProc(ForwarderModule):
 
         self.log_debug("SWAP_START %s retrieved-from=%s saved-at=%s finish-time=%s", task, task_from, task_saved, finish_time)
 
-    def _s_get_arms(self, mq0: MemoryQubit, mq1: MemoryQubit) -> Sequence[SwapArm]:
-        arms: MutableSequence[SwapArm | None] = [None, None]
+    def _s_get_arms(self, mq0: MemoryQubit, mq1: MemoryQubit) -> Sequence[_SwapArm]:
+        arms: MutableSequence[_SwapArm | None] = [None, None]
 
         for mq in mq0, mq1:
             # Retrieve qubit.
             _, epr = self.memory.read(mq.addr, has=self.epr_type)
-            o_key = _qubit_key(mq)
-            p_key = o_key if mq.partner is None else mq.partner[1]
 
             # Set SWAPPING state, so that forwarder cannot start another swapping on the same qubit.
             # The ALLOWED_STATE_TRANSITIONS matrix verifies existing state is ELIGIBLE.
@@ -489,14 +481,14 @@ class ForwarderSwapProc(ForwarderModule):
             # Save to destination array.
             # Ensure each arm has a different direction.
             assert arms[idx] is None
-            arms[idx] = SwapArm(mq, o_key, p_key)
+            arms[idx] = _SwapArm.new(mq)
 
-        return cast(Sequence[SwapArm], arms)
+        return cast(Sequence[_SwapArm], arms)
 
     def _s_get_task(
-        self, fib_entry: FibEntry, arms: Sequence[SwapArm], task_via_event: SwapTask | None = None
-    ) -> tuple[SwapTask, str]:
-        task: SwapTask | None = None
+        self, fib_entry: FibEntry, arms: Sequence[_SwapArm], task_via_event: _SwapTask | None = None
+    ) -> tuple[_SwapTask, str]:
+        task: _SwapTask | None = None
         task_from: list[str] = []
         for arm in arms:
             if t := self.task_by_qubit.pop(arm.o_key, None):
@@ -507,9 +499,9 @@ class ForwarderSwapProc(ForwarderModule):
 
         if task_via_event:
             return task_via_event, "event"
-        return SwapTask(self, fib_entry), "constructor"
+        return _SwapTask(self, fib_entry), "constructor"
 
-    def _s_put_task(self, task: SwapTask, arms: Sequence[SwapArm]) -> list[str]:
+    def _s_put_task(self, task: _SwapTask, arms: Sequence[_SwapArm]) -> list[str]:
         task_saved: list[str] = []
         for i, dir_complete in enumerate((task.l_complete, task.r_complete)):
             if dir_complete:
@@ -519,7 +511,7 @@ class ForwarderSwapProc(ForwarderModule):
             task_saved.append(f"task_by_qubit[{arm.o_key}]")
         return task_saved
 
-    def _s_finish(self, arms: Sequence[SwapArm], fib_entry: FibEntry, error_t: Time, task_via_event: SwapTask):
+    def _s_finish(self, arms: Sequence[_SwapArm], fib_entry: FibEntry, error_t: Time, task_via_event: _SwapTask):
         """
         Complete swapping between two memory qubits.
 
@@ -527,11 +519,10 @@ class ForwarderSwapProc(ForwarderModule):
         """
 
         # Retrieve physical EPRs.
-        # Save ch_index metadata field onto elementary EPR.
         local_expiry: list[int] = []
-        alive_arms: list[SwapArm] = []
+        alive_arms: list[_SwapArm] = []
         phy_eprs: list[Entanglement] = []
-        for i, arm in enumerate(arms):
+        for arm in arms:
             if arm.mq.state is not QubitState.SWAPPING or arm.mq.key != arm.o_key:
                 # Elementary EPR decohered and potentially replaced.
                 continue
@@ -539,8 +530,6 @@ class ForwarderSwapProc(ForwarderModule):
             _, epr = self.memory.read(arm.mq.addr, has=self.epr_type, remove=True)
             local_expiry.append(epr.decohere_time.time_slot)
             phy = self.remote_swapped.pop(arm.o_key, epr)
-            if not phy.orig_eprs:
-                phy.ch_index = fib_entry.own_idx - 1 + i
             phy_eprs.append(phy)
 
         # If the FIB entry is being uninstalled, local swap is deemed failed.
@@ -608,7 +597,7 @@ class ForwarderSwapProc(ForwarderModule):
         before D is notified. This cannot be resolved with ``Event.priority`` mechanism because R and D may be
         notified at different times depending on the link architecture.
         """
-        su_args = self.waiting_su.pop(_qubit_key(qubit), None)
+        su_args = self.waiting_su.pop(unwrap(qubit.key), None)
         if (
             qubit.state is not QubitState.RELEASE  # qubit was released due to uninstalled path
             and su_args
@@ -771,24 +760,24 @@ class ForwarderSwapProc(ForwarderModule):
         self.log_debug("SWAP_UPDATE_SAME %s retrieved-from=%s saved-at=%s", task, task_from, task_saved)
         self._heralds(heralds)
 
-    def _u_get_task(self, fib_entry: FibEntry, qubit_key: str) -> tuple[SwapTask, str]:
+    def _u_get_task(self, fib_entry: FibEntry, qubit_key: str) -> tuple[_SwapTask, str]:
         if t := self.task_by_qubit.pop(qubit_key, None):
             return t, f"task_by_qubit[qubit_key:={qubit_key}]"
-        return SwapTask(self, fib_entry), "constructor"
+        return _SwapTask(self, fib_entry), "constructor"
 
-    def sched_expire_task(self, task: SwapTask) -> None:
+    def sched_expire_task(self, task: _SwapTask) -> None:
         if task.has_expire_event:
             return
         task.has_expire_event = True
         t = self.simulator.tc if not task.expiry else self.simulator.time(time_slot=task.expiry)
         t += self.memory.t_cohere  # delay deletion so that incoming messages can be replied to
-        self.simulator.add_event(SwapTaskExpireEvent(task, t=t))
+        self.simulator.add_event(_SwapTaskExpireEvent(task, t=t))
 
-    def _expire_task(self, event: SwapTaskExpireEvent):
+    def _expire_task(self, event: _SwapTaskExpireEvent):
         task = event.task
         deleted_from: list[str] = []
         for key in task.la_key, task.ra_key:
-            if key != SwapTask.UNKNOWN and self.task_by_qubit.pop(key, None):
+            if key != _SwapTask.UNKNOWN and self.task_by_qubit.pop(key, None):
                 deleted_from.append(key)
         if deleted_from:
             self.log_debug("TASK_EXPIRE %s deleted-from=%s", task, deleted_from)

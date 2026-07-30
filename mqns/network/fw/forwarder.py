@@ -217,7 +217,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
 
         The actual processing is handled by the multiplexing scheme.
 
-        If a SwapUpdate was received before processing this event and buffered in ``self.waiting_su``,
+        If a SwapUpdate was received before processing this event and buffered in ``self.swap.waiting_su``,
         it is re-processed at this time.
 
         Args:

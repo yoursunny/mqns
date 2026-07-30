@@ -58,11 +58,13 @@ class MuxScheme(ForwarderModule, ABC):
         Handle a qubit entering ENTANGLED state, i.e. having an elementary entanglement.
 
         Pre-conditions:
+
         * The network is in ASYNC timing mode or INTERNAL phase.
         * ``mq.epr_path_ids`` is populated and non-empty.
         * ``epr`` is an elementary entanglement.
 
         Post-condition and return value:
+
         * ``mq.state is PURIF``: forwarder starts purification; FIB entry is required.
         * ``mq.state is ELIGIBLE``: forwarder starts swapping; FIB entry is optional.
         """
