@@ -77,37 +77,38 @@ class PathDeactivateEvent(Event):
         self.node.handle(self)
 
 
+class _LinkArchNotifyBaseEvent(Event):
+    def __init__(self, t: Time, node: QNode, partner: QNode, key: str, epr: Entanglement):
+        super().__init__(t, f"{node.name}, key={key}, epr={epr.name}")
+        self.node = node
+        self.partner = partner
+        self.key = key
+        self.epr = epr
+
+    @override
+    def invoke(self) -> None:
+        self.node.handle(self)
+
+
 @final
-class LinkArchNotifySrcEvent(Event):
+class LinkArchNotifyPriEvent(_LinkArchNotifyBaseEvent):
     """
     Event in LinkLayer to notify the primary node about successful entanglement in link architecture.
     """
 
     def __init__(self, key: str, epr: Entanglement, *, t: Time, attempts: int):
-        super().__init__(t, f"{unwrap_cast(epr.src).name}, key={key}, epr={epr.name}")
-        self.key = key
-        self.epr = epr
+        super().__init__(t, unwrap_cast(epr.src), unwrap_cast(epr.dst), key, epr)
         self.attempts = attempts
-
-    @override
-    def invoke(self) -> None:
-        unwrap_cast(self.epr.src).handle(self)
 
 
 @final
-class LinkArchNotifyDstEvent(Event):
+class LinkArchNotify2ndEvent(_LinkArchNotifyBaseEvent):
     """
     Event in LinkLayer to notify the secondary node about successful entanglement in link architecture.
     """
 
     def __init__(self, key: str, epr: Entanglement, *, t: Time):
-        super().__init__(t, f"{unwrap_cast(epr.dst).name}, key={key}, epr={epr.name}")
-        self.key = key
-        self.epr = epr
-
-    @override
-    def invoke(self) -> None:
-        unwrap_cast(self.epr.dst).handle(self)
+        super().__init__(t, unwrap_cast(epr.dst), unwrap_cast(epr.src), key, epr)
 
 
 @final

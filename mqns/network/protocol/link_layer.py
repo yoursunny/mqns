@@ -23,18 +23,17 @@ from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, c
 from mqns.entity.memory import MemoryQubit, QubitState
 from mqns.entity.node import Application, QNode
 from mqns.entity.qchannel import QuantumChannel
-from mqns.models.epr import Entanglement
 from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import (
-    LinkArchNotifyDstEvent,
-    LinkArchNotifySrcEvent,
+    LinkArchNotify2ndEvent,
+    LinkArchNotifyPriEvent,
     PathActivateEvent,
     PathDeactivateEvent,
     QubitEntangledEvent,
     QubitReleasedEvent,
 )
 from mqns.simulator import event_handler
-from mqns.utils import AutoIncrementIdentifier, json_encodable, rng, unwrap, unwrap_cast
+from mqns.utils import AutoIncrementIdentifier, json_encodable, rng, unwrap
 
 _AUTOID = AutoIncrementIdentifier("llk_")
 """
@@ -542,10 +541,10 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         # the EPR would not arrive in time, and therefore is not scheduled.
         if not src.timing.is_external(max(t_notify_a, t_notify_b)):
             self.log_debug(
-                "skip prepare EPR %s key=%s dst=%s attempts=%s notify-times=%s,%s reason=beyond-external-phase",
+                "EPR_SKIP %s dst=%s key=%s attempts=%s notify-times=%s,%s reason=beyond-external-phase",
                 epr.name,
-                key,
                 dst.name,
+                key,
                 k,
                 t_notify_a,
                 t_notify_b,
@@ -555,44 +554,49 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         # If the network uses ASYNC timing mode or the successful attempt can complete within the current EXTERNAL phase,
         # schedule the EPR arrival on both nodes via LinkArchSuccessEvents.
         self.log_debug(
-            "prepare EPR %s key=%s dst=%s attempts=%s notify-times=%s,%s", epr.name, key, dst.name, k, t_notify_a, t_notify_b
+            "EPR_PREPARE %s dst=%s key=%s attempts=%s notify-times=%s,%s", epr.name, dst.name, key, k, t_notify_a, t_notify_b
         )
 
-        self.simulator.add_event(LinkArchNotifySrcEvent(key, epr, t=t_notify_a, attempts=k))
-        self.simulator.add_event(LinkArchNotifyDstEvent(key, epr, t=t_notify_b))
+        self.simulator.add_event(LinkArchNotifyPriEvent(key, epr, t=t_notify_a, attempts=k))
+        self.simulator.add_event(LinkArchNotify2ndEvent(key, epr, t=t_notify_b))
 
     def _calc_attempt(self, qchannel: QuantumChannel) -> int:
         return rng.geometric(qchannel.link_arch.success_prob)
 
     @event_handler
-    def _la_notify_src(self, event: LinkArchNotifySrcEvent) -> None:
-        event.cancel()
+    def _la_notify_pri(self, event: LinkArchNotifyPriEvent) -> None:
         self.cnt.increment_n_etg(event.attempts)
-        epr = event.epr
-        self._la_notify(event.key, epr, "primary", "dst", unwrap_cast(epr.dst))
+        self._la_notify("pri", event)
 
     @event_handler
-    def _la_notify_dst(self, event: LinkArchNotifyDstEvent) -> None:
-        event.cancel()
-        epr = event.epr
-        self._la_notify(event.key, epr, "secondary", "src", unwrap_cast(epr.src))
+    def _la_notify_2nd(self, event: LinkArchNotify2ndEvent) -> None:
+        self._la_notify("2nd", event)
 
-    def _la_notify(self, key: str, epr: Entanglement, own_role: str, partner_role: str, partner: QNode) -> None:
+    def _la_notify(self, own_role: str, event: LinkArchNotifyPriEvent | LinkArchNotify2ndEvent) -> None:
+        event.cancel()
         assert self.node.timing.is_external()
+        partner = event.partner
+        key = event.key
+        epr = event.epr
         try:
             mq = self.memory.write(key, epr)
         except LookupError:
             # Path was deactivated and qubit was deallocated.
-            self.log_debug("EPR-notify-%s %s ignored key=%s reason=qubit-not-found", own_role, epr.name, key)
+            self.log_debug(
+                "EPR_SKIP_%s %s partner=%s key=%s reason=qubit-not-found",
+                own_role,
+                epr.name,
+                partner.name,
+                key,
+            )
             return
 
         self.log_debug(
-            "EPR-notify-%s %s delivered key=%s %s=%s addr=%s path=%s",
+            "EPR_DELIVER_%s %s partner=%s key=%s addr=%s path=%s",
             own_role,
             epr.name,
+            partner.name,
             key,
-            partner_role,
-            partner,
             mq.addr,
             mq.path_id,
         )
