@@ -154,6 +154,19 @@ class Entanglement(QuantumModel):
     def fidelity(self, value: float):
         pass
 
+    def flip_direction(self) -> None:
+        """
+        Reverse the direction between src and dst.
+        """
+        self.src, self.dst = self.dst, self.src
+        self.mem_keys = self.mem_keys[1], self.mem_keys[0]
+        self.store_decays = self.store_decays[1], self.store_decays[0]
+        if self.orig_eprs:
+            self.orig_eprs.reverse()
+            for oe in self.orig_eprs:
+                oe.flip_direction()
+        self.consumed_sides = ((self.consumed_sides & 0b01) << 1) | ((self.consumed_sides & 0b10) >> 1)
+
     def apply_store_decays(self, now: Time) -> None:
         """
         Apply memory time-based decays for both qubits in this EPR.

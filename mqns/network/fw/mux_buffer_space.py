@@ -1,4 +1,3 @@
-from abc import abstractmethod
 from typing import TYPE_CHECKING, Literal, Protocol, override
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
@@ -66,18 +65,12 @@ class MuxSchemeFibBase(MuxScheme):
         super().__init__()
         self._select_swap_qubit = parse_select(type(self), "SelectSwapQubit_", select_swap_qubit)
 
-    @override
-    def find_swap_candidate(
-        self, mq0: MemoryQubit, epr0: Entanglement, fib_entry: FibEntry | None, input: MemoryEprIterator
+    def select_swap_candidate(
+        self, mq0: MemoryQubit, epr0: Entanglement, fib_entry: FibEntry, candidates: MemoryEprIterator
     ) -> tuple[MemoryQubit, FibEntry] | None:
         assert fib_entry
-        mt1 = call_select(
-            self.list_swap_candidates(mq0, fib_entry, input), self._select_swap_qubit, self.fw, (mq0, epr0), fib_entry
-        )
+        mt1 = call_select(candidates, self._select_swap_qubit, self.fw, (mq0, epr0), fib_entry)
         return None if mt1 is None else (mt1[0], fib_entry)
-
-    @abstractmethod
-    def list_swap_candidates(self, mq0: MemoryQubit, fib_entry: FibEntry, input: MemoryEprIterator) -> MemoryEprIterator: ...
 
 
 class MuxSchemeBufferSpace(MuxSchemeFibBase):
@@ -153,10 +146,23 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
         return self.fib.get(unwrap_cast(mq.path_id))
 
     @override
-    def list_swap_candidates(self, mq0: MemoryQubit, fib_entry: FibEntry, input: MemoryEprIterator):
-        return (
-            (q, v)
-            for (q, v) in input
-            if q.path_id == fib_entry.path_id  # allocated to the same path_id
-            and q.path_direction is not mq0.path_direction  # in the opposite path direction
+    def find_swap_with(
+        self,
+        mq0: MemoryQubit,
+        epr0: Entanglement,
+        fib_entry: FibEntry | None,
+    ) -> tuple[MemoryQubit, FibEntry] | None:
+        assert fib_entry
+        return self.select_swap_candidate(
+            mq0,
+            epr0,
+            fib_entry,
+            self.memory.find(
+                lambda q, _: (
+                    self.qubits_swappable(mq0, q)  # basic condition met
+                    and q.path_id == mq0.path_id  # allocated to the same path_id
+                    and q.path_direction is not mq0.path_direction  # in the opposite path direction
+                ),
+                has=self.epr_type,
+            ),
         )

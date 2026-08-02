@@ -10,7 +10,6 @@ from mqns.network.fw.fib import FibEntry
 from mqns.network.fw.message import PathInstructions, validate_path_instructions
 from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.select import (
-    MemoryEprIterator,
     MemoryEprTuple,
     call_select,
     parse_select,
@@ -138,25 +137,31 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         return None
 
     @override
-    def find_swap_candidate(
-        self, mq0: MemoryQubit, epr0: Entanglement, fib_entry: FibEntry | None, input: MemoryEprIterator
+    def find_swap_with(
+        self,
+        mq0: MemoryQubit,
+        epr0: Entanglement,
+        fib_entry: FibEntry | None,
     ) -> tuple[MemoryQubit, FibEntry] | None:
         mq0_path_ids = set(unwrap_cast(mq0.epr_path_ids))
+
+        candidates = self.memory.find(
+            lambda q, v: (
+                self.qubits_swappable(mq0, q)  # basic condition met
+                and not mq0_path_ids.isdisjoint(unwrap_cast(q.epr_path_ids))  # has overlapping epr_path_ids
+                and (
+                    not self.coordinated_decisions  # uncoordinated
+                    or v.affectionated_path_id < 0  # no existing decision
+                    or v.affectionated_path_id in mq0_path_ids  # compatible decisions
+                )
+            ),
+            has=self.epr_type,
+        )
 
         # Find another qubit to swap with.
         # The qubit must have overlapping epr_path_ids so that there would be one or more viable paths.
         # In coordinated_decision mode, the physical path_id (written by parallel swapping) must also match.
-        mt1 = call_select(
-            (
-                (q, v)
-                for (q, v) in input
-                if not mq0_path_ids.isdisjoint(unwrap_cast(q.epr_path_ids))  # has overlapping epr_path_ids
-                and (not self.coordinated_decisions or v.affectionated_path_id < 0 or v.affectionated_path_id in mq0_path_ids)
-            ),
-            self._select_swap_qubit,
-            self.fw,
-            (mq0, epr0),
-        )
+        mt1 = call_select(candidates, self._select_swap_qubit, self.fw, (mq0, epr0))
         if mt1 is None:
             return None
         mq1, epr1 = mt1

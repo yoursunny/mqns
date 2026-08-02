@@ -9,7 +9,7 @@ from mqns.models.epr import Entanglement
 from mqns.network.fw.fib import Fib, FibEntry
 from mqns.network.fw.mux_buffer_space import MuxSchemeFibBase
 from mqns.network.fw.mux_statistical import MuxSchemeDynamicBase
-from mqns.network.fw.select import MemoryEprIterator, call_select, parse_select
+from mqns.network.fw.select import call_select, parse_select
 from mqns.utils import rng, unwrap_cast
 
 
@@ -92,6 +92,22 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
         return fib_entry
 
     @override
-    def list_swap_candidates(self, mq0: MemoryQubit, fib_entry: FibEntry, input: MemoryEprIterator):
-        _ = mq0
-        return ((q, v) for (q, v) in input if fib_entry.path_id in unwrap_cast(q.epr_path_ids))
+    def find_swap_with(
+        self,
+        mq0: MemoryQubit,
+        epr0: Entanglement,
+        fib_entry: FibEntry | None,
+    ) -> tuple[MemoryQubit, FibEntry] | None:
+        assert fib_entry
+        return self.select_swap_candidate(
+            mq0,
+            epr0,
+            fib_entry,
+            self.memory.find(
+                lambda q, _: (
+                    self.qubits_swappable(mq0, q)  # basic condition met
+                    and fib_entry.path_id in unwrap_cast(q.epr_path_ids)  # has compatible path_id
+                ),
+                has=self.epr_type,
+            ),
+        )

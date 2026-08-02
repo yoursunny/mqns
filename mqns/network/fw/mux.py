@@ -1,13 +1,12 @@
 from abc import ABC, abstractmethod
 
-from mqns.entity.memory import MemoryQubit, PathDirection
+from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
 from mqns.network.fw.fib import FibEntry
 from mqns.network.fw.fw_module import ForwarderModule
 from mqns.network.fw.message import PathInstructions
-from mqns.network.fw.select import MemoryEprIterator
 
 
 class MuxScheme(ForwarderModule, ABC):
@@ -70,24 +69,29 @@ class MuxScheme(ForwarderModule, ABC):
         """
 
     @abstractmethod
-    def find_swap_candidate(
+    def find_swap_with(
         self,
         mq0: MemoryQubit,
         epr0: Entanglement,
         fib_entry: FibEntry | None,
-        input: MemoryEprIterator,
     ) -> tuple[MemoryQubit, FibEntry] | None:
         """
-        Find another qubit to swap with an ELIGIBLE qubit.
+        Choose another qubit to swap with a qubit entering ELIGIBLE state and ready to swap.
 
         Args:
-            input: Candidates iterator. They are in ELIGIBLE state and assigned to a different channel.
-            mq0: A qubit in ELIGIBLE state.
-            epr: The EPR associated with this qubit. This is not an end-to-end entanglement.
-            fib_entry: FIB entry passed to ``fw.qubit_is_eligible()``.
+            mq0: The qubit entering ELIGIBLE state.
+            epr0: The entanglement stored in the qubit.
+            fib_entry: FIB entry found by ``MuxScheme.qubit_is_entangled`` or used in last round of purification.
 
         Returns:
-            None: No candidate, do not swap.
-            [0]: Another qubit in ELIGIBLE state.
-            [1]: FIB entry for ``fw.do_swapping()``.
+            None: Do not swap.
+            [0]: The other qubit, which must be in ELIGIBLE state.
+            [1]: FIB entry to guide ``ForwarderSwapProc``.
         """
+
+    @staticmethod
+    def qubits_swappable(mq0: MemoryQubit, mq1: MemoryQubit) -> bool:
+        """
+        Determine whether ``mq1`` in memory can swap with ``mq0``.
+        """
+        return mq1.state is QubitState.ELIGIBLE and mq1.qchannel is not mq0.qchannel

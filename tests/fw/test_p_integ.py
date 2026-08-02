@@ -7,13 +7,22 @@ import pytest
 from mqns.entity.memory import QuantumMemory
 from mqns.entity.timer import Timer
 from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
-from mqns.network.fw import RoutingPathSingle, RoutingPathStatic, SwapSequenceInput
+from mqns.network.fw import (
+    MuxScheme,
+    MuxSchemeBufferSpace,
+    MuxSchemeDynamicEpr,
+    MuxSchemeStatistical,
+    RoutingPathInitArgs,
+    RoutingPathSingle,
+    RoutingPathStatic,
+    SwapSequenceInput,
+)
 from mqns.network.network import TimingMode, TimingModeAsync, TimingModeSync
 from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 
-from .fw_common import build_linear_network, build_rect_network, install_path, print_node_counters
+from .fw_common import build_linear_network, build_rect_network, build_tree_network, install_path, print_node_counters
 
 
 @pytest.mark.parametrize("epr_type", [WernerStateEntanglement, MixedStateEntanglement])
@@ -36,6 +45,51 @@ def test_4_swap(epr_type: type[Entanglement], timing: TimingMode, swap: SwapSequ
     assert fwB.cnt.n_swapped >= 16
     assert fwC.cnt.n_swapped >= 16
     assert RequestCounters.of(net, rp).n_consumed >= 16
+
+
+@pytest.mark.parametrize(
+    ("mux", "swap", "end_time"),
+    [
+        pytest.param(MuxSchemeBufferSpace(), "asap", 1, id="BufferSpace-asap"),
+        pytest.param(MuxSchemeBufferSpace(), "l2r", 1, id="BufferSpace-l2r"),
+        pytest.param(MuxSchemeStatistical(select_swap_qubit="random"), "asap", 1, id="Statistical"),
+        pytest.param(MuxSchemeDynamicEpr(), "asap", 10, id="DynamicEpr"),
+    ],
+)
+@pytest.mark.parametrize("route_len", [3, 5])
+def test_tree2_bidir(mux: MuxScheme, swap: SwapSequenceInput, end_time: float, route_len: int):
+    """Test bidirectional paths in tree topology."""
+    net, simulator = build_tree_network(
+        t_cohere=1.0,
+        ch_capacity=2,
+        fw={"p_swap": 1, "mux": mux},
+        swap_table_leak_tol=256,
+        end_time=end_time,
+        has_link_layer=True,
+    )
+
+    # Path 0 uses A-C or B-A-C segment in one direction.
+    # Path 1 uses C-A or C-A-B segment in the opposite direction.
+    rp_args = RoutingPathInitArgs(
+        m_v=1 if isinstance(mux, MuxSchemeBufferSpace) else "none",
+        swap=swap,
+        swap_cutoff=[0.01, 0.01] * (route_len - 2),
+    )
+    rp0 = install_path(net, RoutingPathStatic("DBACF"[-route_len:], **rp_args), t_install=0.010)
+    rp1 = install_path(net, RoutingPathStatic("GCABE"[:route_len], **rp_args), t_install=0.020)
+    simulator.run()
+    print_node_counters(net)
+
+    rp0cnt = RequestCounters.of(net, rp0).n_consumed
+    rp1cnt = RequestCounters.of(net, rp1).n_consumed
+
+    if isinstance(mux, MuxSchemeDynamicEpr) and route_len == 5:
+        assert rp0cnt + rp1cnt > 0
+        if min(rp0cnt, rp1cnt) == 0:
+            pytest.xfail(reason="https://github.com/usnistgov/mqns/issues/60#issuecomment-5180421126")
+
+    assert rp0cnt > 0
+    assert rp1cnt > 0
 
 
 def test_rect2_uninstall_path():

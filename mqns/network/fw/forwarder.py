@@ -314,7 +314,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
 
         self.purif.start(qubit, found[0], fib_entry, partner)
 
-    def qubit_is_eligible(self, qubit: MemoryQubit, fib_entry: FibEntry | None):
+    def qubit_is_eligible(self, mq0: MemoryQubit, fib_entry: FibEntry | None):
         """
         Handle a qubit entering ELIGIBLE state.
 
@@ -330,32 +330,31 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
             qubit: The qubit that became eligible.
             fib_entry: FIB entry (not available with MuxSchemeStatistical).
         """
-        assert qubit.state is QubitState.ELIGIBLE, f"unexpected state {qubit.state}"
+        assert mq0.state is QubitState.ELIGIBLE, f"unexpected state {mq0.state}"
         self.cnt.n_eligible += 1
-        qubit.purif_rounds = 0
-        qubit.eligible_time = self.simulator.tc
+        mq0.purif_rounds = 0
+        mq0.eligible_time = self.simulator.tc
 
         if not self.node.timing.is_internal():
             self.log_debug("INT phase is over -> stop swaps")
             return
 
-        _, epr = self.memory.read(qubit.addr, has=self.epr_type)
-        if self._try_consume(qubit, epr, fib_entry):
+        _, epr0 = self.memory.read(mq0.addr, has=self.epr_type)
+        if self._try_consume(mq0, epr0, fib_entry):
             return
 
-        swap_candidates = self.memory.find(
-            lambda q, _: (
-                q.state is QubitState.ELIGIBLE  # in ELIGIBLE state
-                and q.qchannel is not qubit.qchannel  # assigned to a different channel
-            ),
-            has=self.epr_type,
-        )
-        if swap_candidate := self.mux.find_swap_candidate(qubit, epr, fib_entry, swap_candidates):
-            mq1, fib_entry = swap_candidate
-            self.cutoff.before_swap(qubit, mq1, fib_entry)
-            self.swap.start(qubit, mq1, fib_entry)
+        swap_decision = self.mux.find_swap_with(mq0, epr0, fib_entry)
+        if swap_decision:
+            mq1, fib_entry = swap_decision
+            self.cutoff.before_swap(mq0, mq1, fib_entry)
+            if fib_entry.route.index(unwrap_cast(mq0.partner)[0].name) < fib_entry.route.index(
+                unwrap_cast(mq1.partner)[0].name
+            ):
+                self.swap.start(mq0, mq1, fib_entry)
+            else:
+                self.swap.start(mq1, mq0, fib_entry)
         else:
-            self.cutoff.before_store_eligible(qubit, PathDirection.L if epr.dst is self.node else PathDirection.R, fib_entry)
+            self.cutoff.before_store_eligible(mq0, PathDirection.L if epr0.dst is self.node else PathDirection.R, fib_entry)
 
     def _try_consume(self, qubit: MemoryQubit, epr: Entanglement, fib_entry: FibEntry | None) -> bool:
         """
