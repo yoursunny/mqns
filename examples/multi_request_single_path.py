@@ -168,7 +168,7 @@ def plot(results: dict[str, list[list[PathStats]]], *, save_plt: str):
 STRATEGIES: dict[str, MuxScheme] = {
     "Statistical Mux.": MuxSchemeStatistical(coordinated_decisions=False),
     "Random Alloc.": MuxSchemeDynamicEpr(),
-    "Swap-weighted Alloc.": MuxSchemeDynamicEpr(select_path=MuxSchemeDynamicEpr.SelectPath_swap_weighted),
+    "Swap-weighted Alloc.": MuxSchemeDynamicEpr(select_path="swap_weighted"),
 }
 T_COHERE_VALUES = [5e-3, 10e-3, 20e-3]
 

@@ -16,7 +16,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import copy
-from typing import Literal, TypedDict, Unpack, override
+from typing import Callable, Literal, TypedDict, Unpack, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin
 from mqns.entity.memory import MemoryDecohereEvent, MemoryQubit, PathDirection, QubitState
@@ -31,7 +31,7 @@ from mqns.network.fw.fw_purif import ForwarderPurifProc
 from mqns.network.fw.fw_swap import ForwarderSwapProc
 from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
-from mqns.network.fw.select import SelectPurifQubit, call_select_purif_qubit
+from mqns.network.fw.select import MemoryEprTuple, call_select
 from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
 from mqns.simulator import event_handler
@@ -51,7 +51,7 @@ class ForwarderInitKwargs(TypedDict, total=False):
     """EPR age cut-off scheme, default is wait-time."""
     mux: MuxScheme | None
     """Path multiplexing scheme, default is buffer-space."""
-    select_purif_qubit: SelectPurifQubit
+    select_purif_qubit: Callable[[list[MemoryEprTuple], MemoryQubit, FibEntry, QNode], MemoryEprTuple] | None
     """Qubit selection among purification candidates, default is picking first candidate."""
 
 
@@ -307,7 +307,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
             ),
             has=self.epr_type,
         )
-        found = call_select_purif_qubit(self._select_purif_qubit, qubit, fib_entry, partner, candidates)
+        found = call_select(candidates, self._select_purif_qubit, qubit, fib_entry, partner)
         if not found:
             self.log_debug("no candidate EPR for segment %s purif round %s", segment_name, 1 + qubit.purif_rounds)
             return

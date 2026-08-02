@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import override
+from typing import Literal, override
 
 import numpy as np
 
@@ -9,16 +9,16 @@ from mqns.models.epr import Entanglement
 from mqns.network.fw.fib import Fib, FibEntry
 from mqns.network.fw.mux_buffer_space import MuxSchemeFibBase
 from mqns.network.fw.mux_statistical import MuxSchemeDynamicBase
-from mqns.network.fw.select import MemoryEprIterator
+from mqns.network.fw.select import MemoryEprIterator, call_select, parse_select
 from mqns.utils import rng, unwrap_cast
 
 
-def _select_path_random(epr: Entanglement, fib: Fib, path_ids: list[int]) -> int:
+def _select_path_random(path_ids: list[int], epr: Entanglement, fib: Fib) -> int:
     _ = epr, fib
     return rng.choice(path_ids)
 
 
-def _select_path_swap_weighted(epr: Entanglement, fib: Fib, path_ids: list[int]) -> FibEntry:
+def _select_path_swap_weighted(path_ids: list[int], epr: Entanglement, fib: Fib) -> FibEntry:
     _ = epr
     entries = [fib.get(pid) for pid in path_ids]
     # fewer swaps (shorter route) means higher weight
@@ -32,7 +32,7 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
     Dynamic EPR Allocation multiplexing scheme.
     """
 
-    type SelectPath = Callable[[Entanglement, Fib, list[int]], int | FibEntry]
+    type SelectPath = Callable[[list[int], Entanglement, Fib], int | FibEntry]
     """
     Path selection strategy.
     Function to select a path for an elementary entanglement.
@@ -59,8 +59,8 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
     def __init__(
         self,
         *,
-        select_swap_qubit: MuxSchemeFibBase.SelectSwapQubit | None = None,
-        select_path: SelectPath = SelectPath_random,
+        select_swap_qubit: MuxSchemeFibBase.SelectSwapQubitInput | None = None,
+        select_path: SelectPath | Literal["random", "swap_weighted"] = SelectPath_random,
     ):
         """
         Args:
@@ -68,7 +68,7 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
             select_path: Function to select a path for an entangled qubit, default is random.
         """
         super().__init__(select_swap_qubit)
-        self._select_path = select_path
+        self._select_path = parse_select(type(self), "SelectPath_", select_path)
 
     @override
     def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibEntry | None:
@@ -81,8 +81,8 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
             # The necessary information could be carried in the reservation message.
             # For ease of implementation, this choice is made at either primary or secondary node,
             # whichever receives the EPR notification earlier.
-            selected_path = self._select_path(epr, self.fib, unwrap_cast(mq.epr_path_ids))
-            fib_entry = selected_path if type(selected_path) is FibEntry else self.fib.get(selected_path)
+            selected_path = call_select(unwrap_cast(mq.epr_path_ids), self._select_path, epr, self.fib)
+            fib_entry = selected_path if type(selected_path) is FibEntry else self.fib.get(unwrap_cast(selected_path))
             epr.affectionated_path_id = fib_entry.path_id
         else:
             fib_entry = self.fib.get(epr.affectionated_path_id)

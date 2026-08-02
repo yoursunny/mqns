@@ -17,12 +17,7 @@ from mqns.network.fw.routing import (
     RoutingPathSingle,
     RoutingPathStatic,
 )
-from mqns.network.fw.select import (
-    MemoryEprIterator,
-    MemoryEprTuple,
-    SelectPurifQubit,
-    select_purif_qubit_random,
-)
+from mqns.network.fw.select import MemoryEprIterator, MemoryEprTuple
 from mqns.network.fw.swap_sequence import SwapPolicy, SwapSequenceInput, parse_swap_sequence
 
 __all__ = [
@@ -52,8 +47,6 @@ __all__ = [
     "RoutingPathMulti",
     "RoutingPathSingle",
     "RoutingPathStatic",
-    "select_purif_qubit_random",
-    "SelectPurifQubit",
     "SwapPolicy",
     "SwapSequence",
     "SwapSequenceInput",
@@ -65,7 +58,6 @@ for name in __all__:
         "MemoryEprTuple",
         "MultiplexingVector",
         "MultiplexingVectorInput",
-        "SelectPurifQubit",
         "SwapPolicy",
         "SwapSequence",
         "SwapSequenceInput",

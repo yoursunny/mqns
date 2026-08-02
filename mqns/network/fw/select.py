@@ -1,11 +1,28 @@
 from collections.abc import Callable, Iterable, Iterator
-from typing import Any
+from typing import Any, Never, cast
 
 from mqns.entity.memory import MemoryQubit
-from mqns.entity.node import QNode
 from mqns.models.epr import Entanglement
-from mqns.network.fw import FibEntry
 from mqns.utils import rng
+
+
+def parse_select[F: Callable, N: None | Never](cls: type, prefix: str, input: F | str | N) -> F | N:
+    """
+    Parse candidate selection function from string keyword.
+
+    Args:
+        cls: Class where predefined candidate selection functions are defined.
+        prefix: Prefix of predefined candidate selection functions on ``cls``.
+        input: Input parameter; its string possibilities should be constrained with ``typing.Literal``.
+
+    Returns:
+        Predefined or custom candidate selection function.
+    """
+    if callable(input) or input is None:
+        return input
+    f = getattr(cls, f"{prefix}{input}")
+    assert callable(f)
+    return cast(F, f)
 
 
 def call_select[T, R](candidates: Iterable[T], fn: Callable[..., R] | None, *args: Any) -> T | R | None:
@@ -14,7 +31,7 @@ def call_select[T, R](candidates: Iterable[T], fn: Callable[..., R] | None, *arg
 
     Args:
         candidates: Iterator of candidates.
-        fn: Selection function or None, ``fn(*args, candidates: list[T])``.
+        fn: Selection function or None, ``fn(candidates: list[T], *args)``.
 
     Returns:
         Chosen candidate or ``None`` for empty input.
@@ -38,43 +55,6 @@ def select_random[T](candidates: list[T], *_: Any) -> T:
 
 type MemoryEprTuple = tuple[MemoryQubit, Entanglement]
 type MemoryEprIterator = Iterator[MemoryEprTuple]
-
-type SelectPurifQubit = (
-    Callable[
-        [MemoryQubit, FibEntry, QNode, list[MemoryEprTuple]],
-        MemoryEprTuple,
-    ]
-    | None
-)
-"""
-Qubit selection among purification candidates.
-None means selecting the first candidate.
-"""
-
-
-def call_select_purif_qubit(
-    fn: SelectPurifQubit,
-    qubit: MemoryQubit,
-    fib_entry: FibEntry,
-    partner: QNode,
-    candidates: MemoryEprIterator,
-) -> MemoryEprTuple | None:
-    if fn is None:
-        return next(candidates, None)
-    l = list(candidates)
-    if len(l) == 0:
-        return None
-    return fn(qubit, fib_entry, partner, l)
-
-
-def select_purif_qubit_random(
-    qubit: MemoryQubit,
-    fib_entry: FibEntry,
-    partner: QNode,
-    candidates: list[MemoryEprTuple],
-) -> MemoryEprTuple:
-    _ = qubit, fib_entry, partner
-    return candidates[rng.choice(len(candidates))]
 
 
 def select_swap_qubit_oldest(candidates: list[MemoryEprTuple], *_) -> MemoryEprTuple:

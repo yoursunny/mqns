@@ -630,7 +630,7 @@ def test_rect_multipath(has_etg: tuple[int, int, int, int], n_swapped: tuple[int
 def test_tree2_dynepr(t_edge_etg: float, selected_path: tuple[int, int], n_consumed: tuple[int, int]):
     """Test MuxSchemeDynamicEpr in tree (height=2) topology."""
 
-    def select_path(epr: Entanglement, fib: Fib, path_ids: list[int]) -> int:
+    def select_path(path_ids: list[int], epr: Entanglement, fib: Fib) -> int:
         _ = fib
         if len(path_ids) != 2:
             chosen = path_ids[0]

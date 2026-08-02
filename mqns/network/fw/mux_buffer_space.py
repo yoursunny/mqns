@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Protocol, override
+from typing import TYPE_CHECKING, Literal, Protocol, override
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
@@ -12,6 +12,7 @@ from mqns.network.fw.select import (
     MemoryEprIterator,
     MemoryEprTuple,
     call_select,
+    parse_select,
     select_random,
     select_swap_qubit_newest,
     select_swap_qubit_oldest,
@@ -46,6 +47,8 @@ class MuxSchemeFibBase(MuxScheme):
             """
             ...
 
+    type SelectSwapQubitInput = SelectSwapQubit | Literal["random", "oldest", "newest"] | None
+
     SelectSwapQubit_random: SelectSwapQubit = select_random
     """
     Select a random qubit among the candidates, following uniform distribution.
@@ -59,9 +62,9 @@ class MuxSchemeFibBase(MuxScheme):
     Select the qubit that becomes ELIGIBLE in this forwarder the latest, i.e. Last-In-First-Out (LIFO).
     """
 
-    def __init__(self, select_swap_qubit: SelectSwapQubit | None):
+    def __init__(self, select_swap_qubit: SelectSwapQubitInput):
         super().__init__()
-        self._select_swap_qubit = select_swap_qubit
+        self._select_swap_qubit = parse_select(type(self), "SelectSwapQubit_", select_swap_qubit)
 
     @override
     def find_swap_candidate(
@@ -85,7 +88,7 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
     def __init__(
         self,
         *,
-        select_swap_qubit: MuxSchemeFibBase.SelectSwapQubit | None = None,
+        select_swap_qubit: MuxSchemeFibBase.SelectSwapQubitInput = None,
     ):
         """
         Args:

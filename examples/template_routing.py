@@ -159,12 +159,12 @@ class Scenario:
 
 def _mux_statistical() -> MuxScheme:
     # select_swap_qubit: Function to select a qubit to swap with, default is first.
-    return MuxSchemeStatistical(select_swap_qubit=MuxSchemeStatistical.SelectSwapQubit_random)
+    return MuxSchemeStatistical(select_swap_qubit="random")
 
 
 def _mux_buffer_space() -> MuxScheme:
     # select_swap_qubit: Function to select a qubit to swap with, default is first.
-    return MuxSchemeBufferSpace(select_swap_qubit=MuxSchemeBufferSpace.SelectSwapQubit_random)
+    return MuxSchemeBufferSpace(select_swap_qubit="random")
 
 
 # Multiplexing vector for buffer-space mux. It's per-hop list of (tx_qubits, rx_qubits) allocations.

@@ -107,13 +107,8 @@ SCENARIOS: list[Scenario] = [
 ]
 
 STRATEGIES: dict[str, MuxScheme] = {
-    "Statistical": MuxSchemeStatistical(
-        select_swap_qubit=MuxSchemeStatistical.SelectSwapQubit_random,
-        coordinated_decisions=True,
-    ),
-    "Buffer-Space": MuxSchemeBufferSpace(
-        select_swap_qubit=MuxSchemeBufferSpace.SelectSwapQubit_random,
-    ),
+    "Statistical": MuxSchemeStatistical(select_swap_qubit="random", coordinated_decisions=True),
+    "Buffer-Space": MuxSchemeBufferSpace(select_swap_qubit="random"),
 }
 
 

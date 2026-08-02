@@ -1,6 +1,6 @@
 from collections import defaultdict
 from collections.abc import Callable
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Literal, override
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
@@ -13,6 +13,7 @@ from mqns.network.fw.select import (
     MemoryEprIterator,
     MemoryEprTuple,
     call_select,
+    parse_select,
     select_random,
     select_swap_qubit_newest,
     select_swap_qubit_oldest,
@@ -80,9 +81,9 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
     def __init__(
         self,
         *,
-        select_swap_qubit: SelectSwapQubit | None = None,
+        select_swap_qubit: SelectSwapQubit | Literal["random", "oldest", "newest"] | None = None,
         coordinated_decisions=False,
-        select_path: SelectPath | None = None,
+        select_path: SelectPath | Literal["random"] | None = None,
     ):
         """
         Args:
@@ -97,9 +98,9 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
                 This has no effect unless coordinated_decisions is True.
         """
         super().__init__()
-        self._select_swap_qubit = select_swap_qubit
+        self._select_swap_qubit = parse_select(type(self), "SelectSwapQubit_", select_swap_qubit)
         self.coordinated_decisions = coordinated_decisions
-        self._select_path = select_path
+        self._select_path = parse_select(type(self), "SelectPath_", select_path)
 
     @override
     def validate_path_instructions(self, instructions: PathInstructions):
