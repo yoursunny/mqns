@@ -226,17 +226,19 @@ class FibSwapGroup:
         """
         return self.r_neigh if self.r_most else self.nodes[self.own_idx + 1]
 
+    def repr_route(self) -> str:
+        return "".join(
+            [
+                self.l_neigh,
+                "<" if self.dir in ("l", "b") else "~",
+                "-".join(f"[{n}]" if i == self.own_idx else n for (i, n) in enumerate(self.nodes)),
+                ">" if self.dir in ("b", "r") else "~",
+                self.r_neigh,
+            ]
+        )
+
     def __repr__(self) -> str:
-        tokens = [
-            "FibSwapGroup(",
-            self.l_neigh,
-            "<" if self.dir in ("l", "b") else "~",
-            "-".join(f"[{n}]" if i == self.own_idx else n for (i, n) in enumerate(self.nodes)),
-            ">" if self.dir in ("b", "r") else "~",
-            self.r_neigh,
-            f", rank={self.rank})",
-        ]
-        return "".join(tokens)
+        return f"FibSwapGroup({self.repr_route()}, rank={self.rank})"
 
 
 class FibRequestGroup:

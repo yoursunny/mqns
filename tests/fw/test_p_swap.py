@@ -510,7 +510,7 @@ def test_5_sequential(swap: Sequence[int], su_lower: Sequence[int], etg_ms: tupl
 
 
 @pytest.mark.parametrize(
-    ("etg_ms", "swap_delay", "cutoff4", "t_release", "n_consumed"),
+    ("etg_ms", "swap_delay", "cutoffD", "t_release", "n_consumed"),
     [
         # 1. t=1.0010, A-B and B-C EPRs arrive, B starts swapping.
         # 2. t=1.0015, B completes swapping, heralds success to C.
@@ -542,20 +542,31 @@ def test_5_sequential(swap: Sequence[int], su_lower: Sequence[int], etg_ms: tupl
         #              B saves SwapTask awaiting heralding from C.
         # 4. t=1.0017, C receives B heralding, heralds success to D.
         # 5. t=1.0020, D discards qubit due to exceeding wait-time cut-off.
-        # 6. t=1.0022, D receives C heralding, cannot swap due to lack of D-E EPR.
+        # 6. t=1.0022, D receives C heralding, ignored because qubit has been discarded.
         # 7. t=1.0100, memory qubit decoheres at A.
         #              XXX Ideally, A should be informed so that it can release its qubit earlier.
         ((0, 0, 0, -1), 0.0002, 0.0010, (1.0100, 1.0012, 1.0012, 1.0020), 0),
+        # 1. t=1.0010, A-B and B-C and C-D EPRs arrive, B and C start swapping.
+        # 2. t=1.0012, C completes swapping, cannot herald either side.
+        #              C saves SwapTask awaiting heralding from B and D.
+        # 3. t=1.0012, B completes swapping, heralds success to C.
+        #              B saves SwapTask awaiting heralding from C.
+        # 4. t=1.0017, C receives B heralding, heralds success to D.
+        # 5. t=1.0022, D receives C heralding, cannot swap due to lack of D-E EPR.
+        # 6. t=1.0030, D discards qubit due to exceeding wait-time cut-off.
+        # 7. t=1.0100, memory qubit decoheres at A.
+        #              XXX Ideally, A should be informed so that it can release its qubit earlier.
+        ((0, 0, 0, -1), 0.0002, 0.0020, (1.0100, 1.0012, 1.0012, 1.0030), 0),
     ],
 )
 def test_5_decohere(
-    etg_ms: tuple[int, int, int], swap_delay: float, cutoff4: float | None, t_release: tuple[float, ...], n_consumed: int
+    etg_ms: tuple[int, int, int], swap_delay: float, cutoffD: float | None, t_release: tuple[float, ...], n_consumed: int
 ):
     """Test short decoherence time in 5-node topology."""
     net, simulator = build_linear_network(5, t_cohere=0.010, fw={"p_swap": 1.0, "swap_delay": swap_delay}, end_time=2)
     fwA, fwB, fwC, fwD, fwE = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    swap_cutoff = None if cutoff4 is None else [-1, -1, -1, -1, cutoff4, cutoff4]
+    swap_cutoff = None if cutoffD is None else [-1, -1, -1, -1, cutoffD, cutoffD]
     rp = install_path(net, RoutingPathStatic("ABCDE", swap_cutoff=swap_cutoff))
     provide_entanglements(
         (etg_ms, (fwA, fwB, fwC, fwD, fwE)),
@@ -630,7 +641,7 @@ def test_rect_multipath(has_etg: tuple[int, int, int, int], n_swapped: tuple[int
 def test_tree2_dynepr(t_edge_etg: float, selected_path: tuple[int, int], n_consumed: tuple[int, int]):
     """Test MuxSchemeDynamicEpr in tree (height=2) topology."""
 
-    def select_path(epr: Entanglement, fib: Fib, path_ids: list[int]) -> int:
+    def select_path(path_ids: list[int], epr: Entanglement, fib: Fib) -> int:
         _ = fib
         if len(path_ids) != 2:
             chosen = path_ids[0]

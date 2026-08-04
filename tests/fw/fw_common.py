@@ -21,14 +21,7 @@ from mqns.network.fw import (
     RoutingPath,
 )
 from mqns.network.fw.fw_swap import ForwarderSwapProc
-from mqns.network.network import (
-    QuantumNetwork,
-    Request,
-    TimingMode,
-    TimingModeAsync,
-    TimingPhase,
-    sync_phase_handler,
-)
+from mqns.network.network import QuantumNetwork, Request, TimingMode, TimingModeAsync, TimingPhase, sync_phase_handler
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
 from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.event import QubitEntangledEvent, QubitReleasedEvent

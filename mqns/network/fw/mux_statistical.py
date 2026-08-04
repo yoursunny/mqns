@@ -1,6 +1,6 @@
 from collections import defaultdict
 from collections.abc import Callable
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Literal, override
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
@@ -10,9 +10,9 @@ from mqns.network.fw.fib import FibEntry
 from mqns.network.fw.message import PathInstructions, validate_path_instructions
 from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.select import (
-    MemoryEprIterator,
     MemoryEprTuple,
     call_select,
+    parse_select,
     select_random,
     select_swap_qubit_newest,
     select_swap_qubit_oldest,
@@ -35,28 +35,17 @@ class MuxSchemeDynamicBase(MuxScheme):
         assert "m_v" not in instructions
 
     @override
-    def install_path_adj(
-        self,
-        instructions: PathInstructions,
-        fib_entry: FibEntry,
-        direction: PathDirection,
-        qchannel: QuantumChannel,
-    ) -> None:
-        _ = instructions, direction
-        self.qchannel_paths_map[qchannel.name].append(fib_entry.path_id)
+    def install_path_adj(self, inst: PathInstructions, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+        _ = inst, dir
+        self.qchannel_paths_map[ch.name].append(fib_entry.path_id)
 
     @override
-    def uninstall_path_adj(
-        self,
-        fib_entry: FibEntry,
-        direction: PathDirection,
-        qchannel: QuantumChannel,
-    ) -> None:
-        _ = direction
-        paths = self.qchannel_paths_map[qchannel.name]
+    def uninstall_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+        _ = dir
+        paths = self.qchannel_paths_map[ch.name]
         paths.remove(fib_entry.path_id)
         if len(paths) == 0:
-            del self.qchannel_paths_map[qchannel.name]
+            del self.qchannel_paths_map[ch.name]
 
     @override
     def qubit_has_path_id(self) -> bool:
@@ -91,9 +80,9 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
     def __init__(
         self,
         *,
-        select_swap_qubit: SelectSwapQubit | None = None,
+        select_swap_qubit: SelectSwapQubit | Literal["random", "oldest", "newest"] | None = None,
         coordinated_decisions=False,
-        select_path: SelectPath | None = None,
+        select_path: SelectPath | Literal["random"] | None = None,
     ):
         """
         Args:
@@ -108,9 +97,9 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
                 This has no effect unless coordinated_decisions is True.
         """
         super().__init__()
-        self._select_swap_qubit = select_swap_qubit
+        self._select_swap_qubit = parse_select(type(self), "SelectSwapQubit_", select_swap_qubit)
         self.coordinated_decisions = coordinated_decisions
-        self._select_path = select_path
+        self._select_path = parse_select(type(self), "SelectPath_", select_path)
 
     @override
     def validate_path_instructions(self, instructions: PathInstructions):
@@ -148,25 +137,31 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         return None
 
     @override
-    def find_swap_candidate(
-        self, mq0: MemoryQubit, epr0: Entanglement, fib_entry: FibEntry | None, input: MemoryEprIterator
+    def find_swap_with(
+        self,
+        mq0: MemoryQubit,
+        epr0: Entanglement,
+        fib_entry: FibEntry | None,
     ) -> tuple[MemoryQubit, FibEntry] | None:
         mq0_path_ids = set(unwrap_cast(mq0.epr_path_ids))
+
+        candidates = self.memory.find(
+            lambda q, v: (
+                self.qubits_swappable(mq0, q)  # basic condition met
+                and not mq0_path_ids.isdisjoint(unwrap_cast(q.epr_path_ids))  # has overlapping epr_path_ids
+                and (
+                    not self.coordinated_decisions  # uncoordinated
+                    or v.affectionated_path_id < 0  # no existing decision
+                    or v.affectionated_path_id in mq0_path_ids  # compatible decisions
+                )
+            ),
+            has=self.epr_type,
+        )
 
         # Find another qubit to swap with.
         # The qubit must have overlapping epr_path_ids so that there would be one or more viable paths.
         # In coordinated_decision mode, the physical path_id (written by parallel swapping) must also match.
-        mt1 = call_select(
-            (
-                (q, v)
-                for (q, v) in input
-                if not mq0_path_ids.isdisjoint(unwrap_cast(q.epr_path_ids))  # has overlapping epr_path_ids
-                and (not self.coordinated_decisions or v.affectionated_path_id < 0 or v.affectionated_path_id in mq0_path_ids)
-            ),
-            self._select_swap_qubit,
-            self.fw,
-            (mq0, epr0),
-        )
+        mt1 = call_select(candidates, self._select_swap_qubit, self.fw, (mq0, epr0))
         if mt1 is None:
             return None
         mq1, epr1 = mt1

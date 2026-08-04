@@ -153,12 +153,12 @@ class MemoryQubit:
 
     This is set by ``Forwarder`` upon entanglement and when completing a swap rank sequentially.
     It is invalid during parallel swap within a rank.
-
-    Note: this is a ``list`` instead of a ``set``, to ensure deterministic simulation.
     """
     epr_path_ids: list[int] | None = None
     """
     Which paths are compatible with the currently stored entanglement.
+
+    Note: this is a ``list`` instead of a ``set``, to ensure deterministic simulation.
     """
     purif_rounds = 0
     """Number of purification rounds completed by the EPR stored on this qubit."""

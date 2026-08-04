@@ -16,7 +16,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import copy
-from typing import Literal, TypedDict, Unpack, override
+from typing import Callable, Literal, TypedDict, Unpack, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin
 from mqns.entity.memory import MemoryDecohereEvent, MemoryQubit, PathDirection, QubitState
@@ -31,7 +31,7 @@ from mqns.network.fw.fw_purif import ForwarderPurifProc
 from mqns.network.fw.fw_swap import ForwarderSwapProc
 from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
-from mqns.network.fw.select import SelectPurifQubit, call_select_purif_qubit
+from mqns.network.fw.select import MemoryEprTuple, call_select
 from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
 from mqns.simulator import event_handler
@@ -51,7 +51,7 @@ class ForwarderInitKwargs(TypedDict, total=False):
     """EPR age cut-off scheme, default is wait-time."""
     mux: MuxScheme | None
     """Path multiplexing scheme, default is buffer-space."""
-    select_purif_qubit: SelectPurifQubit
+    select_purif_qubit: Callable[[list[MemoryEprTuple], MemoryQubit, FibEntry, QNode], MemoryEprTuple] | None
     """Qubit selection among purification candidates, default is picking first candidate."""
 
 
@@ -217,7 +217,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
 
         The actual processing is handled by the multiplexing scheme.
 
-        If a SwapUpdate was received before processing this event and buffered in ``self.waiting_su``,
+        If a SwapUpdate was received before processing this event and buffered in ``self.swap.waiting_su``,
         it is re-processed at this time.
 
         Args:
@@ -245,7 +245,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         _, epr = self.memory.read(mq.addr, has=self.epr_type)
         assert not epr.orig_eprs, f"{mq} is not elementary entanglement"
         fib_entry = self.mux.qubit_is_entangled(mq, epr, event.neighbor)
-        self.log_debug("ENTANGLED %s fib_entry=%s | %s", mq, fib_entry, epr)
+        self.log_debug("ENTANGLED %s path_id=%s | %s", mq, fib_entry.path_id if fib_entry else None, epr)
 
         match mq.state:
             case QubitState.PURIF:
@@ -307,14 +307,14 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
             ),
             has=self.epr_type,
         )
-        found = call_select_purif_qubit(self._select_purif_qubit, qubit, fib_entry, partner, candidates)
+        found = call_select(candidates, self._select_purif_qubit, qubit, fib_entry, partner)
         if not found:
             self.log_debug("no candidate EPR for segment %s purif round %s", segment_name, 1 + qubit.purif_rounds)
             return
 
         self.purif.start(qubit, found[0], fib_entry, partner)
 
-    def qubit_is_eligible(self, qubit: MemoryQubit, fib_entry: FibEntry | None):
+    def qubit_is_eligible(self, mq0: MemoryQubit, fib_entry: FibEntry | None):
         """
         Handle a qubit entering ELIGIBLE state.
 
@@ -330,32 +330,31 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
             qubit: The qubit that became eligible.
             fib_entry: FIB entry (not available with MuxSchemeStatistical).
         """
-        assert qubit.state is QubitState.ELIGIBLE, f"unexpected state {qubit.state}"
+        assert mq0.state is QubitState.ELIGIBLE, f"unexpected state {mq0.state}"
         self.cnt.n_eligible += 1
-        qubit.purif_rounds = 0
-        qubit.eligible_time = self.simulator.tc
+        mq0.purif_rounds = 0
+        mq0.eligible_time = self.simulator.tc
 
         if not self.node.timing.is_internal():
             self.log_debug("INT phase is over -> stop swaps")
             return
 
-        _, epr = self.memory.read(qubit.addr, has=self.epr_type)
-        if self._try_consume(qubit, epr, fib_entry):
+        _, epr0 = self.memory.read(mq0.addr, has=self.epr_type)
+        if self._try_consume(mq0, epr0, fib_entry):
             return
 
-        swap_candidates = self.memory.find(
-            lambda q, _: (
-                q.state is QubitState.ELIGIBLE  # in ELIGIBLE state
-                and q.qchannel is not qubit.qchannel  # assigned to a different channel
-            ),
-            has=self.epr_type,
-        )
-        if swap_candidate := self.mux.find_swap_candidate(qubit, epr, fib_entry, swap_candidates):
-            mq1, fib_entry = swap_candidate
-            self.cutoff.before_swap(qubit, mq1, fib_entry)
-            self.swap.start(qubit, mq1, fib_entry)
+        swap_decision = self.mux.find_swap_with(mq0, epr0, fib_entry)
+        if swap_decision:
+            mq1, fib_entry = swap_decision
+            self.cutoff.before_swap(mq0, mq1, fib_entry)
+            if fib_entry.route.index(unwrap_cast(mq0.partner)[0].name) < fib_entry.route.index(
+                unwrap_cast(mq1.partner)[0].name
+            ):
+                self.swap.start(mq0, mq1, fib_entry)
+            else:
+                self.swap.start(mq1, mq0, fib_entry)
         else:
-            self.cutoff.before_store_eligible(qubit, PathDirection.L if epr.dst is self.node else PathDirection.R, fib_entry)
+            self.cutoff.before_store_eligible(mq0, PathDirection.L if epr0.dst is self.node else PathDirection.R, fib_entry)
 
     def _try_consume(self, qubit: MemoryQubit, epr: Entanglement, fib_entry: FibEntry | None) -> bool:
         """
@@ -383,7 +382,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         assert self.node.timing.is_async(), f"unexpected {event} in SYNC timing mode, (t_ext+t_int) too high"
         self.release_qubit(event.qubit, is_decoh=True)
 
-    def release_qubit(self, qubit: MemoryQubit, *, need_remove=False, is_decoh=False, is_cutoff=False):
+    def release_qubit(self, qubit: MemoryQubit, *, need_remove=False, is_decoh=False):
         """
         Release a qubit.
 
@@ -391,13 +390,12 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
             need_remove: Whether to remove the data associated with the qubit.
                          This should be set to True unless .read(remove=True) is already performed.
             is_decoh: Whether the release was caused by MemoryDecohereEvent.
-            is_cutoff: Whether the release was caused by CutoffScheme.
         """
         if need_remove:
             self.memory.read(qubit.addr, remove=True)
 
-        if is_decoh or is_cutoff:
-            self.swap.handle_decohere(qubit)
+        if is_decoh:
+            self.swap.handle_decohere(unwrap_cast(qubit.key))
 
         qubit.state = QubitState.RELEASE
         event = QubitReleasedEvent(self.node, qubit, is_decoh=is_decoh, t=self.simulator.tc)

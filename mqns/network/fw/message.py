@@ -152,29 +152,18 @@ class SwapUpdateMsg(TypedDict):
     path_id: int
     """FIB entry path ID to guide classical forwarding of this message."""
 
-    o_node: str
+    swapper: str
     """
     Node that performed the swap.
     This would be the sender of this message.
     """
-    l_node: str
-    """
-    Leftmost node of the swapped EPR.
-    This would be either the recipient of this message or its opposite partner.
-    """
-    r_node: str
-    """
-    Rightmost node of the swapped EPR.
-    This would be either the recipient of this message or its opposite partner.
-    """
 
-    l_key: str
+    ends: list[str]
     """
-    Qubit reservation key at ``l_node``.
-    """
-    r_key: str
-    """
-    Qubit reservation key at ``r_node``.
+    Left and right ends of the swapped EPR.
+
+    * [0] and [2] are the two node names, one of which would be the recipient of this message.
+    * [1] and [3] are the corresponding qubit reservation keys.
     """
 
     expiry: int
@@ -183,4 +172,4 @@ class SwapUpdateMsg(TypedDict):
     If positive, time slot of qubit decoherence based on heralded knowledge.
     """
     q_paths: list[int]
-    """Possible path IDs for the entanglement between ``l_node`` and ``r_node``."""
+    """Possible path IDs for the entanglement between left and right ends."""

@@ -6,6 +6,7 @@ from mqns.network.fw.fib import FibEntry
 from mqns.network.fw.fw_module import ForwarderModule, fw_signaling_cmd_handler
 from mqns.network.fw.message import CutoffDiscardMsg
 from mqns.simulator import Event, Time
+from mqns.utils import unwrap_cast
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
@@ -37,12 +38,18 @@ class CutoffScheme(ForwarderModule, ABC):
         """
         fw = self.fw
 
+        o_key = unwrap_cast(qubit.key)
+
         # Find EPR partner.
         assert qubit.partner
         partner, p_key = qubit.partner
         self.log_debug(
-            "local cutoff discard key=%s addr=%s round=%s partner=%s:%s", qubit.key, qubit.addr, round, partner.name, p_key
+            "local cutoff discard key=%s addr=%s round=%s partner=%s:%s", o_key, qubit.addr, round, partner.name, p_key
         )
+
+        # Inform SwapProc.
+        if round == -1:
+            fw.swap.handle_decohere(o_key)
 
         # Discard primary qubit.
         fw.cnt.increment_n_cutoff(round, True)
@@ -68,6 +75,10 @@ class CutoffScheme(ForwarderModule, ABC):
         fw = self.fw
         o_key = msg["key"]
         round = msg["round"]
+
+        # Inform SwapProc.
+        if round == -1:
+            fw.swap.handle_decohere(o_key)
 
         # Find qubit.
         qm_tuple = fw.memory.read(o_key, remove=True)

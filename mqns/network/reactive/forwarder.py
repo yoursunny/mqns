@@ -17,24 +17,27 @@
 
 from typing import Unpack, override
 
-from mqns.network.fw import Forwarder, ForwarderInitKwargs, ForwarderNorthbound
+from mqns.entity.memory import PathDirection
+from mqns.entity.qchannel import QuantumChannel
+from mqns.network.fw import FibEntry, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
 from mqns.network.network import TimingPhase, sync_phase_handler
-from mqns.network.protocol.event import ManageActiveChannel
+from mqns.network.protocol.event import PathActivateEvent
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
 
 
 class ReactiveForwarderNorthbound(ForwarderNorthbound):
     @override
-    def handle_path_change(self, *, path_id: int, uninstall: bool, **_):
-        """
-        Process LinkLayer changes after a path has been installed or uninstalled.
-
-        This does nothing because LinkLayer is always running based on topology.
-        """
-        if uninstall:
-            raise ValueError("ReactiveForwarder should not receive UNINSTALL_PATH command")
+    def install_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+        _ = dir, ch
         if not self.node.timing.is_routing():
-            self.log_warning("received INSTALL_PATH message for path %s outside of ROUTING phase; t_rtg is too short?", path_id)
+            self.log_warning(
+                "received INSTALL_PATH message for path %s outside of ROUTING phase; t_rtg is too short?", fib_entry.path_id
+            )
+
+    @override
+    def uninstall_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+        _ = fib_entry, dir, ch
+        raise ValueError(f"{self} should not receive UNINSTALL_PATH command")
 
     def send_link_state(self):
         """
@@ -84,17 +87,8 @@ class ReactiveForwarder(Forwarder):
 
     def activate_qchannels(self):
         for ch in self.node.qchannels:
-            self.log_debug("activate qchannel %s", ch.name)
-            self.simulator.add_event(
-                ManageActiveChannel(
-                    self.node,
-                    ch,
-                    path_id=None,
-                    start=True,
-                    is_primary=ch.node_list[0] is self.node,
-                    t=self.simulator.tc,
-                )
-            )
+            is_primary = ch.node_list[0] is self.node
+            self.simulator.add_event(PathActivateEvent(self.node, ch, None, t=self.simulator.tc, is_primary=is_primary))
 
     @sync_phase_handler(TimingPhase.ROUTING, True)
     def sync_routing_enter(self):

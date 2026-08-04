@@ -17,23 +17,23 @@
 
 from collections import deque
 from collections.abc import Iterable
-from typing import Final, Literal, TypedDict, override
+from typing import Final, Literal, TypedDict, final, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
 from mqns.entity.memory import MemoryQubit, QubitState
 from mqns.entity.node import Application, QNode
 from mqns.entity.qchannel import QuantumChannel
-from mqns.models.epr import Entanglement
 from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import (
-    LinkArchNotifyDstEvent,
-    LinkArchNotifySrcEvent,
-    ManageActiveChannel,
+    LinkArchNotify2ndEvent,
+    LinkArchNotifyPriEvent,
+    PathActivateEvent,
+    PathDeactivateEvent,
     QubitEntangledEvent,
     QubitReleasedEvent,
 )
 from mqns.simulator import event_handler
-from mqns.utils import AutoIncrementIdentifier, json_encodable, rng, unwrap, unwrap_cast
+from mqns.utils import AutoIncrementIdentifier, json_encodable, rng, unwrap
 
 _AUTOID = AutoIncrementIdentifier("llk_")
 """
@@ -61,6 +61,7 @@ class ReserveMsg(TypedDict):
     """
 
 
+@final
 class _ActivePath:
     """
     LinkLayer data structure related to an active path in an active quantum channel.
@@ -73,7 +74,7 @@ class _ActivePath:
     Path identifier.
 
     LinkLayer considers ``None`` as a valid path_id (rather than an absent value), because the forwarder's
-    multiplexing scheme may not need to allocate each qubit to a particular path_id.
+    multiplexing scheme may not need to allocate each qubit to an integer path_id.
     """
 
     insertion_count: int
@@ -85,7 +86,7 @@ class _ActivePath:
     oreq_table: dict[str, int]
     """
     Table of outgoing RESERVE_REQ sent by this node for which a reply has not arrived.
-    This is only used on the primary node of the channel.
+    This field only exists on the primary node of the channel.
     Key is reservation key.
     Value is qubit address.
     """
@@ -93,17 +94,20 @@ class _ActivePath:
     ireq_queue: deque[str]
     """
     Queue of incoming RESERVE_REQ received by this node that has not been fulfilled.
-    This is only used on the secondary node of the channel.
+    This field only exists on the secondary node of the channel.
     Element is reservation key.
     """
 
-    def __init__(self, path_id: int | None):
+    def __init__(self, path_id: int | None, is_primary: bool):
         self.path_id = path_id
         self.insertion_count = 0
-        self.oreq_table = {}
-        self.ireq_queue = deque()
+        if is_primary:
+            self.oreq_table = {}
+        else:
+            self.ireq_queue = deque()
 
 
+@final
 class _ActiveChannel:
     """
     LinkLayer data structure related to an active quantum channel.
@@ -245,11 +249,14 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         In SYNC timing mode, exit EXTERNAL phase.
         """
         for ac in self.channels.values():
-            for ap in ac.paths.values():
+            if ac.is_primary:
                 # Clear incomplete reservations.
-                ap.oreq_table.clear()
+                for ap in ac.paths.values():
+                    ap.oreq_table.clear()
+            else:
                 # Clear unsatisfied reservation requests.
-                ap.ireq_queue.clear()
+                for ap in ac.paths.values():
+                    ap.ireq_queue.clear()
 
     @sync_phase_handler(TimingPhase.INTERNAL, False)
     def sync_internal_exit(self) -> None:
@@ -260,50 +267,46 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         self.memory.clear()
 
     @event_handler
-    def handle_manage_active_channels(self, event: ManageActiveChannel) -> None:
+    def path_activate(self, event: PathActivateEvent) -> None:
+        """
+        Handle path activation command.
+        """
         event.cancel()
-        if event.start:
-            self._activate_channel(event.qchannel, event.is_primary, event.path_id)
-        else:
-            self._deactivate_channel(event.qchannel, event.path_id)
-
-    def _activate_channel(self, ch: QuantumChannel, is_primary: bool, path_id: int | None) -> None:
-        """
-        Handle channel activation command from ``ManageActiveChannel`` event.
-
-        Args:
-            ch: Quantum channel.
-            is_primary: Role of this node on this channel.
-            path_id: Act only on qubits allocated to a path.
-        """
+        ch = event.qchannel
         partner = ch.find_peer(self.node)
+        path_id = event.path_id
 
         ac = self.channels.get(partner.name)
-        if ac:
-            assert ac.is_primary is is_primary, f"{self}: inconsistent is_primary on {ch.name}"
-        else:
-            ac = _ActiveChannel(ch, partner, is_primary)
+        if not ac:
+            ac = _ActiveChannel(ch, partner, event.is_primary)
             self.channels[partner.name] = ac
 
-            self._activate_channel_new(ac)
+            self._path_activate_channel(ac)
 
         ap = ac.paths.get(path_id)
         if not ap:
-            ap = _ActivePath(path_id)
+            ap = _ActivePath(path_id, ac.is_primary)
             ac.paths[path_id] = ap
 
             addrs = list(q.addr for q, _ in self.memory.find(lambda *_: True, qchannel=ch))
-            self.log_debug("adding path %s in qchannel %s, assigned qubits %s", path_id, ch.name, addrs)
+            self.log_debug(
+                "PATH_ACTIVATE_%s %s path=%s partner=%s has-addrs=%s",
+                PathActivateEvent.ROLE_STR[ac.is_primary],
+                ch.name,
+                path_id,
+                partner.name,
+                addrs,
+            )
 
         ap.insertion_count += 1
 
-        if is_primary and self.node.timing.is_async():
+        if ac.is_primary and self.node.timing.is_async():
             self.run_channel(ac, ap)
 
-    def _activate_channel_new(self, ac: _ActiveChannel) -> None:
+    def _path_activate_channel(self, ac: _ActiveChannel) -> None:
         ch = ac.qchannel
         if not ac.is_primary:
-            self.log_debug("activating qchannel %s as secondary with partner %s", ch.name, ac.partner.name)
+            self.log_debug("CHANNEL_ACTIVATE_2nd %s partner=%s", ch.name, ac.partner.name)
             return
 
         # link_arch.set() may be called multiple times in several situations:
@@ -325,24 +328,25 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         epr_tpl, t_notify_a, t_notify_b = ch.link_arch.make_epr(1, self.simulator.ts, src=self.node, dst=ac.partner, key=None)
 
         self.log_debug(
-            "activating qchannel %s as primary with partner %s, link arch %s, EPR template %s t_notify_a=%s t_notify_b=%s",
+            "CHANNEL_ACTIVATE_pri %s partner=%s link_arch=%s t_notify=%s,%s | template %s",
             ch.name,
             ac.partner.name,
             ch.link_arch.name,
-            epr_tpl,
             t_notify_a,
             t_notify_b,
+            epr_tpl,
         )
 
-    def _deactivate_channel(self, ch: QuantumChannel, path_id: int | None) -> None:
+    @event_handler
+    def path_deactivate(self, event: PathDeactivateEvent) -> None:
         """
-        Handle channel deactivation command from ``ManageActiveChannel`` event.
-
-        Args:
-            ch: Quantum channel.
-            path_id: Act only on qubits allocated to a path.
+        Handle path deactivation command.
         """
+        event.cancel()
+        ch = event.qchannel
         partner = ch.find_peer(self.node)
+        path_id = event.path_id
+
         ac = self.channels[partner.name]
         assert ac.qchannel is ch
 
@@ -360,14 +364,19 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             addrs.append(mq.addr)
 
         del ac.paths[path_id]
-        self.log_debug("removing path %s in qchannel %s, reset-addrs=%s", path_id, ch.name, addrs)
+        self.log_debug(
+            "PATH_DEACTIVATE_%s %s path=%s partner=%s reset-addrs=%s",
+            PathActivateEvent.ROLE_STR[ac.is_primary],
+            ch.name,
+            path_id,
+            partner.name,
+            addrs,
+        )
         if len(ac.paths) > 0:
             return
 
         del self.channels[partner.name]
-        self.log_debug(
-            "deactivating qchannel %s as %s with partner %s", ch.name, ManageActiveChannel.ROLE_STR[ac.is_primary], partner.name
-        )
+        self.log_debug("CHANNEL_DEACTIVATE_%s %s partner=%s", PathActivateEvent.ROLE_STR[ac.is_primary], ch.name, partner.name)
 
     def run_channel(self, ac: _ActiveChannel, ap: _ActivePath | None = None) -> None:
         """
@@ -544,10 +553,10 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         # the EPR would not arrive in time, and therefore is not scheduled.
         if not src.timing.is_external(max(t_notify_a, t_notify_b)):
             self.log_debug(
-                "skip prepare EPR %s key=%s dst=%s attempts=%s notify-times=%s,%s reason=beyond-external-phase",
+                "EPR_SKIP %s dst=%s key=%s attempts=%s notify-times=%s,%s reason=beyond-external-phase",
                 epr.name,
-                key,
                 dst.name,
+                key,
                 k,
                 t_notify_a,
                 t_notify_b,
@@ -557,44 +566,49 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         # If the network uses ASYNC timing mode or the successful attempt can complete within the current EXTERNAL phase,
         # schedule the EPR arrival on both nodes via LinkArchSuccessEvents.
         self.log_debug(
-            "prepare EPR %s key=%s dst=%s attempts=%s notify-times=%s,%s", epr.name, key, dst.name, k, t_notify_a, t_notify_b
+            "EPR_PREPARE %s dst=%s key=%s attempts=%s notify-times=%s,%s", epr.name, dst.name, key, k, t_notify_a, t_notify_b
         )
 
-        self.simulator.add_event(LinkArchNotifySrcEvent(key, epr, t=t_notify_a, attempts=k))
-        self.simulator.add_event(LinkArchNotifyDstEvent(key, epr, t=t_notify_b))
+        self.simulator.add_event(LinkArchNotifyPriEvent(key, epr, t=t_notify_a, attempts=k))
+        self.simulator.add_event(LinkArchNotify2ndEvent(key, epr, t=t_notify_b))
 
     def _calc_attempt(self, qchannel: QuantumChannel) -> int:
         return rng.geometric(qchannel.link_arch.success_prob)
 
     @event_handler
-    def _la_notify_src(self, event: LinkArchNotifySrcEvent) -> None:
-        event.cancel()
+    def _la_notify_pri(self, event: LinkArchNotifyPriEvent) -> None:
         self.cnt.increment_n_etg(event.attempts)
-        epr = event.epr
-        self._la_notify(event.key, epr, "primary", "dst", unwrap_cast(epr.dst))
+        self._la_notify("pri", event)
 
     @event_handler
-    def _la_notify_dst(self, event: LinkArchNotifyDstEvent) -> None:
-        event.cancel()
-        epr = event.epr
-        self._la_notify(event.key, epr, "secondary", "src", unwrap_cast(epr.src))
+    def _la_notify_2nd(self, event: LinkArchNotify2ndEvent) -> None:
+        self._la_notify("2nd", event)
 
-    def _la_notify(self, key: str, epr: Entanglement, own_role: str, partner_role: str, partner: QNode) -> None:
+    def _la_notify(self, own_role: str, event: LinkArchNotifyPriEvent | LinkArchNotify2ndEvent) -> None:
+        event.cancel()
         assert self.node.timing.is_external()
+        partner = event.partner
+        key = event.key
+        epr = event.epr
         try:
             mq = self.memory.write(key, epr)
         except LookupError:
             # Path was deactivated and qubit was deallocated.
-            self.log_debug("EPR-notify-%s %s ignored key=%s reason=qubit-not-found", own_role, epr.name, key)
+            self.log_debug(
+                "EPR_SKIP_%s %s partner=%s key=%s reason=qubit-not-found",
+                own_role,
+                epr.name,
+                partner.name,
+                key,
+            )
             return
 
         self.log_debug(
-            "EPR-notify-%s %s delivered key=%s %s=%s addr=%s path=%s",
+            "EPR_DELIVER_%s %s partner=%s key=%s addr=%s path=%s",
             own_role,
             epr.name,
+            partner.name,
             key,
-            partner_role,
-            partner,
             mq.addr,
             mq.path_id,
         )

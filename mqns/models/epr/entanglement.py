@@ -64,6 +64,9 @@ class EntanglementInitKwargs(TypedDict, total=False):
 class Entanglement(QuantumModel):
     """Base entanglement model."""
 
+    name: str
+    """Descriptive name."""
+
     is_decohered: bool = False
     """
     Whether the entanglement has decohered.
@@ -71,12 +74,34 @@ class Entanglement(QuantumModel):
     This reflects the hidden physical state.
     It must not be used to guide decision prior to measurement.
     """
+    decohere_time: Time
+    """
+    EPR decoherence time point, when it would be removed from memory.
 
-    ch_index: int = -1
+    * Upon creating a memory-memory EPR, this is assigned according to memory ``t_cohere``.
+        If the two qubits are stored in memories with different dephasing times, the shorter value is used.
+    * Upon swapping, the oldest decoherence time point is used.
+    * Upon purification, the decoherence time point is unchanged.
+    * Some operations are unavailable if this is ``Time.SENTINEL``.
     """
-    Index of elementary entanglement in a path, smaller indices are on the left side.
-    Negative means this is not an elementary entanglement.
+    fidelity_time: Time
     """
+    Fidelity update time point, reflecting when fidelity values are last updated.
+
+    * Upon creating a memory-memory EPR, this is assigned according to the EPR creation time.
+    * This may be updated to the current time at any time, while ``store_decays`` is applied to the EPR.
+    * Some operations are unavailable if this is ``Time.SENTINEL``.
+    """
+
+    src: "QNode|None"
+    """Left node that holds one of the entangled qubits."""
+    dst: "QNode|None"
+    """Right node that holds one of the entangled qubits."""
+    mem_keys: tuple[str, str]
+    """MemoryQubit reservation keys at src and dst."""
+    store_decays: tuple[TimeDecayFunc, TimeDecayFunc]
+    """Memory time-based decay functions at src and dst."""
+
     orig_eprs: list[Self] | None = None
     """Elementary entanglements that swapped into this entanglement."""
     affectionated_path_id: int = -1
@@ -103,37 +128,17 @@ class Entanglement(QuantumModel):
         """
         name = kwargs.get("name")
         self.name = _AUTOID() if name is None else name
-        """Descriptive name."""
 
         self.decohere_time = kwargs.get("decohere_time", Time.SENTINEL)
-        """
-        EPR decoherence time point, when it would be removed from memory.
-
-        * Upon creating a memory-memory EPR, this is assigned according to memory ``t_cohere``.
-          If the two qubits are stored in memories with different dephasing times, the shorter value is used.
-        * Upon swapping, the oldest decoherence time point is used.
-        * Upon purification, the decoherence time point is unchanged.
-        * Some operations are unavailable if this is ``Time.SENTINEL``.
-        """
         self.fidelity_time = kwargs.get("fidelity_time", Time.SENTINEL)
-        """
-        Fidelity update time point, reflecting when fidelity values are last updated.
-
-        * Upon creating a memory-memory EPR, this is assigned according to the EPR creation time.
-        * This may be updated to the current time at any time, while ``store_decays`` is applied to the EPR.
-        * Some operations are unavailable if this is ``Time.SENTINEL``.
-        """
 
         self.src = kwargs.get("src")
-        """Left node that holds one of the entangled qubits."""
         self.dst = kwargs.get("dst")
-        """Right node that holds one of the entangled qubits."""
         key0, key1 = kwargs.get("mem_keys", (None, None))
         self.mem_keys = key0 or "", key1 or ""
         """MemoryQubit reservation keys at src and dst."""
         decay0, decay1 = kwargs.get("store_decays", (None, None))
         self.store_decays = decay0 or time_decay_nop, decay1 or time_decay_nop
-        """Memory time-based decay functions at src and dst."""
 
     @property
     @abstractmethod
@@ -148,6 +153,19 @@ class Entanglement(QuantumModel):
     @abstractmethod
     def fidelity(self, value: float):
         pass
+
+    def flip_direction(self) -> None:
+        """
+        Reverse the direction between src and dst.
+        """
+        self.src, self.dst = self.dst, self.src
+        self.mem_keys = self.mem_keys[1], self.mem_keys[0]
+        self.store_decays = self.store_decays[1], self.store_decays[0]
+        if self.orig_eprs:
+            self.orig_eprs.reverse()
+            for oe in self.orig_eprs:
+                oe.flip_direction()
+        self.consumed_sides = ((self.consumed_sides & 0b01) << 1) | ((self.consumed_sides & 0b10) >> 1)
 
     def apply_store_decays(self, now: Time) -> None:
         """
@@ -356,11 +374,8 @@ def _describe(epr: Entanglement) -> Iterable[str]:
     if epr.src and epr.dst:
         yield f"src={epr.src.name}"
         yield f"dst={epr.dst.name}"
-        if epr.ch_index >= 0:
-            yield f"ch_index={epr.ch_index}"
-        elif epr.orig_eprs:
-            orig_eprs = ",".join(e.name for e in epr.orig_eprs)
-            yield f"orig_eprs=[{orig_eprs}]"
+        if epr.orig_eprs:
+            yield f"orig_eprs=[{','.join(e.name for e in epr.orig_eprs)}]"
 
     if epr.affectionated_path_id >= 0:
         yield f"affectionated_path_id={epr.affectionated_path_id}"

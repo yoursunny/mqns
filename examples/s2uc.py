@@ -184,7 +184,7 @@ def run_simulation(seed: int, args: Args, duration: float, w: tuple[float, float
             swap_delay=340e-6,
             swap_error="PERFECT",  # no error applied by the swap gates
             swap_error_at="f",  # memory decoherence continues during swap
-            mux=MuxSchemeBufferSpace(select_swap_qubit=getattr(MuxSchemeBufferSpace, f"SelectSwapQubit_{args.ssq}")),
+            mux=MuxSchemeBufferSpace(select_swap_qubit=args.ssq),
         )
         .request(
             "S-D",
