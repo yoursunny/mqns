@@ -383,7 +383,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         assert self.node.timing.is_async(), f"unexpected {event} in SYNC timing mode, (t_ext+t_int) too high"
         self.release_qubit(event.qubit, is_decoh=True)
 
-    def release_qubit(self, qubit: MemoryQubit, *, need_remove=False, is_decoh=False, is_cutoff=False):
+    def release_qubit(self, qubit: MemoryQubit, *, need_remove=False, is_decoh=False):
         """
         Release a qubit.
 
@@ -391,13 +391,12 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
             need_remove: Whether to remove the data associated with the qubit.
                          This should be set to True unless .read(remove=True) is already performed.
             is_decoh: Whether the release was caused by MemoryDecohereEvent.
-            is_cutoff: Whether the release was caused by CutoffScheme.
         """
         if need_remove:
             self.memory.read(qubit.addr, remove=True)
 
-        if is_decoh or is_cutoff:
-            self.swap.handle_decohere(qubit)
+        if is_decoh:
+            self.swap.handle_decohere(unwrap_cast(qubit.key))
 
         qubit.state = QubitState.RELEASE
         event = QubitReleasedEvent(self.node, qubit, is_decoh=is_decoh, t=self.simulator.tc)

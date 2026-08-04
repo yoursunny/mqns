@@ -395,18 +395,20 @@ class ForwarderSwapProc(ForwarderModule):
         self.remote_swapped.clear()
         self.task_by_qubit.clear()
 
-    def handle_decohere(self, mq: MemoryQubit) -> None:
+    def handle_decohere(self, key: str) -> None:
         """
-        Called by forwarder before releasing a qubit due to decoherence or CutOffScheme.
+        Cleanup state when releasing a qubit due to decoherence or CutOffScheme.
+
+        Args:
+            key: Qubit key.
         """
-        key = unwrap_cast(mq.key)
         deleted_from: list[str] = []
         if epr := self.remote_swapped.pop(key, None):
             epr.is_decohered = True
             deleted_from.append(f"remote_swapped[{key}]")
         if self.task_by_qubit.pop(key, None):
             deleted_from.append(f"task_by_qubit[{key}]")
-        self.log_debug("DECOHERE key=%s deleted-from=%s", mq.key, deleted_from)
+        self.log_debug("DECOHERE key=%s deleted-from=%s", key, deleted_from)
 
     def _heralds(self, heralds: list[_SwapHerald]) -> None:
         """
