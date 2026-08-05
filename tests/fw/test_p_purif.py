@@ -77,7 +77,7 @@ def test_link_rounds(monkeypatch: pytest.MonkeyPatch, n_rounds: int, purif_succe
     assert RequestCounters.of(net, rp).n_consumed == n_eligible
 
 
-xfail_memory = pytest.mark.xfail(reason="UNINSTALL_PATH cleanup not implemented", raises=MemoryError, strict=True)
+xfail_memory = pytest.mark.xfail(reason="PATH_DELETE cleanup not implemented", raises=MemoryError, strict=True)
 _3u_purif = ([1.0000, 1.0010], []), -1, {"A-B": 1}, ([1.0025], [1.0020], [], [])
 _3u_purif_swap = ([1.0000, 1.0010], [1.0000]), *_3u_purif[1:-1], ([1.0025, 1.2035], [1.0020, 1.2030], [1.2030], [1.2035])
 _3u_cutoff = ([1.0000], []), 0.004, {}, ([1.0055], [1.0050], [], [])
@@ -147,7 +147,7 @@ def test_3_uninstall(
     purif: Mapping[str, int],
     t_raw: tuple[Sequence[float], ...],
 ):
-    """Test UNINSTALL_PATH cleanup during cut-off/swap/purify on 3-node topology."""
+    """Test PATH_DELETE cleanup during cut-off/swap/purify on 3-node topology."""
     net, simulator = build_linear_network(3, t_cohere=5.0, ch_capacity=2, fw={"p_swap": 1.0, "swap_delay": 0.2}, end_time=5.0)
     chAB = net.get_qchannel("A", "B")
     chBC = net.get_qchannel("B", "C")

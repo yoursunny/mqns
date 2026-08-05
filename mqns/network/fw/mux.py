@@ -13,7 +13,7 @@ class MuxScheme(ForwarderModule, ABC):
     """Path multiplexing scheme."""
 
     @abstractmethod
-    def validate_path_instructions(self, instructions: PathInstructions) -> None:
+    def validate_path_instructions(self, inst: PathInstructions) -> None:
         """Validate install_path instructions are compatible."""
 
     @abstractmethod

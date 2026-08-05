@@ -90,9 +90,9 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
         super().__init__(select_swap_qubit)
 
     @override
-    def validate_path_instructions(self, instructions: PathInstructions) -> None:
-        validate_path_instructions(instructions)
-        assert "m_v" in instructions
+    def validate_path_instructions(self, inst: PathInstructions) -> None:
+        validate_path_instructions(inst)
+        assert "m_v" in inst
 
     @override
     def install_path_adj(self, inst: PathInstructions, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:

@@ -48,41 +48,41 @@ def test_path_validation():
     mv3 = [(1, 1)] * 2
 
     with pytest.raises(ValueError, match="route is empty"):
-        validate_path_instructions({"req_id": 0, "route": [], "swap": [], "swap_cutoff": [], "purif": {}})
+        validate_path_instructions({"path_id": 0, "route": [], "swap": [], "swap_cutoff": [], "purif": {}})
 
     with pytest.raises(ValueError, match="swapping order"):
         validate_path_instructions(
-            {"req_id": 0, "route": ["A", "B", "C", "D", "E"], "swap": swap3, "swap_cutoff": scut3, "purif": {}}
+            {"path_id": 0, "route": ["A", "B", "C", "D", "E"], "swap": swap3, "swap_cutoff": scut3, "purif": {}}
         )
 
     with pytest.raises(ValueError, match="swap_cutoff"):
         validate_path_instructions(
-            {"req_id": 0, "route": route3, "swap": swap3, "swap_cutoff": [2000, 1000, 1000], "purif": {}}
+            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": [2000, 1000, 1000], "purif": {}}
         )
 
     with pytest.raises(ValueError, match="multiplexing vector"):
         validate_path_instructions(
-            {"req_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": [(1, 1)] * 3, "purif": {}}
+            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": [(1, 1)] * 3, "purif": {}}
         )
 
     with pytest.raises(ValueError, match="purif segment"):
         validate_path_instructions(
-            {"req_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"P-Q": 1}}
+            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"P-Q": 1}}
         )
 
     with pytest.raises(ValueError, match="purif segment"):
         validate_path_instructions(
-            {"req_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"A-B-C": 1}}
+            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"A-B-C": 1}}
         )
 
     with pytest.raises(ValueError, match="purif segment"):
         validate_path_instructions(
-            {"req_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"B-B": 1}}
+            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"B-B": 1}}
         )
 
     with pytest.raises(ValueError, match="purif segment"):
         validate_path_instructions(
-            {"req_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"C-A": 1}}
+            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"C-A": 1}}
         )
 
 

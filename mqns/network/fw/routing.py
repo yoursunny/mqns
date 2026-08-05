@@ -89,7 +89,7 @@ class RoutingPath(ABC):
 
         Returns:
             A generator of path instructions.
-            They will be installed into the nodes.
+            The ``path_id`` field shall be overwritten by the caller.
         """
 
     def _make_path_instructions(
@@ -100,8 +100,8 @@ class RoutingPath(ABC):
         m_v: MultiplexingVector | None = None,
     ) -> PathInstructions:
         swap = parse_swap_sequence(self.swap, route)
-        instructions: PathInstructions = {
-            "req_id": self.req_id,
+        inst: PathInstructions = {
+            "path_id": -1,
             "route": route,
             "swap": swap,
             "purif": self.purif,
@@ -109,15 +109,15 @@ class RoutingPath(ABC):
 
         if self.swap_cutoff is not None:
             accuracy = net.simulator.accuracy
-            instructions["swap_cutoff"] = [-1 if t < 0 else Time.sec_to_time_slot(t, accuracy) for t in self.swap_cutoff]
+            inst["swap_cutoff"] = [-1 if t < 0 else Time.sec_to_time_slot(t, accuracy) for t in self.swap_cutoff]
 
         if m_v is None:
             m_v = self._compute_mv(net, route)
         if m_v is not None:
-            instructions["m_v"] = m_v
+            inst["m_v"] = m_v
 
-        validate_path_instructions(instructions)
-        return instructions
+        validate_path_instructions(inst)
+        return inst
 
     def _compute_mv(self, net: QuantumNetwork, route: Sequence[str]) -> MultiplexingVector | None:
         _ = net

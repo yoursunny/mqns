@@ -5,7 +5,7 @@ from mqns.entity.memory import PathDirection
 from mqns.entity.qchannel import QuantumChannel
 from mqns.network.fw.fib import FibEntry
 from mqns.network.fw.fw_module import ForwarderModule, fw_control_cmd_handler
-from mqns.network.fw.message import InstallPathMsg, UninstallPathMsg
+from mqns.network.fw.message import PathDeleteMsg, PathInsertMsg, PathInstructions
 from mqns.network.fw.mux import MuxScheme
 from mqns.simulator import Time, func_to_event
 
@@ -25,36 +25,45 @@ class ForwarderNorthbound(ForwarderModule):
         self.mux = fw.mux
         self._fib_erase_delay = self.simulator.time(time_slot=4 * self.memory.t_cohere.time_slot)
 
-    @fw_control_cmd_handler("INSTALL_PATH")
-    def handle_install_path(self, msg: InstallPathMsg) -> None:
-        """Process an INSTALL_PATH control command."""
-        path_id = msg["path_id"]
-        instructions = msg["instructions"]
-        self.mux.validate_path_instructions(instructions)
+    @fw_control_cmd_handler("PATH_INSERT")
+    def handle_path_insert(self, msg: PathInsertMsg) -> None:
+        """Process a PATH_INSERT control command."""
+        req_id = msg["req_id"]
+        for inst in msg["paths"]:
+            self._path_insert(req_id, inst)
+
+    def _path_insert(self, req_id: int, inst: PathInstructions) -> None:
+        route = inst["route"]
+        if self.node.name not in route:
+            # PATH_INSERT command may contain a path that does not traverse this node.
+            # These paths are silently skipped.
+            return
+
+        path_id = inst["path_id"]
+        self.mux.validate_path_instructions(inst)
 
         # Insert FIB entry.
-        route = instructions["route"]
-        if "swap_cutoff" in instructions:
-            swap_cutoff = [None if t < 0 else self.simulator.time(time_slot=t) for t in instructions["swap_cutoff"]]
+        if "swap_cutoff" in inst:
+            swap_cutoff = [None if t < 0 else self.simulator.time(time_slot=t) for t in inst["swap_cutoff"]]
         else:
             swap_cutoff: list[Time | None] = [None] * (2 * (len(route) - 2))
         fib_entry = FibEntry(
-            req_id=instructions["req_id"],
+            req_id=req_id,
             path_id=path_id,
             route=route,
             own_idx=route.index(self.node.name),
-            swap=instructions["swap"],
+            swap=inst["swap"],
             swap_cutoff=swap_cutoff,
-            purif=instructions["purif"],
+            purif=inst["purif"],
         )
         self.fib.insert_or_replace(fib_entry)
 
         # Identify left/right channels, allocate qubits and process LinkLayer changes.
         if ch := self._find_adj(fib_entry, -1):
-            self.mux.install_path_adj(instructions, fib_entry, PathDirection.L, ch)
+            self.mux.install_path_adj(inst, fib_entry, PathDirection.L, ch)
             self.install_path_adj(fib_entry, PathDirection.L, ch)
         if ch := self._find_adj(fib_entry, +1):
-            self.mux.install_path_adj(instructions, fib_entry, PathDirection.R, ch)
+            self.mux.install_path_adj(inst, fib_entry, PathDirection.R, ch)
             self.install_path_adj(fib_entry, PathDirection.R, ch)
 
     @abstractmethod
@@ -63,11 +72,14 @@ class ForwarderNorthbound(ForwarderModule):
         Process LinkLayer changes for an adjacency after a path has been installed.
         """
 
-    @fw_control_cmd_handler("UNINSTALL_PATH")
-    def handle_uninstall_path(self, msg: UninstallPathMsg) -> None:
-        """Process an UNINSTALL_PATH control command."""
-        path_id = msg["path_id"]
+    @fw_control_cmd_handler("PATH_DELETE")
+    def handle_path_delete(self, msg: PathDeleteMsg) -> None:
+        """Process a PATH_DELETE control command."""
+        rg = self.fib.by_req_id[msg["req_id"]]
+        for path_id in list(rg.path_ids):
+            self._path_delete(path_id)
 
+    def _path_delete(self, path_id: int) -> None:
         # Retrieve and erase FIB entry.
         fib_entry = self.fib.get(path_id)
         fib_entry.active_until = self.simulator.tc

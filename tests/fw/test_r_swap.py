@@ -191,4 +191,4 @@ def test_3_minimal(
     )
     assert RequestCounters.of(net, 1, "A-C").n_consumed == cnt[1]
     assert cpacket_cnt["*-ctrl:LS"] == cnt[0]
-    assert cpacket_cnt["ctrl-*:INSTALL_PATH"] == cnt[1] * 3
+    assert cpacket_cnt["ctrl-*:PATH_INSERT"] == cnt[2] * 3

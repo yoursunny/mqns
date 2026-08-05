@@ -10,19 +10,19 @@ type MultiplexingVector = Sequence[tuple[int, int] | str]
 
 class PathInstructions(TypedDict):
     """
-    Instructions from the controller to forwarders regarding a routing path.
+    Swapping and purification instructions for the forwarders.
     """
 
-    req_id: int
+    path_id: int
     """
-    Request identifier -- nonnegative integer to uniquely identify the src-dst pair within the network.
+    Path identifier -- nonnegative integer to identify this path.
     """
 
     route: list[str]
     """
     Path vector -- a list of node names, in the order they appear in the path.
 
-    There must a qchannel and a cchannel between adjacent nodes.
+    There must a quantum channel and a classical channel between each pair of adjacent nodes.
     """
 
     swap: SwapSequence
@@ -83,7 +83,7 @@ class PathInstructions(TypedDict):
     """
 
 
-def validate_path_instructions(instructions: PathInstructions) -> None:
+def validate_path_instructions(inst: PathInstructions) -> None:
     def check_purif_segment(segment_name: str) -> bool:
         try:
             idx0, idx1 = (route.index(node_name) for node_name in segment_name.split("-"))
@@ -91,33 +91,68 @@ def validate_path_instructions(instructions: PathInstructions) -> None:
         except ValueError:
             return False
 
-    route = instructions["route"]
+    route = inst["route"]
     if len(route) == 0:
         raise ValueError("route is empty")
 
-    if len(instructions["swap"]) != len(route):
+    if len(inst["swap"]) != len(route):
         raise ValueError("swapping order does not match route length")
 
-    if "swap_cutoff" in instructions and len(instructions["swap_cutoff"]) != 2 * (len(route) - 2):
+    if "swap_cutoff" in inst and len(inst["swap_cutoff"]) != 2 * (len(route) - 2):
         raise ValueError("swap_cutoff does not match route length")
 
-    if "m_v" in instructions and len(instructions["m_v"]) != len(route) - 1:
+    if "m_v" in inst and len(inst["m_v"]) != len(route) - 1:
         raise ValueError("multiplexing vector does not match route length")
 
-    for segment_name in instructions["purif"].keys():
+    for segment_name in inst["purif"].keys():
         if not check_purif_segment(segment_name):
             raise ValueError(f"purif segment {segment_name} does not exist in route")
 
 
-class InstallPathMsg(TypedDict):
-    cmd: Literal["INSTALL_PATH"]
-    path_id: int
-    instructions: PathInstructions
+class PathInsertMsg(TypedDict):
+    """
+    Path insertion command from controller to forwarders.
+
+    In Proactive-Centralized mode, this command installs one or more routing paths,
+    which is persisted until they are deleted via ``PathDeleteMsg``.
+
+    In Reactive-Centralized mode, this command gives specific swapping instructions,
+    which is valid for one time slot and automatically deleted after the slot.
+
+    This command is not allowed for any modes other than described above.
+    """
+
+    cmd: Literal["PATH_INSERT"]
+    req_id: int
+    """
+    Request identifier -- nonnegative integer to identify a request between a src-dst pair.
+
+    Each routing path belongs to a request, which identifies the src-dst pair along with other attributes.
+    All routing paths that belong to the same request must be sent in the same ``PathInsertMsg``.
+    However, it is possible for multiple requests to have the same src-dst pair.
+    """
+
+    paths: list[PathInstructions]
+    """
+    Routing paths, nonempty list.
+    """
 
 
-class UninstallPathMsg(TypedDict):
-    cmd: Literal["UNINSTALL_PATH"]
-    path_id: int
+class PathDeleteMsg(TypedDict):
+    """
+    Path deletion command from controller to forwarders.
+
+    In Proactive-Centralized mode, this command deletes the routing paths
+    installed with ``PathInsertMsg``.
+
+    This command is not allowed for any modes other than described above.
+    """
+
+    cmd: Literal["PATH_DELETE"]
+    req_id: int
+    """
+    Request identifier -- nonnegative integer to identify a request between a src-dst pair.
+    """
 
 
 class CutoffDiscardMsg(TypedDict):

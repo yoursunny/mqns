@@ -30,9 +30,9 @@ class MuxSchemeDynamicBase(MuxScheme):
         """stores path-qchannel relationship"""
 
     @override
-    def validate_path_instructions(self, instructions: PathInstructions):
-        validate_path_instructions(instructions)
-        assert "m_v" not in instructions
+    def validate_path_instructions(self, inst: PathInstructions):
+        validate_path_instructions(inst)
+        assert "m_v" not in inst
 
     @override
     def install_path_adj(self, inst: PathInstructions, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
@@ -102,16 +102,16 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         self._select_path = parse_select(type(self), "SelectPath_", select_path)
 
     @override
-    def validate_path_instructions(self, instructions: PathInstructions):
-        super().validate_path_instructions(instructions)
+    def validate_path_instructions(self, inst: PathInstructions):
+        super().validate_path_instructions(inst)
 
         # swap sequence must be [1, 0, 0, .., 0, 0, 1]
-        s0, *s1, s2 = instructions["swap"]
+        s0, *s1, s2 = inst["swap"]
         assert s0 == 1 == s2
         assert all((s == 0 for s in s1))
 
         # purif scheme must be empty / zeros
-        assert all((r == 0 for r in instructions["purif"].values()))
+        assert all((r == 0 for r in inst["purif"].values()))
 
     @override
     def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibEntry | None:

@@ -37,7 +37,7 @@ class ReactiveForwarderNorthbound(ForwarderNorthbound):
     @override
     def uninstall_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
         _ = fib_entry, dir, ch
-        raise ValueError(f"{self} should not receive UNINSTALL_PATH command")
+        raise ValueError(f"{self} should not receive PATH_DELETE command")
 
     def send_link_state(self):
         """
