@@ -26,7 +26,7 @@ from mqns.models.epr import Entanglement
 from mqns.models.error import PerfectErrorModel
 from mqns.models.error.input import ErrorModelInputBasic, parse_error
 from mqns.network.fw.cutoff import CutoffScheme, CutoffSchemeWaitTime
-from mqns.network.fw.fib import Fib, FibEntry
+from mqns.network.fw.fib import Fib, FibPath
 from mqns.network.fw.fw_purif import ForwarderPurifProc
 from mqns.network.fw.fw_swap import ForwarderSwapProc
 from mqns.network.fw.mux import MuxScheme
@@ -51,7 +51,7 @@ class ForwarderInitKwargs(TypedDict, total=False):
     """EPR age cut-off scheme, default is wait-time."""
     mux: MuxScheme | None
     """Path multiplexing scheme, default is buffer-space."""
-    select_purif_qubit: Callable[[list[MemoryEprTuple], MemoryQubit, FibEntry, QNode], MemoryEprTuple] | None
+    select_purif_qubit: Callable[[list[MemoryEprTuple], MemoryQubit, FibPath, QNode], MemoryEprTuple] | None
     """Qubit selection among purification candidates, default is picking first candidate."""
 
 
@@ -244,20 +244,20 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
 
         _, epr = self.memory.read(mq.addr, has=self.epr_type)
         assert not epr.orig_eprs, f"{mq} is not elementary entanglement"
-        fib_entry = self.mux.qubit_is_entangled(mq, epr, event.neighbor)
-        self.log_debug("ENTANGLED %s path_id=%s | %s", mq, fib_entry.path_id if fib_entry else None, epr)
+        fp = self.mux.qubit_is_entangled(mq, epr, event.neighbor)
+        self.log_debug("ENTANGLED %s path_id=%s | %s", mq, fp.path_id if fp else None, epr)
 
         match mq.state:
             case QubitState.PURIF:
-                assert fib_entry
-                self.qubit_is_purif(mq, fib_entry, event.neighbor)
+                assert fp
+                self.qubit_is_purif(mq, fp, event.neighbor)
             case QubitState.ELIGIBLE:
-                self.qubit_is_eligible(mq, fib_entry)
+                self.qubit_is_eligible(mq, fp)
 
         if mq.state is not QubitState.RELEASE:
             self.swap.pop_waiting_su(mq)
 
-    def qubit_is_purif(self, qubit: MemoryQubit, fib_entry: FibEntry, partner: QNode):
+    def qubit_is_purif(self, qubit: MemoryQubit, fp: FibPath, partner: QNode):
         """
         Handle a qubit entering PURIF state or have completed a previous purification round.
 
@@ -269,26 +269,26 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
 
         Args:
             qubit: The memory qubit at PURIF state.
-            fib_entry: FIB entry containing routing and purification instructions.
+            fp: FIB path entry containing routing and purification instructions.
             partner: The node with which the qubit shares an EPR.
         """
         assert qubit.state is QubitState.PURIF, f"unexpected state {qubit.state}"
 
-        own_idx, own_rank = fib_entry.own_idx, fib_entry.own_swap_rank
-        partner_idx, partner_rank = fib_entry.find_index_and_swap_rank(partner.name)
+        own_idx, own_rank = fp.own_idx, fp.own_swap_rank
+        partner_idx, partner_rank = fp.find_index_and_swap_rank(partner.name)
         if own_rank > partner_rank:
             # swapping order disallows initiating purif / swap / consumption
             return
 
         segment_name = f"{self.node.name}-{partner.name}" if own_idx < partner_idx else f"{partner.name}-{self.node.name}"
-        want_rounds = fib_entry.purif.get(segment_name, 0)
+        want_rounds = fp.purif.get(segment_name, 0)
         self.log_debug(
             "segment %s (qubit %s) has %s and needs %s purif rounds", segment_name, qubit.addr, qubit.purif_rounds, want_rounds
         )
 
         if qubit.purif_rounds == want_rounds:
             qubit.state = QubitState.ELIGIBLE
-            self.qubit_is_eligible(qubit, fib_entry)
+            self.qubit_is_eligible(qubit, fp)
             return
         assert qubit.purif_rounds < want_rounds
 
@@ -303,18 +303,18 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
                 and q.state is QubitState.PURIF  # in PURIF state
                 and q.purif_rounds == qubit.purif_rounds  # with same number of purif rounds
                 and partner in (v.src, v.dst)  # with the same partner
-                and q.path_id == fib_entry.path_id  # on the same path_id
+                and q.path_id == fp.path_id  # on the same path_id
             ),
             has=self.epr_type,
         )
-        found = call_select(candidates, self._select_purif_qubit, qubit, fib_entry, partner)
+        found = call_select(candidates, self._select_purif_qubit, qubit, fp, partner)
         if not found:
             self.log_debug("no candidate EPR for segment %s purif round %s", segment_name, 1 + qubit.purif_rounds)
             return
 
-        self.purif.start(qubit, found[0], fib_entry, partner)
+        self.purif.start(qubit, found[0], fp, partner)
 
-    def qubit_is_eligible(self, mq0: MemoryQubit, fib_entry: FibEntry | None):
+    def qubit_is_eligible(self, mq0: MemoryQubit, fp: FibPath | None):
         """
         Handle a qubit entering ELIGIBLE state.
 
@@ -328,7 +328,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
 
         Args:
             qubit: The qubit that became eligible.
-            fib_entry: FIB entry (not available with MuxSchemeStatistical).
+            fp: FIB path entry (not available with MuxSchemeStatistical).
         """
         assert mq0.state is QubitState.ELIGIBLE, f"unexpected state {mq0.state}"
         self.cnt.n_eligible += 1
@@ -340,35 +340,31 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
             return
 
         _, epr0 = self.memory.read(mq0.addr, has=self.epr_type)
-        if self._try_consume(mq0, epr0, fib_entry):
+        if self._try_consume(mq0, epr0, fp):
             return
 
-        swap_decision = self.mux.find_swap_with(mq0, epr0, fib_entry)
+        swap_decision = self.mux.find_swap_with(mq0, epr0, fp)
         if swap_decision:
-            mq1, fib_entry = swap_decision
-            self.cutoff.before_swap(mq0, mq1, fib_entry)
-            if fib_entry.route.index(unwrap_cast(mq0.partner)[0].name) < fib_entry.route.index(
-                unwrap_cast(mq1.partner)[0].name
-            ):
-                self.swap.start(mq0, mq1, fib_entry)
+            mq1, fp = swap_decision
+            self.cutoff.before_swap(mq0, mq1, fp)
+            if fp.route.index(unwrap_cast(mq0.partner)[0].name) < fp.route.index(unwrap_cast(mq1.partner)[0].name):
+                self.swap.start(mq0, mq1, fp)
             else:
-                self.swap.start(mq1, mq0, fib_entry)
+                self.swap.start(mq1, mq0, fp)
         else:
-            self.cutoff.before_store_eligible(mq0, PathDirection.L if epr0.dst is self.node else PathDirection.R, fib_entry)
+            self.cutoff.before_store_eligible(mq0, PathDirection.L if epr0.dst is self.node else PathDirection.R, fp)
 
-    def _try_consume(self, qubit: MemoryQubit, epr: Entanglement, fib_entry: FibEntry | None) -> bool:
+    def _try_consume(self, qubit: MemoryQubit, epr: Entanglement, fp: FibPath | None) -> bool:
         """
         If the EPR matches an end-to-end request, inform ``Consumer`` to consume the EPR.
         """
-        if fib_entry is None:
-            src, dst = unwrap_cast(epr.src).name, unwrap_cast(epr.dst).name
-            for req in self.fib.find_request(lambda g: g.src == src and g.dst == dst, has_active=True):
-                req_id = req.req_id
-                break
-            return False
-
-        if fib_entry.is_swap_disabled or fib_entry.own_idx in (0, len(fib_entry.route) - 1):
-            req_id = fib_entry.req_id
+        if fp is None:
+            if fr := next(self.fib.find_active_req(unwrap_cast(epr.src).name, unwrap_cast(epr.dst).name), None):
+                req_id = fr.req_id
+            else:
+                return False
+        elif fp.sg is None:
+            req_id = fp.req_id
         else:
             return False
 

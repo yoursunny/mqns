@@ -19,7 +19,7 @@ from typing import Unpack, override
 
 from mqns.entity.memory import PathDirection
 from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw import FibEntry, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
+from mqns.network.fw import FibPath, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
 from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import PathActivateEvent
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
@@ -27,16 +27,16 @@ from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
 
 class ReactiveForwarderNorthbound(ForwarderNorthbound):
     @override
-    def install_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+    def install_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
         _ = dir, ch
         if not self.node.timing.is_routing():
             self.log_warning(
-                "received INSTALL_PATH message for path %s outside of ROUTING phase; t_rtg is too short?", fib_entry.path_id
+                "received INSTALL_PATH message for path %s outside of ROUTING phase; t_rtg is too short?", fp.path_id
             )
 
     @override
-    def uninstall_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
-        _ = fib_entry, dir, ch
+    def uninstall_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
+        _ = fp, dir, ch
         raise ValueError(f"{self} should not receive PATH_DELETE command")
 
     def send_link_state(self):
@@ -103,5 +103,6 @@ class ReactiveForwarder(Forwarder):
         """
         In SYNC timing mode, exit INTERNAL phase.
         """
-        # Clear path assignments, as these are only useful for one slot.
+        # Clear FIB and path assignments, as these are only useful for one slot.
+        self.fib.clear()
         self.memory.deallocate(*(qubit.addr for qubit, _ in self.memory.find(lambda q, _: q.path_id is not None)))

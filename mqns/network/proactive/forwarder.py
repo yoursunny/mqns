@@ -19,37 +19,37 @@ from typing import Unpack, override
 
 from mqns.entity.memory import PathDirection
 from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw import FibEntry, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
+from mqns.network.fw import FibPath, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
 from mqns.network.protocol.event import PathActivateEvent, PathDeactivateEvent
 
 
 class ProactiveForwarderNorthbound(ForwarderNorthbound):
     @override
-    def install_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+    def install_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
         self.simulator.add_event(
             PathActivateEvent(
                 self.node,
                 ch,
-                self._ll_path_id(fib_entry),
+                self._ll_path_id(fp),
                 t=self.simulator.tc,
                 is_primary=dir is PathDirection.R,
             )
         )
 
     @override
-    def uninstall_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+    def uninstall_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
         _ = dir
         self.simulator.add_event(
             PathDeactivateEvent(
                 self.node,
                 ch,
-                self._ll_path_id(fib_entry),
+                self._ll_path_id(fp),
                 t=self.simulator.tc,
             )
         )
 
-    def _ll_path_id(self, fib_entry: FibEntry) -> int | None:
-        return fib_entry.path_id if self.mux.qubit_has_path_id() else None
+    def _ll_path_id(self, fp: FibPath) -> int | None:
+        return fp.path_id if self.mux.qubit_has_path_id() else None
 
 
 class ProactiveForwarder(Forwarder):

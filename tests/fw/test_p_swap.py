@@ -49,8 +49,8 @@ def test_3_disabled():
 
     def check_fib_entries():
         for fw in (fwA, fwB, fwC):
-            fib_entry = fw.fib.get(rp.path_id)
-            assert fib_entry.is_swap_disabled is True
+            fp = fw.fib.get_path(rp.path_id)
+            assert fp.sg is None
 
     simulator.add_event(func_to_event(simulator.time(sec=2.0), check_fib_entries))
     provide_entanglements(
@@ -602,7 +602,7 @@ def test_rect2_multipath(has_etg: tuple[int, int, int, int], n_swapped: tuple[in
     net.add_request(rp := RoutingPathMulti("A", "D"))
 
     def check_fib_entries():
-        routes = {"-".join(fwA.fib.get(path_id).route) for path_id in (rp.path_id, rp.path_id + 1)}
+        routes = {"-".join(fwA.fib.get_path(path_id).route) for path_id in (rp.path_id, rp.path_id + 1)}
         assert routes == {"A-B-D", "A-C-D"}
 
     simulator.add_event(func_to_event(simulator.time(sec=2.0), check_fib_entries))

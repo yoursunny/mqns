@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, ClassVar, final, override
 
 from mqns.entity.memory import MemoryQubit, PathDirection
-from mqns.network.fw.fib import FibEntry
+from mqns.network.fw.fib import FibPath
 from mqns.network.fw.fw_module import ForwarderModule, fw_signaling_cmd_handler
 from mqns.network.fw.message import CutoffDiscardMsg
 from mqns.simulator import Event, Time
@@ -27,7 +27,7 @@ class CutoffScheme(ForwarderModule, ABC):
         assert isinstance(fw.cutoff, cls)
         return fw.cutoff
 
-    def initiate_discard(self, qubit: MemoryQubit, fib_entry: FibEntry, *, round=-1):
+    def initiate_discard(self, qubit: MemoryQubit, fp: FibPath, *, round=-1):
         """
         Discard a qubit that has exceeded cutoff time at the local forwarder.
 
@@ -58,20 +58,20 @@ class CutoffScheme(ForwarderModule, ABC):
         # Ask partner to discard secondary qubit.
         msg: CutoffDiscardMsg = {
             "cmd": "CUTOFF_DISCARD",
-            "path_id": fib_entry.path_id,
+            "path_id": fp.path_id,
             "key": p_key,
             "round": round,
         }
-        self.send_msg(partner, msg, fib_entry)
+        self.send_msg(partner, msg, fp)
 
     @fw_signaling_cmd_handler("CUTOFF_DISCARD")
-    def handle_discard(self, msg: CutoffDiscardMsg, fib_entry: FibEntry):
+    def handle_discard(self, msg: CutoffDiscardMsg, fp: FibPath):
         """
         Discard a qubit that has exceeded cutoff time at the remote forwarder.
 
         This is called by ProactiveForwarder upon receiving a CUTOFF_DISCARD message.
         """
-        _ = fib_entry
+        _ = fp
         fw = self.fw
         o_key = msg["key"]
         round = msg["round"]
@@ -93,13 +93,13 @@ class CutoffScheme(ForwarderModule, ABC):
         fw.release_qubit(qubit)
 
     @abstractmethod
-    def before_store_eligible(self, mq: MemoryQubit, dir: PathDirection, fib_entry: FibEntry | None) -> None:
+    def before_store_eligible(self, mq: MemoryQubit, dir: PathDirection, fp: FibPath | None) -> None:
         """
         Handle an ELIGIBLE qubit stored for future swapping.
         """
 
     @abstractmethod
-    def before_swap(self, mq0: MemoryQubit, mq1: MemoryQubit, fib_entry: FibEntry | None) -> None:
+    def before_swap(self, mq0: MemoryQubit, mq1: MemoryQubit, fp: FibPath | None) -> None:
         """
         Handle a pair of ELIGIBLE qubits before swapping.
 
@@ -115,7 +115,7 @@ class CutoffDiscardEvent(Event):
         self,
         cutoff: CutoffScheme,
         qubit: MemoryQubit,
-        fib_entry: FibEntry,
+        fp: FibPath,
         *,
         t: Time,
         round: int,
@@ -124,13 +124,13 @@ class CutoffDiscardEvent(Event):
         super().__init__(t, f"addr={qubit.addr} key={qubit.key}")
         self.cutoff = cutoff
         self.qubit = qubit
-        self.fib_entry = fib_entry
+        self.fp = fp
         self.round = round
         self.eligible_t = eligible_t
 
     @override
     def invoke(self) -> None:
-        self.cutoff.initiate_discard(self.qubit, self.fib_entry, round=self.round)
+        self.cutoff.initiate_discard(self.qubit, self.fp, round=self.round)
 
 
 class CutoffSchemeWaitTimeCounters:
@@ -165,8 +165,8 @@ class CutoffSchemeWaitTime(CutoffScheme):
         self.cnt = CutoffSchemeWaitTimeCounters()
 
     @override
-    def before_store_eligible(self, mq: MemoryQubit, dir: PathDirection, fib_entry: FibEntry | None) -> None:
-        if not fib_entry or (wait_budget := fib_entry.swap_cutoff[2 * fib_entry.own_idx + self._DIR_OFFSET[dir]]) is None:
+    def before_store_eligible(self, mq: MemoryQubit, dir: PathDirection, fp: FibPath | None) -> None:
+        if not fp or (wait_budget := fp.swap_cutoff[2 * fp.own_idx + self._DIR_OFFSET[dir]]) is None:
             return
 
         now = self.simulator.tc
@@ -175,18 +175,18 @@ class CutoffSchemeWaitTime(CutoffScheme):
             "wait-time key=%s addr=%s path=%s(%s)%s budget=%s deadline=%s",
             mq.key,
             mq.addr,
-            fib_entry.path_id,
-            fib_entry.own_idx,
+            fp.path_id,
+            fp.own_idx,
             dir.name,
             wait_budget,
             deadline,
         )
-        self.simulator.add_event(event := CutoffDiscardEvent(self, mq, fib_entry, round=-1, eligible_t=now, t=deadline))
+        self.simulator.add_event(event := CutoffDiscardEvent(self, mq, fp, round=-1, eligible_t=now, t=deadline))
         mq.events.add(event)
 
     @override
-    def before_swap(self, mq0: MemoryQubit, mq1: MemoryQubit, fib_entry: FibEntry | None) -> None:
-        _ = fib_entry
+    def before_swap(self, mq0: MemoryQubit, mq1: MemoryQubit, fp: FibPath | None) -> None:
+        _ = fp
         assert mq0.events.get(CutoffDiscardEvent) is None
 
         event = mq1.events.discard(CutoffDiscardEvent)

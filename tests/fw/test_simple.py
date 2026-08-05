@@ -5,7 +5,7 @@ Test suite for simple data structure objects in forwarding.
 import pytest
 
 from mqns.network.fw import parse_swap_sequence
-from mqns.network.fw.fib import FibEntry
+from mqns.network.fw.fib import FibPath
 from mqns.network.fw.message import validate_path_instructions
 
 
@@ -110,8 +110,7 @@ def test_path_validation():
 def test_fib_swap_group(purif: str | None, own: str, expected: tuple[str, str, str, str] | None):
     nodes = "ABCDEFGHIJ"
     ranks = "3001012003"
-    entry = FibEntry(
-        req_id=0,
+    entry = FibPath(
         path_id=0,
         route=nodes,
         own_idx=nodes.index(own),
