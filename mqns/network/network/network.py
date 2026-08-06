@@ -40,7 +40,7 @@ from mqns.network.topology import ClassicTopology, Topology
 from mqns.simulator import Simulator, Time
 
 
-def _save_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], ch: C):
+def _save_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], ch: C) -> None:
     l.append(ch)
     if len(ch.node_list) != 2:
         return
@@ -48,7 +48,7 @@ def _save_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], ch: C
     d[(a, b)] = ch
 
 
-def _get_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], q: tuple[str, ...]):
+def _get_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], q: tuple[str, ...]) -> C:
     if len(q) == 1:
         name = q[0]
         for ch in l:
@@ -56,7 +56,10 @@ def _get_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], q: tup
                 return ch
         raise LookupError(f"channel {name} does not exist") from None
 
-    a, b = sorted(q)
+    a, b = q
+    if a > b:
+        a, b = b, a
+
     try:
         return d[(a, b)]
     except KeyError:
@@ -77,11 +80,11 @@ class QuantumNetwork:
     ):
         """
         Args:
-            topo: topology builder.
-            classic_topo: classic topology parameter, passed to topology builder.
-            route: routing algorithm, defaults to dijkstra.
-            timing: network-wide application timing mode.
-            epr_type: network-wide entanglement type.
+            topo: Topology builder.
+            classic_topo: Classic topology parameter, passed to topology builder.
+            route: Routing algorithm, defaults to dijkstra.
+            timing: Network-wide application timing mode.
+            epr_type: Network-wide entanglement type.
         """
         assert getattr(epr_type, "__final__", False) is True, f"entanglement type {epr_type} must be marked @final"
 
@@ -111,7 +114,7 @@ class QuantumNetwork:
         self.requests: list[Request] = []
         """Requested end-to-end entanglements."""
 
-    def _populate_from_topo(self, topo: Topology, classic_topo: ClassicTopology | None):
+    def _populate_from_topo(self, topo: Topology, classic_topo: ClassicTopology | None) -> None:
         nodes, qchannels = topo.build()
         if classic_topo is not None:
             cchannels = topo.add_cchannels(classic_topo=classic_topo, nl=nodes, ll=qchannels)
@@ -134,13 +137,12 @@ class QuantumNetwork:
         """
         assert not hasattr(self, "simulator"), "function only available prior to self.install()"
 
-    def install(self, simulator: Simulator):
+    def install(self, simulator: Simulator) -> None:
         """
-        Install all nodes (including channels, memories and applications) in this network
+        Install all nodes (including channels, memories and applications) in this network.
 
         Args:
-            simulator: the simulator
-
+            simulator: The simulator.
         """
         self.simulator = simulator
         """Simulator instance."""
@@ -159,7 +161,7 @@ class QuantumNetwork:
         for req in self.requests:
             self._install_request(req)
 
-    def add_node(self, node: QNode):
+    def add_node(self, node: QNode) -> None:
         """
         Add a QNode into this network.
         """
@@ -181,7 +183,7 @@ class QuantumNetwork:
         except KeyError:
             raise LookupError(f"node {name} does not exist") from None
 
-    def set_controller(self, controller: Controller):
+    def set_controller(self, controller: Controller) -> None:
         """
         Set the controller of this network.
         """
@@ -200,7 +202,7 @@ class QuantumNetwork:
             raise LookupError("network does not have a controller")
         return self.controller
 
-    def add_qchannel(self, qchannel: QuantumChannel):
+    def add_qchannel(self, qchannel: QuantumChannel) -> None:
         """
         Add a QuantumChannel into this network.
         """
@@ -228,7 +230,7 @@ class QuantumNetwork:
     def get_qchannel(self, *q: str) -> QuantumChannel:
         return _get_channel(self.qchannels, self._qchannel_by_ends, q)
 
-    def add_cchannel(self, cchannel: ClassicChannel):
+    def add_cchannel(self, cchannel: ClassicChannel) -> None:
         """
         Add a ClassicChannel into this network.
         """
@@ -256,8 +258,8 @@ class QuantumNetwork:
     def get_cchannel(self, *q: str) -> ClassicChannel:
         return _get_channel(self.cchannels, self._cchannel_by_ends, q)
 
-    def build_route(self):
-        """Build static route tables for each nodes"""
+    def build_route(self) -> None:
+        """Build static route tables."""
         self.route.build(self.nodes, self.qchannels)
 
     def query_route(self, src: str, dst: str, /, error_on_empty=True) -> list[RouteQueryResult[QNode]]:
@@ -269,8 +271,8 @@ class QuantumNetwork:
             dst: Destination node.
             error_on_empty: If true, raise RuntimeError if there's no route.
 
-
-        Returns: list of route paths, sorted by priority.
+        Returns:
+            List of route paths, sorted by priority.
         """
         routes = self.route.query(self.get_node(src), self.get_node(dst))
         if error_on_empty and not routes:
@@ -286,7 +288,7 @@ class QuantumNetwork:
         t = self.simulator.tc
         return (req for req in self.requests if req.is_active(t))
 
-    def add_request(self, *reqs: Request):
+    def add_request(self, *reqs: Request) -> None:
         """
         Add one or more requests to the network.
         """
@@ -296,11 +298,11 @@ class QuantumNetwork:
             for req in reqs:
                 self._install_request(req)
 
-    def _install_request(self, req: Request):
-        for key in "since", "until":
-            t: Time | float = getattr(req, f"active_{key}_input")
-            delattr(req, f"active_{key}_input")
-            setattr(req, f"active_{key}", t if isinstance(t, Time) else self.simulator.time(sec=t))
+    def _install_request(self, req: Request) -> None:
+        req.active_since = Time.from_time_or_sec(req.active_since_input, accuracy=self.simulator.accuracy)
+        req.active_until = Time.from_time_or_sec(req.active_until_input, accuracy=self.simulator.accuracy)
+        del req.active_since_input
+        del req.active_until_input
 
         if not self.controller:
             return

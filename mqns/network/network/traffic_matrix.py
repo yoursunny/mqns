@@ -86,8 +86,7 @@ class MatrixTrafficGenerator:
         Install this traffic generator into a simulator.
         """
         self.simulator = simulator
-        if not isinstance(self._duration, Time):
-            self._duration = Time.from_sec(self._duration, accuracy=simulator.accuracy)
+        self._duration = Time.from_time_or_sec(self._duration, accuracy=simulator.accuracy)
 
         match self._sched:
             case "eager":
