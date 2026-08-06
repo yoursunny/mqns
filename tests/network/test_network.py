@@ -9,6 +9,7 @@ from mqns.network.network import (
     MatrixTrafficGenerator,
     QuantumNetwork,
     RequestActiveEvent,
+    RequestInactiveEvent,
     TimingModeSync,
     TimingPhase,
     TrafficMatrixMapping,
@@ -102,12 +103,15 @@ class RequestCheckApp(Application[Controller]):
     def handle_request_active(self, event: RequestActiveEvent) -> None:
         req = event.req
         assert (req.src, req.dst) == ("A", "C")
-        assert req.is_active(event.t) is event.enter
+        assert req.is_active(event.t) is True
+        self.enters.append(len(self.net.requests))
 
-        if event.enter:
-            self.enters.append(len(self.net.requests))
-        else:
-            self.exits += 1
+    @event_handler
+    def handle_request_inactive(self, event: RequestInactiveEvent) -> None:
+        req = event.req
+        assert (req.src, req.dst) == ("A", "C")
+        assert req.is_active(event.t) is False
+        self.exits += 1
 
 
 def test_mtg_lazy():

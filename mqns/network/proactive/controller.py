@@ -16,10 +16,11 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from mqns.network.fw import RoutingController, RoutingPath, RoutingPathMulti, RoutingPathSingle
-from mqns.network.network import Request, RequestActiveEvent
+from mqns.network.fw import RoutingController, RoutingPathMulti, RoutingPathSingle
+from mqns.network.network import RequestActiveEvent, RequestInactiveEvent
 from mqns.network.route import YenRouteAlgorithm
 from mqns.simulator import event_handler
+from mqns.utils import unwrap
 
 
 class ProactiveRoutingController(RoutingController):
@@ -27,23 +28,22 @@ class ProactiveRoutingController(RoutingController):
     Centralized control plane for proactive routing.
     Works with ``ProactiveForwarder`` on quantum nodes.
 
-    This controller does not pick up requests from ``QuantumNetwork.requests`` list.
-    If desired, scenario script should manually pass requests to ``ProactiveRoutingController.install_path()``.
+    This controller is compatible with both SYNC and SYNC timing modes.
+    It can automatically pick up requests added through ``QuantumNetwork``.
     """
 
     @event_handler
-    def handle_request(self, event: RequestActiveEvent) -> None:
+    def handle_request_active(self, event: RequestActiveEvent) -> None:
         req = event.req
-        if event.enter:
-            req.rp = self._path_from_request(req)
-            self.install_path(req.rp)
-        else:
-            assert req.rp
-            self.uninstall_path(req.rp)
+        if req.rp is None:
+            req.rp = (
+                RoutingPathMulti(req.src, req.dst, **req.rp_args)
+                if isinstance(self.net.route, YenRouteAlgorithm)
+                else RoutingPathSingle(req.src, req.dst, **req.rp_args)
+            )
+        self.install_path(req.rp)
 
-    def _path_from_request(self, req: Request) -> RoutingPath:
-        if req.rp:
-            return req.rp
-        if isinstance(self.net.route, YenRouteAlgorithm):
-            return RoutingPathMulti(req.src, req.dst, **req.rp_args)
-        return RoutingPathSingle(req.src, req.dst, **req.rp_args)
+    @event_handler
+    def handle_request_inactive(self, event: RequestInactiveEvent) -> None:
+        req = event.req
+        self.uninstall_path(unwrap(req.rp))

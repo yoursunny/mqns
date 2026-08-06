@@ -48,7 +48,7 @@ class Request:
     This field becomes valid when the request is added to a network and a simulator is installed into the network.
     """
 
-    inactive_event: "RequestActiveEvent|None" = None
+    inactive_event: "RequestInactiveEvent|None" = None
     """Event when the request becomes inactive."""
 
     rp: "RoutingPath|None" = None
@@ -125,13 +125,26 @@ class Request:
 
 @final
 class RequestActiveEvent(Event):
-    """Event when a request enters or exits active_period."""
+    """Event when a request becomes active."""
 
-    def __init__(self, node: Controller, req: Request, enter: bool, *, t: Time):
-        super().__init__(t, f"RequestActiveEvent({req}, {enter})")
+    def __init__(self, node: Controller, req: Request, *, t: Time):
+        super().__init__(t, f"{req}")
         self.node = node
         self.req = req
-        self.enter = enter
+
+    @override
+    def invoke(self) -> None:
+        self.node.handle(self)
+
+
+@final
+class RequestInactiveEvent(Event):
+    """Event when a request becomes inactive."""
+
+    def __init__(self, node: Controller, req: Request, *, t: Time):
+        super().__init__(t, f"{req}")
+        self.node = node
+        self.req = req
 
     @override
     def invoke(self) -> None:

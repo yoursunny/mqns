@@ -25,7 +25,6 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Iterable
 from typing import cast, overload
 
 from mqns.entity.base_channel import BaseChannel
@@ -33,7 +32,7 @@ from mqns.entity.cchannel import ClassicChannel
 from mqns.entity.node import Controller, Node, QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement, WernerStateEntanglement
-from mqns.network.network.request import Request, RequestActiveEvent
+from mqns.network.network.request import Request, RequestActiveEvent, RequestInactiveEvent
 from mqns.network.network.timing import TimingMode, TimingModeAsync
 from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm, RouteQueryResult
 from mqns.network.topology import ClassicTopology, Topology
@@ -279,15 +278,6 @@ class QuantumNetwork:
             raise RuntimeError(f"no route from {src} to {dst}")
         return routes
 
-    @property
-    def active_requests(self) -> Iterable[Request]:
-        """
-        List requests that are active at current timestamp.
-        See ``Request.is_active()`` for the criteria of determining whether a request is active.
-        """
-        t = self.simulator.tc
-        return (req for req in self.requests if req.is_active(t))
-
     def add_request(self, *reqs: Request) -> None:
         """
         Add one or more requests to the network.
@@ -308,8 +298,8 @@ class QuantumNetwork:
             return
 
         t_enter = self.simulator.tc if req.active_since is Time.MIN else req.active_since
-        self.simulator.add_event(RequestActiveEvent(self.controller, req, True, t=t_enter))
+        self.simulator.add_event(RequestActiveEvent(self.controller, req, t=t_enter))
 
         if req.active_until is not Time.MAX:
-            req.inactive_event = RequestActiveEvent(self.controller, req, False, t=req.active_until)
+            req.inactive_event = RequestInactiveEvent(self.controller, req, t=req.active_until)
             self.simulator.add_event(req.inactive_event)
