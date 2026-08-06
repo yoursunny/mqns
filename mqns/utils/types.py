@@ -1,5 +1,6 @@
 from collections import defaultdict
 from collections.abc import Callable
+from operator import attrgetter
 from typing import Any, cast
 
 
@@ -13,9 +14,9 @@ def unwrap[T](var: T | None) -> T:
 
 def unwrap_cast[T](var: T | None) -> T:
     """
-    Cast a variable to non-None null.
+    Cast a variable to non-None type.
     """
-    return cast(T, var)
+    return var  # type: ignore
 
 
 class DecoratorDispatchBuilder[K, F: Callable]:
@@ -71,8 +72,9 @@ class DecoratorDispatchBuilder[K, F: Callable]:
         for attr_name, attr_type in cls.__annotations__.items():
             if not (isinstance(attr_type, type) and issubclass(attr_type, nested_base)):
                 continue
+            attr_get = attrgetter(attr_name)
             for k, l in cast(dict[K, list[F]], getattr(attr_type, self.classvar_name)).items():
-                d[k] += (self._make_wrapper(attr_name, func) for func in l)
+                d[k] += (self._make_wrapper(attr_get, func) for func in l)
 
     def _gather_base(self, d: defaultdict[K, list[F]], base: type) -> None:
         if b := cast(dict[K, list[F]], base.__dict__.get(self.classvar_name)):
@@ -85,8 +87,8 @@ class DecoratorDispatchBuilder[K, F: Callable]:
                 d[key].append(func)
 
     @staticmethod
-    def _make_wrapper(attr_name: str, f: Callable) -> Any:
+    def _make_wrapper(attr_get: attrgetter, f: Callable) -> Any:
         def nested_decorated_method_wrapper(self: Any, *args, **kwargs):
-            return f(getattr(self, attr_name), *args, **kwargs)
+            return f(attr_get(self), *args, **kwargs)
 
         return nested_decorated_method_wrapper
