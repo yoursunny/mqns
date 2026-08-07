@@ -7,7 +7,7 @@ from collections import defaultdict
 
 import pytest
 
-from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
+from mqns.entity.cchannel import ClassicPacket, classic_cmd_handler
 from mqns.network.fw import RoutingController, RoutingPathStatic
 from mqns.network.network import Request, TimingModeSync, TimingPhase, sync_phase_handler
 from mqns.network.protocol.consumer import RequestCounters
@@ -25,7 +25,7 @@ from .fw_common import (
 )
 
 
-class ManualController(ClassicCommandDispatcherMixin, RoutingController):
+class ManualController(RoutingController):
     def __init__(self):
         super().__init__(mv_auto="max")
 

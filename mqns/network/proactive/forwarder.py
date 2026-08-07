@@ -19,7 +19,7 @@ from typing import Unpack, override
 
 from mqns.entity.memory import PathDirection
 from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw import FibPath, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
+from mqns.network.fw import FibPath, FibRequest, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
 from mqns.network.protocol.event import PathActivateEvent, PathDeactivateEvent
 
 
@@ -70,3 +70,7 @@ class ProactiveForwarder(Forwarder):
     def install(self, node):
         super().install(node)
         self.nb.install(self)
+
+    @override
+    def request_reached_epr_count(self, fr: FibRequest) -> None:
+        self.nb.send_reach_epr_count(fr)

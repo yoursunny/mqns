@@ -1,12 +1,13 @@
 from typing import override
 
-from mqns.entity.cchannel import ClassicPacket
+from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
 from mqns.entity.node import Application, Controller
-from mqns.network.fw.message import PathDeleteMsg, PathInsertMsg, PathInstructions
+from mqns.network.fw.message import PathDeleteMsg, PathInsertMsg, PathInstructions, PathReachEprCountMsg
 from mqns.network.fw.routing import MultiplexingVectorInput, RoutingPath
+from mqns.network.network import RequestInactiveEvent
 
 
-class RoutingController(Application[Controller]):
+class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
     """
     Centralized control plane that works with ``Forwarder`` subclass.
     """
@@ -29,7 +30,7 @@ class RoutingController(Application[Controller]):
 
         self.net.build_route()
 
-    def install_path(self, rp: RoutingPath):
+    def install_path(self, rp: RoutingPath, *, epr_count=-1):
         """
         Compute routing path(s) and send PATH_INSERT commands to nodes.
         """
@@ -56,6 +57,7 @@ class RoutingController(Application[Controller]):
             PathInsertMsg(
                 cmd="PATH_INSERT",
                 req_id=rp.req_id,
+                epr_count=epr_count,
                 paths=insts,
             ),
         )
@@ -85,3 +87,30 @@ class RoutingController(Application[Controller]):
         for node_name in node_list:
             node = self.net.get_node(node_name)
             self.node.send_cpacket(node, ClassicPacket(msg, src=self.node, dest=node))
+
+    @classic_cmd_handler("PATH_REACH_EPR_COUNT")
+    def handle_reach_epr_count(self, pkt: ClassicPacket, msg: PathReachEprCountMsg) -> None:
+        req_id = msg["req_id"]
+        end_node = pkt.src.name
+
+        req = next((req for req in self.net.requests if req.req_id == req_id), None)
+        if req is None:
+            self.log_debug("reach_epr_count req=%s end_node=%s outcome=req_not_found", req_id, end_node)
+            return
+
+        try:
+            req.epr_count_await.remove(end_node)
+        except KeyError:
+            self.log_debug("reach_epr_count req=%s end_node=%s outcome=node_not_pending", req_id, end_node)
+            return
+
+        if req.epr_count_await:
+            self.log_debug(
+                "reach_epr_count req=%s end_node=%s outcome=wait_for_other_end await=%s", req_id, end_node, req.epr_count_await
+            )
+            return
+
+        self.log_debug("reach_epr_count req=%s end_node=%s outcome=deactivate_request", req_id, end_node)
+        if req.inactive_event:
+            req.inactive_event.cancel()
+        self.simulator.add_event(RequestInactiveEvent(self.node, req, t=self.simulator.tc))

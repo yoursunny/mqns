@@ -26,7 +26,7 @@ from mqns.models.epr import Entanglement
 from mqns.models.error import PerfectErrorModel
 from mqns.models.error.input import ErrorModelInputBasic, parse_error
 from mqns.network.fw.cutoff import CutoffScheme, CutoffSchemeWaitTime
-from mqns.network.fw.fib import Fib, FibPath
+from mqns.network.fw.fib import Fib, FibPath, FibRequest
 from mqns.network.fw.fw_purif import ForwarderPurifProc
 from mqns.network.fw.fw_swap import ForwarderSwapProc
 from mqns.network.fw.mux import MuxScheme
@@ -359,18 +359,27 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         If the EPR matches an end-to-end request, inform ``Consumer`` to consume the EPR.
         """
         if fp is None:
-            if fr := next(self.fib.find_active_req(unwrap_cast(epr.src).name, unwrap_cast(epr.dst).name), None):
-                req_id = fr.req_id
-            else:
+            if (fr := next(self.fib.find_active_req(unwrap_cast(epr.src).name, unwrap_cast(epr.dst).name), None)) is None:
                 return False
         elif fp.sg is None:
-            req_id = fp.req_id
+            fr = fp.req
+            # TODO disallow consumption if request is no longer active
         else:
             return False
 
+        fr.epr_count_remain -= 1
+        if fr.epr_count_remain == 0:
+            self.request_reached_epr_count(fr)
+
         qubit.state = QubitState.CONSUME
-        self.simulator.add_event(QubitConsumeEvent(self.node, qubit, epr, t=self.simulator.tc, req_id=req_id))
+        self.simulator.add_event(QubitConsumeEvent(self.node, qubit, epr, t=self.simulator.tc, req_id=fr.req_id))
         return True
+
+    def request_reached_epr_count(self, fr: FibRequest) -> None:
+        """
+        Invoked on an end node when a request with ``epr_count`` restriction has reached this limit.
+        """
+        _ = fr
 
     @event_handler
     def qubit_is_decohered(self, event: MemoryDecohereEvent) -> None:

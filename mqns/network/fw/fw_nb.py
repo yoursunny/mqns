@@ -5,7 +5,7 @@ from mqns.entity.memory import PathDirection
 from mqns.entity.qchannel import QuantumChannel
 from mqns.network.fw.fib import FibPath, FibRequest
 from mqns.network.fw.fw_module import ForwarderModule, fw_control_cmd_handler
-from mqns.network.fw.message import PathDeleteMsg, PathInsertMsg, PathInstructions
+from mqns.network.fw.message import PathDeleteMsg, PathInsertMsg, PathInstructions, PathReachEprCountMsg
 from mqns.network.fw.mux import MuxScheme
 from mqns.simulator import Time
 
@@ -30,7 +30,7 @@ class ForwarderNorthbound(ForwarderModule):
         """Process a PATH_INSERT control command."""
         paths = [(inst, self._path_convert(inst)) for inst in msg["paths"] if self.node.name in inst["route"]]
 
-        fr = FibRequest(msg["req_id"], [entry for _, entry in paths])
+        fr = FibRequest(msg["req_id"], [entry for _, entry in paths], epr_count=msg.get("epr_count", -1))
         self.fib.insert_req(fr)
 
         # Identify left/right channels, allocate qubits and process LinkLayer changes.
@@ -92,3 +92,10 @@ class ForwarderNorthbound(ForwarderModule):
             return None
         neigh = self.network.get_node(fp.route[neigh_idx])
         return self.node.get_qchannel(neigh)
+
+    def send_reach_epr_count(self, fr: FibRequest) -> None:
+        msg = PathReachEprCountMsg(
+            cmd="PATH_REACH_EPR_COUNT",
+            req_id=fr.req_id,
+        )
+        self.send_ctrl(msg)

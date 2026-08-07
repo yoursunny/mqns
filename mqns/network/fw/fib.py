@@ -18,6 +18,8 @@
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Final, Literal, final
 
+import numpy as np
+
 from mqns.network.fw.message import SwapSequence
 from mqns.simulator import Time, func_to_event
 
@@ -220,7 +222,7 @@ class FibSwapGroup:
 class FibRequest:
     """FIB information related to an end-to-end request."""
 
-    __slots__ = ("req_id", "src", "dst", "paths", "active_until")
+    __slots__ = ("req_id", "src", "dst", "paths", "active_until", "epr_count_remain")
 
     req_id: Final[int]
     """Request identifier."""
@@ -235,23 +237,32 @@ class FibRequest:
     """
     Active period upper bound (exclusive), ``Time.MAX`` means no restriction.
     """
+    epr_count_remain: int | float
+    """
+    If ``epr_count`` is restricted, remaining quantity of entangled pairs.
+    Otherwise, positive infinity.
+    This field is only used on end nodes.
+    """
 
-    def __init__(self, req_id: int, entries: Sequence[FibPath]):
+    def __init__(self, req_id: int, entries: Sequence[FibPath], *, epr_count=-1):
         self.req_id = req_id
         self.src, *_, self.dst = entries[0].route
         self.paths = entries
         self.active_until = Time.MAX
+        self.epr_count_remain = np.inf if epr_count < 0 else epr_count
 
         for entry in entries:
             entry.req = self
             assert entry.route[0] == self.src
             assert entry.route[-1] == self.dst
 
-    def is_active(self, t: Time) -> bool:
+    def is_active(self, now: Time) -> bool:
         """
-        Determine if the time point ``t`` is within the FIB entry's active period.
+        Determine if the request is active.
+
+        The condition is same as ``Request.is_active``.
         """
-        return t < self.active_until
+        return now < self.active_until and self.epr_count_remain > 0
 
 
 class Fib:

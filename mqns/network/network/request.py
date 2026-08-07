@@ -28,6 +28,21 @@ class RequestInitArgs(TypedDict, total=False):
     This attribute is not supported for any modes other than described above.
     """
 
+    epr_count: int
+    """
+    How many entangled pairs are desired.
+    Use ``-1`` or omit this attribute to indicate no limitation.
+
+    If this quantity of EPRs have been delivered to end-node applications, the network considers
+    this request fulfilled and may release its resources.
+
+    In Proactive-Centralized mode, the ``ProactiveRoutingController`` sends ``ConsumeCountBeginMsg``
+    to both end-nodes, the ``ProactiveForwarder`` at each end-node replies with ``ConsumeCountEndMsg``.
+    After receiving both replies, the controller uninstalls the path(s).
+
+    This attribute is not supported for any modes other than described above.
+    """
+
 
 class Request:
     """Requests entanglement pairs between a source and a destination."""
@@ -51,6 +66,15 @@ class Request:
     """
     Event when the request becomes inactive.
     This field is assigned by the controller.
+    """
+
+    epr_count: Final[int]
+    """
+    How many entangled pairs are desired, ``-1`` means no restriction.
+    """
+    epr_count_await: set[str] = {"#epr_count_disabled"}  # see .is_active() for explanation of class-level default
+    """
+    Which end nodes have not reported reaching ``epr_count``.
     """
 
     rp: "RoutingPath|None" = None
@@ -77,6 +101,11 @@ class Request:
             self.rp = arg1
             self.src, self.dst = self.rp.src, self.rp.dst
         self.active_since, self.active_until = kwargs.get("active_period", (Time.MIN, Time.MAX))
+        self.epr_count = kwargs.get("epr_count", -1)
+        if self.epr_count > 0:
+            self.epr_count_await = {self.src, self.dst}
+        else:
+            assert self.epr_count == -1
         self.rp_args = {}
 
     @overload
@@ -121,8 +150,13 @@ class Request:
         """
         Determine if the request is active, subject to these conditions:
 
+        * ``epr_count`` has not been reached.
         * Time point ``t`` is within active period.
         """
+        if not self.epr_count_await:
+            # If .epr_count is enabled, .epr_count_await becomes empty when both end-nodes reports reaching the count.
+            # If .epr_count is disabled, class-level default is a non-empty set so that `not .epr_count_await` remains False.
+            return False
         if t < cast(Time, self.active_since):
             return False
         if t >= cast(Time, self.active_until):
@@ -135,7 +169,11 @@ class Request:
         return self.rp.req_id if self.rp else self.rp_args.get("req_id", -1)
 
     def __repr__(self) -> str:
-        return f"Request({self.src}-{self.dst}, active_period={self.active_since}-{self.active_until})"
+        return (
+            f"Request({self.src}-{self.dst}, "
+            f"active_period={self.active_since}-{self.active_until}), "
+            f"epr_count={self.epr_count})"
+        )
 
 
 @final

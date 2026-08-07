@@ -132,6 +132,14 @@ class PathInsertMsg(TypedDict):
     However, it is possible for multiple requests to have the same src-dst pair.
     """
 
+    epr_count: NotRequired[int]
+    """
+    How many entangled pairs are desired.
+
+    If this is nonnegative, each end-node forwarder must send ``PathReachEprCountMsg`` when
+    sufficient quantity of entangled pairs have been delivered for consumption.
+    """
+
     paths: list[PathInstructions]
     """
     Routing paths, nonempty list.
@@ -149,6 +157,18 @@ class PathDeleteMsg(TypedDict):
     """
 
     cmd: Literal["PATH_DELETE"]
+    req_id: int
+    """
+    Request identifier -- nonnegative integer to identify a request between a src-dst pair.
+    """
+
+
+class PathReachEprCountMsg(TypedDict):
+    """
+    Reaching ``epr_count`` report message from end-node forwarder to controller.
+    """
+
+    cmd: Literal["PATH_REACH_EPR_COUNT"]
     req_id: int
     """
     Request identifier -- nonnegative integer to identify a request between a src-dst pair.

@@ -41,7 +41,7 @@ class ProactiveRoutingController(RoutingController):
                 if isinstance(self.net.route, YenRouteAlgorithm)
                 else RoutingPathSingle(req.src, req.dst, **req.rp_args)
             )
-        self.install_path(req.rp)
+        self.install_path(req.rp, epr_count=req.epr_count)
 
     @event_handler
     def handle_request_inactive(self, event: RequestInactiveEvent) -> None:

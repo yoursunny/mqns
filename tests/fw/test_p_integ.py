@@ -23,7 +23,7 @@ from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Time
 
-from .fw_common import build_grid_network, build_linear_network, build_tree_network, print_node_counters
+from .fw_common import build_grid_network, build_linear_network, build_tree_network, collect_cpacket_counts, print_node_counters
 
 
 @pytest.mark.parametrize("epr_type", [WernerStateEntanglement, MixedStateEntanglement])
@@ -40,7 +40,7 @@ def test_4_swap(epr_type: type[Entanglement], timing: TimingMode, swap: SwapSequ
     simulator.run()
     print_node_counters(net)
 
-    # The main purpose of integrated test is to verify that the forwarder can return released qubits back to LinkLayer
+    # The main purpose of this test is to verify that the forwarder can return released qubits back to LinkLayer
     # for re-generating elementary entanglements.
     # Hence, these numeric bounds are much smaller than usual values, but must be greater than the memory capacity.
     assert fwB.cnt.n_swapped >= 16
@@ -132,3 +132,35 @@ def test_rect2_path_delete():
     assert counters[8][4] == counters[9][4]
 
     QuantumMemory.check_leaks(net.nodes)
+
+
+@pytest.mark.parametrize(
+    ("k_paths", "n_requests"),
+    [
+        (-1, 3),
+        (2, 1),
+        # Currently allocation logic cannot accommodate multi-path and multi-request simultaneously.
+    ],
+)
+def test_rect3_epr_count(monkeypatch: pytest.MonkeyPatch, k_paths: int, n_requests: int):
+    """Test Request.epr_count in 3x3 rectangle topology."""
+    net, simulator = build_grid_network((3, 3), k_paths=k_paths, swap_table_leak_tol=256, has_link_layer=True)
+
+    requests: list[Request] = [
+        Request("A-B", epr_count=7),
+        Request("C-F", epr_count=5),
+        Request("G-I", epr_count=3),
+    ][:n_requests]
+    net.add_request(*requests)
+
+    cpacket_cnt = collect_cpacket_counts(monkeypatch, cp=True, cmd=True)
+    simulator.run()
+    print_node_counters(net)
+    print("cpacket_cnt", cpacket_cnt)
+
+    for req in requests:
+        assert req.epr_count <= RequestCounters.of(net, req).n_consumed < req.epr_count + 3
+        for target in req.src, req.dst:
+            assert cpacket_cnt[f"ctrl-{target}:PATH_INSERT"] == 1
+            assert cpacket_cnt[f"ctrl-{target}:PATH_DELETE"] == 1
+            assert cpacket_cnt[f"{target}-ctrl:PATH_REACH_EPR_COUNT"] == 1

@@ -17,7 +17,7 @@
 
 from typing import cast, override
 
-from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
+from mqns.entity.cchannel import ClassicPacket, classic_cmd_handler
 from mqns.network.fw import RoutingController
 from mqns.network.network import (
     Request,
@@ -47,7 +47,7 @@ class ReactiveRoutingControllerCounters:
         return f"ls={self.n_ls} satisfy={self.n_satisfy}"
 
 
-class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController):
+class ReactiveRoutingController(RoutingController):
     """
     Centralized control plane for reactive routing.
     Works with ``ReactiveForwarder`` on quantum nodes.
@@ -113,14 +113,14 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         self.simulator.add_event(func_to_event(self.simulator.tc + self.d_rtg, self.do_routing))
 
     @classic_cmd_handler("LS")
-    def handle_ls(self, pkt: ClassicPacket, msg: LinkStateMsg):
+    def handle_ls(self, pkt: ClassicPacket, msg: LinkStateMsg) -> None:
         """
         Process received link_states from ReactiveForwarder.
         """
 
         if not self.node.timing.is_routing():  # should be in SYNC timing mode ROUTING phase
             self.log_warning("received LS message from %s outside of ROUTING phase | %s", pkt.src.name, msg)
-            return True
+            return
 
         self.log_debug("received LS message from %s | %s", pkt.src.name, msg)
         self.cnt.n_ls += 1
@@ -128,9 +128,7 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         for entry in msg["ls"]:
             self._tls.add(entry)
 
-        return True
-
-    def do_routing(self):
+    def do_routing(self) -> None:
         """
         Attempt to satisfy each active request with available entanglements.
         Repeat multiple rounds until no more requests can be satisfied.
