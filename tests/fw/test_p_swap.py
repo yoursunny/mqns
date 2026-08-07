@@ -30,8 +30,8 @@ from mqns.utils import unwrap, unwrap_cast
 
 from .fw_common import (
     QubitReleaseReset,
+    build_grid_network,
     build_linear_network,
-    build_rect_network,
     build_tree_network,
     check_fw_counters,
     collect_cpacket_counts,
@@ -381,7 +381,7 @@ def test_4_delayed(
         (1.010, fwB, fwC),
         fidelity=1,
     )
-    cpacket_cnt = collect_cpacket_counts(monkeypatch)
+    cpacket_cnt = collect_cpacket_counts(monkeypatch, dp=True)
     simulator.run()
     print_node_counters(net)
     QuantumMemory.check_leaks(net.nodes)
@@ -595,9 +595,9 @@ def test_5_decohere(
         ((1, 1, 1, 1), (1, 1), 2),
     ],
 )
-def test_rect_multipath(has_etg: tuple[int, int, int, int], n_swapped: tuple[int, int], n_consumed: int):
-    """Test swapping in rectangular topology with a multi-path request."""
-    net, simulator = build_rect_network(fw={"p_swap": 1.0})
+def test_rect2_multipath(has_etg: tuple[int, int, int, int], n_swapped: tuple[int, int], n_consumed: int):
+    """Test swapping in 2x2 rectangular topology with a multi-path request."""
+    net, simulator = build_grid_network(k_paths=2, fw={"p_swap": 1.0})
     fwA, fwB, fwC, fwD = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
     rp = install_path(net, RoutingPathMulti("A", "D"))

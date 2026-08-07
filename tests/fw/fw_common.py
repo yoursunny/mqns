@@ -27,7 +27,7 @@ from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.event import QubitEntangledEvent, QubitReleasedEvent
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.network.reactive import ReactiveForwarder, ReactiveRoutingController
-from mqns.network.route import RouteAlgorithm, YenRouteAlgorithm
+from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm, YenRouteAlgorithm
 from mqns.network.topology import ClassicTopology, GridTopology, LinearTopology, Topology, TopologyInitKwargs, TreeTopology
 from mqns.simulator import Simulator, Time, event_handler, func_to_event
 from mqns.utils import AutoIncrementIdentifier, log, rng
@@ -108,7 +108,7 @@ class BuildNetworkArgs(TypedDict, total=False):
     has_link_layer: bool  # whether to include full LinkLayer application, defaults to False
 
 
-def _make_topo_args(d: BuildNetworkArgs, *, memory_capacity_factor: int) -> TopologyInitKwargs:
+def _make_topo_args(d: BuildNetworkArgs, *, node_max_degree: int) -> TopologyInitKwargs:
     nodes_apps: list[Application[QNode]] = []
     if d.get("has_link_layer", False):
         nodes_apps.append(LinkLayer())
@@ -133,7 +133,7 @@ def _make_topo_args(d: BuildNetworkArgs, *, memory_capacity_factor: int) -> Topo
         cchannel_args=d.get("cchannel_args", dflt_cchannel_args),
         memory_args={
             "t_cohere": d.get("t_cohere", 5.0),
-            "capacity": memory_capacity_factor * ch_capacity,
+            "capacity": node_max_degree * ch_capacity,
         },
     )
 
@@ -187,7 +187,7 @@ def build_linear_network(
 ) -> tuple[QuantumNetwork, Simulator]:
     topo = LinearTopology(
         n_nodes,
-        **_make_topo_args(kwargs, memory_capacity_factor=2),
+        **_make_topo_args(kwargs, node_max_degree=2),
     )
     return _build_network_finish(topo, kwargs)
 
@@ -226,48 +226,65 @@ def build_tree_network(
     topo = TreeTopology(
         nodes_number=nnodes,
         children_number=2,
-        **_make_topo_args(kwargs, memory_capacity_factor=3),
+        **_make_topo_args(kwargs, node_max_degree=3),
     )
     return _build_network_finish(topo, kwargs)
 
 
-def build_rect_network(
+def build_grid_network(
+    shape: tuple[int, int] = (2, 2),
+    *,
+    k_paths=-1,
     **kwargs: Unpack[BuildNetworkArgs],
 ) -> tuple[QuantumNetwork, Simulator]:
     """
-    Build the following topology:
+    Build a grid topology with specified shape.
+
+    The default parameters build the 2x2 rectangle topology:
 
         A---B
         |   |
         C---D
 
-    The network uses Yen routing algorithm with 2 paths.
+    Args:
+        shape: Grid shape, width and height.
+        k_paths: If positive, use ``YenRouteAlgorithm``; otherwise, use ``DijkstraRouteAlgorithm``.
     """
     topo = GridTopology(
-        (2, 2),
-        **_make_topo_args(kwargs, memory_capacity_factor=2),
+        shape,
+        **_make_topo_args(kwargs, node_max_degree=2 if max(shape) == 2 else 4),
     )
-    return _build_network_finish(topo, kwargs, route=YenRouteAlgorithm(k_paths=2))
+    route = YenRouteAlgorithm(k_paths=k_paths) if k_paths > 0 else DijkstraRouteAlgorithm()
+    return _build_network_finish(topo, kwargs, route=route)
 
 
-def collect_cpacket_counts(monkeypatch: pytest.MonkeyPatch, *, inc_controller=False) -> Mapping[str, int]:
+def collect_cpacket_counts(monkeypatch: pytest.MonkeyPatch, *, cp=False, dp=False, cmd=False) -> Mapping[str, int]:
     """
     Gather classic packet counts between node pairs.
+
+    Args:
+        cp: Whether to include control plane traffic.
+        dp: Whether to include data plane traffic.
+        cmd: Whether to include command name.
 
     Returns: Mapping from node name(s) to number of packets, with these entries:
 
     * "src-dst": Packets sent from src to dst.
     * "src-*": Packets sent from src to any destination.
     * "*-dst": Packets sent to dst from any source.
+    * "src-dst:CMD", "src-*:CMD", "*-dst:CMD": Packets with specific command name, if ``cmd`` is True.
     """
     orig_send_cpacket = Node.send_cpacket
     d = defaultdict[str, int](lambda: 0)
 
     def send_cpacket(self: Node, next_hop: Node, pkt: ClassicPacket):
-        if self == pkt.src and (inc_controller or Controller not in (type(pkt.src), type(pkt.dest))):
-            d[f"{pkt.src.name}-{pkt.dest.name}"] += 1
-            d[f"{pkt.src.name}-*"] += 1
-            d[f"*-{pkt.dest.name}"] += 1
+        if self is pkt.src and (cp if (Controller in (type(pkt.src), type(pkt.dest))) else dp):
+            prefixes = [f"{pkt.src.name}-{pkt.dest.name}", f"{pkt.src.name}-*", f"*-{pkt.dest.name}"]
+            suffixes = [""]
+            if cmd and isinstance(msg := pkt.get(), dict) and "cmd" in msg:
+                suffixes.append(f":{msg['cmd']}")
+            for prefix, suffix in itertools.product(prefixes, suffixes):
+                d[prefix + suffix] += 1
         orig_send_cpacket(self, next_hop, pkt)
 
     monkeypatch.setattr(Node, "send_cpacket", send_cpacket)

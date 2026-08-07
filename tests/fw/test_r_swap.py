@@ -19,6 +19,7 @@ from .fw_common import (
     build_linear_network,
     build_tree_network,
     check_fw_counters,
+    collect_cpacket_counts,
     print_node_counters,
     provide_entanglements,
 )
@@ -139,20 +140,26 @@ def test_tree2_two():
     ("req_active", "etgAB", "etgBC", "cnt"),
     [
         # Request is active in both slots, EPRs arrive in first slot, request satisfied.
-        ((0, 0.020), [0.001], [0.002], (3, 1)),
+        ((0, 0.020), [0.001], [0.002], (3, 1, 1)),
         # Request is active in both slots, EPRs arrive in second slot, request satisfied.
-        ((0, 0.020), [0.011], [0.012], (3, 1)),
+        ((0, 0.020), [0.011], [0.012], (3, 1, 1)),
         # Request is active in both slots, EPRs arrive in both slots, request satisfied twice.
-        ((0, 0.020), [0.001, 0.011], [0.002, 0.012], (6, 2)),
+        ((0, 0.020), [0.001, 0.011], [0.002, 0.012], (6, 2, 2)),
         # Request is active in both slots, EPRs arrive in separate slots, request unsatisfied.
-        ((0, 0.020), [0.001], [0.012], (4, 0)),
+        ((0, 0.020), [0.001], [0.012], (4, 0, 0)),
         # Request is active in first slot, EPRs arrive in second slot, request unsatisfied.
-        ((0, 0.010), [0.011], [0.012], (3, 0)),
+        ((0, 0.010), [0.011], [0.012], (3, 0, 0)),
         # Request is active in first slot, EPRs arrive twice in first slot, request satisfied twice.
-        ((0, 0.010), [0.001, 0.003], [0.002, 0.004], (3, 2)),
+        ((0, 0.010), [0.001, 0.003], [0.002, 0.004], (3, 2, 1)),
     ],
 )
-def test_3_minimal(req_active: tuple[float, float], etgAB: list[float], etgBC: list[float], cnt: tuple[int, int]):
+def test_3_minimal(
+    monkeypatch: pytest.MonkeyPatch,
+    req_active: tuple[float, float],
+    etgAB: list[float],
+    etgBC: list[float],
+    cnt: tuple[int, int, int],
+):
     """Test 3-node minimal swap, two time slots."""
     net, simulator = build_linear_network(
         3,
@@ -170,13 +177,18 @@ def test_3_minimal(req_active: tuple[float, float], etgAB: list[float], etgBC: l
         *((t, fwA, fwB) for t in etgAB),
         *((t, fwB, fwC) for t in etgBC),
     )
+    cpacket_cnt = collect_cpacket_counts(monkeypatch, cp=True, cmd=True)
     simulator.run()
     print(ctrl.cnt)
     print_node_counters(net)
+    print("cpacket_cnt", cpacket_cnt)
 
-    assert (ctrl.cnt.n_ls, ctrl.cnt.n_satisfy) == cnt
+    assert ctrl.cnt.n_ls == cnt[0]
+    assert ctrl.cnt.n_satisfy == cnt[1]
     check_fw_counters(
         net,
         n_swapped=(0, cnt[1], 0),
     )
     assert RequestCounters.of(net, 1, "A-C").n_consumed == cnt[1]
+    assert cpacket_cnt["*-ctrl:LS"] == cnt[0]
+    assert cpacket_cnt["ctrl-*:INSTALL_PATH"] == cnt[1] * 3

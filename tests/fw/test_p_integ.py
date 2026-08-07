@@ -22,7 +22,7 @@ from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 
-from .fw_common import build_linear_network, build_rect_network, build_tree_network, install_path, print_node_counters
+from .fw_common import build_grid_network, build_linear_network, build_tree_network, install_path, print_node_counters
 
 
 @pytest.mark.parametrize("epr_type", [WernerStateEntanglement, MixedStateEntanglement])
@@ -94,7 +94,7 @@ def test_tree2_bidir(mux: MuxScheme, swap: SwapSequenceInput, end_time: float, r
 
 def test_rect2_uninstall_path():
     """Test uninstall_path in 2x2 rectangle topology."""
-    net, simulator = build_rect_network(t_cohere=1.0, has_link_layer=True)
+    net, simulator = build_grid_network(t_cohere=1.0, has_link_layer=True)
     _, fwB, fwC, _ = (node.get_app(ProactiveForwarder) for node in net.nodes)
     llA, llB, llC, _ = (node.get_app(LinkLayer) for node in net.nodes)
 
