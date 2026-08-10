@@ -25,7 +25,7 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import cast, overload
+from typing import TYPE_CHECKING, cast, overload
 
 from mqns.entity.base_channel import BaseChannel
 from mqns.entity.cchannel import ClassicChannel
@@ -37,6 +37,9 @@ from mqns.network.network.timing import TimingMode, TimingModeAsync
 from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm, RouteQueryResult
 from mqns.network.topology import ClassicTopology, Topology
 from mqns.simulator import Simulator, Time
+
+if TYPE_CHECKING:
+    from mqns.network.fw.routing import RoutingPath
 
 
 def _save_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], ch: C) -> None:
@@ -278,10 +281,11 @@ class QuantumNetwork:
             raise RuntimeError(f"no route from {src} to {dst}")
         return routes
 
-    def add_request(self, *reqs: Request) -> None:
+    def add_request(self, *args: "Request|RoutingPath") -> None:
         """
         Add one or more requests to the network.
         """
+        reqs = [(req if isinstance(req, Request) else Request(req)) for req in args]
         self.requests.extend(reqs)
 
         if hasattr(self, "simulator"):
@@ -289,10 +293,8 @@ class QuantumNetwork:
                 self._install_request(req)
 
     def _install_request(self, req: Request) -> None:
-        req.active_since = Time.from_time_or_sec(req.active_since_input, accuracy=self.simulator.accuracy)
-        req.active_until = Time.from_time_or_sec(req.active_until_input, accuracy=self.simulator.accuracy)
-        del req.active_since_input
-        del req.active_until_input
+        req.active_since = Time.from_time_or_sec(req.active_since, accuracy=self.simulator.accuracy)
+        req.active_until = Time.from_time_or_sec(req.active_until, accuracy=self.simulator.accuracy)
 
         if not self.controller:
             return

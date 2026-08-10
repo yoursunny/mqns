@@ -560,7 +560,7 @@ class NetworkBuilder:
             raise TypeError("must install controller application first")
 
         if isinstance(arg1, RoutingPath):
-            self.requests.append(Request((arg1.src, arg1.dst)).path(arg1))
+            self.requests.append(Request(arg1))
         else:
             self.requests.append(Request(arg1).path(**kwargs))
 

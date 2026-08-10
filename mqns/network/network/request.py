@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Final, Self, TypedDict, Unpack, final, overload, override
+from typing import TYPE_CHECKING, Final, Self, TypedDict, Unpack, cast, final, overload, override
 
 from mqns.entity.node import Controller, NodePair, split_node_pair
 from mqns.simulator import Event, Time
@@ -15,7 +15,7 @@ class RequestInitArgs(TypedDict, total=False):
     active_period: tuple[Time | float, Time | float]
     """
     Time period in which the request is active / valid.
-    Use ``Time.SENTINEL`` to indicate no restriction on either side.
+    Use ``Time.MIN`` and ``Time.MAX`` to indicate no restriction.
 
     In Proactive-Centralized mode, the ``ProactiveRoutingController`` installs routing path(s)
     upon entering the active period and uninstalls them upon leaving the active period.
@@ -37,28 +37,46 @@ class Request:
     dst: Final[str]
     """Destination node name."""
 
-    active_since: Time
+    active_since: Time | float
     """
     Active period lower bound (inclusive), ``Time.MIN`` means no restriction.
-    This field becomes valid when the request is added to a network and a simulator is installed into the network.
+    This field is guaranteed to be ``Time`` after the request is added to a network and a simulator is installed.
     """
-    active_until: Time
+    active_until: Time | float
     """
     Active period upper bound (exclusive), ``Time.MAX`` means no restriction.
-    This field becomes valid when the request is added to a network and a simulator is installed into the network.
+    This field is guaranteed to be ``Time`` after the request is added to a network and a simulator is installed.
     """
-
     inactive_event: "RequestInactiveEvent|None" = None
-    """Event when the request becomes inactive."""
+    """
+    Event when the request becomes inactive.
+    This field is assigned by the controller.
+    """
 
     rp: "RoutingPath|None" = None
     """Routing path specified by scenario or assigned by controller."""
     rp_args: "RoutingPathInitArgs"
     """Routing path parameters specified by scenario and used by controller."""
 
+    @overload
     def __init__(self, np: NodePair, /, **kwargs: Unpack[RequestInitArgs]):
-        self.src, self.dst = split_node_pair(np)
-        self.active_since_input, self.active_until_input = kwargs.get("active_period", (Time.MIN, Time.MAX))
+        """
+        Construct from src-dst node pair.
+        """
+
+    @overload
+    def __init__(self, rp: "RoutingPath", /, **kwargs: Unpack[RequestInitArgs]):
+        """
+        Construct from ``RoutingPath``, equivalent to calling ``.path(rp)``.
+        """
+
+    def __init__(self, arg1: "NodePair|RoutingPath", /, **kwargs: Unpack[RequestInitArgs]):
+        if isinstance(arg1, str | tuple):
+            self.src, self.dst = split_node_pair(cast(NodePair, arg1))
+        else:
+            self.rp = arg1
+            self.src, self.dst = self.rp.src, self.rp.dst
+        self.active_since, self.active_until = kwargs.get("active_period", (Time.MIN, Time.MAX))
         self.rp_args = {}
 
     @overload
@@ -105,9 +123,9 @@ class Request:
 
         * Time point ``t`` is within active period.
         """
-        if t < self.active_since:
+        if t < cast(Time, self.active_since):
             return False
-        if t >= self.active_until:
+        if t >= cast(Time, self.active_until):
             return False
         return True
 
@@ -117,10 +135,7 @@ class Request:
         return self.rp.req_id if self.rp else self.rp_args.get("req_id", -1)
 
     def __repr__(self) -> str:
-        return f"Request({self.src}-{self.dst}, active_period={self._repr_active('since')}-{self._repr_active('until')})"
-
-    def _repr_active(self, key: str) -> Any:
-        return getattr(self, f"active_{key}", None) or getattr(self, f"active_{key}_input", None)
+        return f"Request({self.src}-{self.dst}, active_period={self.active_since}-{self.active_until})"
 
 
 @final

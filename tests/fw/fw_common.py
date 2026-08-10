@@ -18,10 +18,9 @@ from mqns.network.fw import (
     MultiplexingVectorInput,
     MuxSchemeBufferSpace,
     RoutingController,
-    RoutingPath,
 )
 from mqns.network.fw.fw_swap import ForwarderSwapProc
-from mqns.network.network import QuantumNetwork, Request, TimingMode, TimingModeAsync, TimingPhase, sync_phase_handler
+from mqns.network.network import QuantumNetwork, TimingMode, TimingModeAsync, TimingPhase, sync_phase_handler
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
 from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.event import QubitEntangledEvent, QubitReleasedEvent
@@ -312,25 +311,6 @@ def check_fw_counters(net: QuantumNetwork, **kwargs: Iterable[int | Iterable[int
             if actual != expected and (not isinstance(expected, Iterable) or actual not in expected):
                 errors.append(f"{node}.{key} = {actual} != {expected}")
     assert not errors, "\n".join(errors)
-
-
-def install_path(
-    net: QuantumNetwork,
-    rp: RoutingPath,
-    *,
-    t_install: float | None = None,
-    t_uninstall: float | None = None,
-) -> RoutingPath:
-    """
-    Install and/or uninstall a routing path at specific times.
-    """
-    net.add_request(
-        Request(
-            (rp.src, rp.dst),
-            active_period=(Time.MIN if t_install is None else t_install, Time.MAX if t_uninstall is None else t_uninstall),
-        ).path(rp)
-    )
-    return rp
 
 
 _provide_entanglements_autoid = AutoIncrementIdentifier("Tpe_")

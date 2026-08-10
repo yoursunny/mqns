@@ -8,12 +8,13 @@ import pytest
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QuantumMemory, QubitState
 from mqns.network.fw import RoutingPathStatic
+from mqns.network.network import Request
 from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Time
 from mqns.utils import rng
 
-from .fw_common import build_linear_network, check_fw_counters, install_path, print_node_counters, provide_entanglements
+from .fw_common import build_linear_network, check_fw_counters, print_node_counters, provide_entanglements
 
 
 def force_purify_outcome(monkeypatch: pytest.MonkeyPatch, *success: bool):
@@ -61,7 +62,7 @@ def test_link_rounds(monkeypatch: pytest.MonkeyPatch, n_rounds: int, purif_succe
     fwA = net.get_node("A").get_app(ProactiveForwarder)
     fwB = net.get_node("B").get_app(ProactiveForwarder)
 
-    rp = install_path(net, RoutingPathStatic("AB", swap=[0, 0], purif={"A-B": n_rounds}))
+    net.add_request(rp := RoutingPathStatic("AB", swap=[0, 0], purif={"A-B": n_rounds}))
     provide_entanglements(*((1.001 + i / 1000, fwA, fwB) for i in range(n_etg)))
     force_purify_outcome(monkeypatch, *(True if i > 0 else False for i in purif_success))
     simulator.run()
@@ -85,16 +86,16 @@ _3u_swap = ([1.0000], [1.0100]), -1, {}, ([1.2115], [1.2110], [1.2110], [1.2115]
 
 
 @pytest.mark.parametrize(
-    ("t_uninstall", "etg_sec", "cutoff", "purif", "t_raw"),
+    ("t_delete", "etg_sec", "cutoff", "purif", "t_raw"),
     [
         # 1. t=1.0010, A-B.0 arrives.
         # 2. t=1.0020, A-B.1 arrives, B sends PURIF_SOLICIT, which would arrive at 1.0025.
-        # 3. t=1.0022, path is uninstalled.
+        # 3. t=1.0022, path is deleted.
         pytest.param(1.0022, *_3u_purif, id="purif-solicit", marks=xfail_memory),
         # 1. t=1.0010, A-B.0 arrives.
         # 2. t=1.0020, A-B.1 arrives, B sends PURIF_SOLICIT.
         # 3. t=1.0025, A receives PURIF_SOLICIT and sends PURIF_RESPONSE, which would arrive at 1.0030.
-        # 4. t=1.0027, path is uninstalled.
+        # 4. t=1.0027, path is deleted.
         pytest.param(1.0027, *_3u_purif, id="purif-response", marks=xfail_memory),
         # 1. t=1.0010, A-B.0 arrives, B-C arrives.
         # 2. t=1.0020, A-B.1 arrives, B sends PURIF_SOLICIT.
@@ -102,46 +103,46 @@ _3u_swap = ([1.0000], [1.0100]), -1, {}, ([1.2115], [1.2110], [1.2110], [1.2115]
         # 4. t=1.0030, B receives PURIF_RESPONSE and starts swapping.
         # 5. t=1.2030, B finishes swapping and sends SWAP_UPDATE.
         # 6. t=1.2035, A and C process SWAP_UPDATE message.
-        # 7. t=1.2037, path is uninstalled.
+        # 7. t=1.2037, path is deleted.
         pytest.param(1.2037, *_3u_purif_swap, id="purif-complete"),
         # 1. t=1.0010, A-B arrives, discard scheduled at 1.0050.
-        # 2. t=1.0012, path is uninstalled.
+        # 2. t=1.0012, path is deleted.
         # 3. t=1.0050, B discards A-B and sends CUTOFF_DISCARD to A.
         # 4. t=1.0055, A processes CUTOFF_DISCARD message.
         pytest.param(1.0012, *_3u_cutoff, id="cutoff-waiting"),
         # 1. t=1.0010, A-B arrives, discard scheduled at 1.0050.
         # 2. t=1.0050, B discards A-B and sends CUTOFF_DISCARD to A.
-        # 3. t=1.0052, path is uninstalled.
+        # 3. t=1.0052, path is deleted.
         # 4. t=1.0055, A processes CUTOFF_DISCARD message.
         pytest.param(1.0052, *_3u_cutoff, id="cutoff-inflight"),
         # 1. t=1.0010, A-B arrives, discard scheduled at 1.0050.
         # 2. t=1.0050, B discards A-B and sends CUTOFF_DISCARD to A.
         # 3. t=1.0055, A processes CUTOFF_DISCARD message.
-        # 4. t=1.0057, path is uninstalled.
+        # 4. t=1.0057, path is deleted.
         pytest.param(1.0057, *_3u_cutoff, id="cutoff-complete"),
         # 1. t=1.0010, A-B arrives.
         # 2. t=1.0110, B-C arrives, B starts swapping.
-        # 3. t=1.1000, path is uninstalled.
+        # 3. t=1.1000, path is deleted.
         # 4. t=1.2110, B aborts the swap and sends SWAP_UPDATE.
         # 5. t=1.2115, A and C process SWAP_UPDATE message.
         pytest.param(1.1000, *_3u_swap, id="swap-waiting"),
         # 1. t=1.0010, A-B arrives.
         # 2. t=1.0110, B-C arrives, B starts swapping.
         # 3. t=1.2110, B finishes swapping and sends SWAP_UPDATE.
-        # 4. t=1.2112, path is uninstalled.
+        # 4. t=1.2112, path is deleted.
         # 5. t=1.2115, A and C process SWAP_UPDATE message.
         pytest.param(1.2112, *_3u_swap, id="swap-inflight"),
         # 1. t=1.0010, A-B arrives.
         # 2. t=1.0110, B-C arrives, B starts swapping.
         # 3. t=1.2110, B finishes swapping and sends SWAP_UPDATE.
         # 4. t=1.2115, A and C process SWAP_UPDATE message.
-        # 4. t=1.2117, path is uninstalled.
+        # 4. t=1.2117, path is deleted.
         pytest.param(1.2117, *_3u_swap, id="swap-complete"),
     ],
 )
-def test_3_uninstall(
+def test_3_path_delete(
     monkeypatch: pytest.MonkeyPatch,
-    t_uninstall: float,
+    t_delete: float,
     etg_sec: tuple[Iterable[float], Iterable[float]],
     cutoff: float,
     purif: Mapping[str, int],
@@ -153,7 +154,12 @@ def test_3_uninstall(
     chBC = net.get_qchannel("B", "C")
     fwA, fwB, fwC = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    install_path(net, RoutingPathStatic("ABC", path_id=0, swap_cutoff=[cutoff, -1], purif=purif), t_uninstall=t_uninstall)
+    net.add_request(
+        Request(
+            RoutingPathStatic("ABC", path_id=0, swap_cutoff=[cutoff, -1], purif=purif),
+            active_period=(Time.MIN, t_delete),
+        )
+    )
     provide_entanglements(
         (etg_sec[0], fwA, fwB),
         (etg_sec[1], fwB, fwC),
@@ -190,9 +196,12 @@ def test_4_l2r(monkeypatch: pytest.MonkeyPatch):
     net, simulator = build_linear_network(4, ch_capacity=8, fw={"p_swap": 1.0})
     fwA, fwB, fwC, fwD = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    rp = install_path(
-        net,
-        RoutingPathStatic("ABCD", swap=[2, 0, 1, 2], purif={"A-B": 1, "B-C": 1, "C-D": 1, "A-C": 1, "A-D": 1}),
+    net.add_request(
+        rp := RoutingPathStatic(
+            "ABCD",
+            swap=[2, 0, 1, 2],
+            purif={"A-B": 1, "B-C": 1, "C-D": 1, "A-C": 1, "A-D": 1},
+        ),
     )
     provide_entanglements(
         (1.001, fwA, fwB),  # \
