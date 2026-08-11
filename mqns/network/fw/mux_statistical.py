@@ -6,7 +6,7 @@ from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
-from mqns.network.fw.fib import FibEntry
+from mqns.network.fw.fib import FibPath
 from mqns.network.fw.message import PathInstructions, validate_path_instructions
 from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.select import (
@@ -26,24 +26,24 @@ if TYPE_CHECKING:
 class MuxSchemeDynamicBase(MuxScheme):
     def __init__(self):
         super().__init__()
-        self.qchannel_paths_map = defaultdict[str, list[int]](lambda: [])
+        self.qchannel_paths_map = defaultdict[str, list[int]](list)
         """stores path-qchannel relationship"""
 
     @override
-    def validate_path_instructions(self, instructions: PathInstructions):
-        validate_path_instructions(instructions)
-        assert "m_v" not in instructions
+    def validate_path_instructions(self, inst: PathInstructions):
+        validate_path_instructions(inst)
+        assert "m_v" not in inst
 
     @override
-    def install_path_adj(self, inst: PathInstructions, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+    def install_path_adj(self, inst: PathInstructions, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
         _ = inst, dir
-        self.qchannel_paths_map[ch.name].append(fib_entry.path_id)
+        self.qchannel_paths_map[ch.name].append(fp.path_id)
 
     @override
-    def uninstall_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+    def uninstall_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
         _ = dir
         paths = self.qchannel_paths_map[ch.name]
-        paths.remove(fib_entry.path_id)
+        paths.remove(fp.path_id)
         if len(paths) == 0:
             del self.qchannel_paths_map[ch.name]
 
@@ -73,7 +73,7 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
     SelectSwapQubit_oldest: SelectSwapQubit = select_swap_qubit_oldest
     SelectSwapQubit_newest: SelectSwapQubit = select_swap_qubit_newest
 
-    type SelectPath = Callable[[list[int], "Forwarder", Entanglement, Entanglement], int | FibEntry]
+    type SelectPath = Callable[[list[int], "Forwarder", Entanglement, Entanglement], int | FibPath]
 
     SelectPath_random: SelectPath = select_random
 
@@ -102,27 +102,27 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         self._select_path = parse_select(type(self), "SelectPath_", select_path)
 
     @override
-    def validate_path_instructions(self, instructions: PathInstructions):
-        super().validate_path_instructions(instructions)
+    def validate_path_instructions(self, inst: PathInstructions):
+        super().validate_path_instructions(inst)
 
         # swap sequence must be [1, 0, 0, .., 0, 0, 1]
-        s0, *s1, s2 = instructions["swap"]
+        s0, *s1, s2 = inst["swap"]
         assert s0 == 1 == s2
         assert all((s == 0 for s in s1))
 
         # purif scheme must be empty / zeros
-        assert all((r == 0 for r in instructions["purif"].values()))
+        assert all((r == 0 for r in inst["purif"].values()))
 
     @override
-    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibEntry | None:
+    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibPath | None:
         if self.coordinated_decisions and epr.affectionated_path_id >= 0:
             assert epr.affectionated_path_id in unwrap_cast(mq.epr_path_ids)
             mq.epr_path_ids = [epr.affectionated_path_id]
 
         def calc_rank_diff(path_id: int):
-            fib_entry = self.fib.get(path_id)
-            _, p_rank = fib_entry.find_index_and_swap_rank(neighbor.name)
-            return fib_entry.own_swap_rank - p_rank
+            fp = self.fib.get_path(path_id)
+            _, p_rank = fp.find_index_and_swap_rank(neighbor.name)
+            return fp.own_swap_rank - p_rank
 
         rank_diff = [calc_rank_diff(path_id) for path_id in unwrap_cast(mq.epr_path_ids)]
         assert min(rank_diff) == max(rank_diff)  # failure means one node is both repeater and end node, unsupported
@@ -137,12 +137,7 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         return None
 
     @override
-    def find_swap_with(
-        self,
-        mq0: MemoryQubit,
-        epr0: Entanglement,
-        fib_entry: FibEntry | None,
-    ) -> tuple[MemoryQubit, FibEntry] | None:
+    def find_swap_with(self, mq0: MemoryQubit, epr0: Entanglement, fp: FibPath | None) -> tuple[MemoryQubit, FibPath] | None:
         mq0_path_ids = set(unwrap_cast(mq0.epr_path_ids))
 
         candidates = self.memory.find(
@@ -177,7 +172,7 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
             epr1,
         )
         assert selected_path is not None, "select_path did not find path"
-        fib_entry = selected_path if type(selected_path) is FibEntry else self.fib.get(selected_path)
+        fp = selected_path if type(selected_path) is FibPath else self.fib.get_path(selected_path)
         if self.coordinated_decisions:
-            epr0.affectionated_path_id = epr1.affectionated_path_id = fib_entry.path_id
-        return mq1, fib_entry
+            epr0.affectionated_path_id = epr1.affectionated_path_id = fp.path_id
+        return mq1, fp

@@ -3,7 +3,10 @@ use async_nats::{self, HeaderMap, jetstream};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::Arc,
+};
 use tokio::sync::{Mutex, mpsc};
 use tokio_stream::StreamExt;
 
@@ -14,28 +17,30 @@ pub fn sec_to_time_slot(sec: f64, accuracy: u64) -> u64 {
     (sec * accuracy as f64).round() as u64
 }
 
-const CMD_INSTALL_PATH: &str = "INSTALL_PATH";
-const CMD_UNINSTALL_PATH: &str = "UNINSTALL_PATH";
+const CMD_PATH_INSERT: &str = "PATH_INSERT";
+const CMD_PATH_DELETE: &str = "PATH_DELETE";
 const CMD_LS: &str = "LS";
 
+/// Path insertion command from controller to forwarders.
 #[derive(Debug, Clone, Serialize)]
-struct InstallPathCmd<'a> {
-    cmd: String, // CMD_INSTALL_PATH
-    path_id: u32,
-    instructions: &'a PathInstructions,
+struct PathInsertMsg<'a> {
+    cmd: &'static str, // CMD_PATH_INSERT
+    req_id: u32,
+    paths: &'a [PathInstructions],
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct UninstallPathCmd {
-    cmd: String, // CMD_UNINSTALL_PATH
-    path_id: u32,
+/// Path deletion command from controller to forwarders.
+#[derive(Debug, Clone, Serialize)]
+struct PathDeleteMsg {
+    cmd: &'static str, // CMD_PATH_DELETE
+    req_id: u32,
 }
 
-/// Instructions from the controller to forwarders regarding a routing path.
+/// Swapping and purification instructions for the forwarders.
 /// See mqns.network.fw.PathInstructions struct for details.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PathInstructions {
-    pub req_id: u32,
+    pub path_id: u32,
     pub route: Vec<String>,
     pub swap: Vec<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -43,6 +48,20 @@ pub struct PathInstructions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub m_v: Option<Vec<MultiplexingVectorElem>>,
     pub purif: HashMap<String, String>,
+}
+
+impl PathInstructions {
+    /// Assign m_v with specific qubits.
+    ///
+    /// * `qubits`: A vector of qubit reservation keys, one per quantum channel in the route.
+    pub fn set_mv_qubits(&mut self, qubits: Vec<String>) {
+        self.m_v = Some(
+            qubits
+                .into_iter()
+                .map(MultiplexingVectorElem::Key)
+                .collect(),
+        );
+    }
 }
 
 /// Multiplexing Vector element in PathInstructions.
@@ -156,53 +175,49 @@ impl Southbound {
         Ok(())
     }
 
-    /// Send install_path command.
+    /// Send PATH_INSERT command.
     ///
     /// * `t`: Command transmission time in time slots.
-    /// * `path_id`: Path identifier.
-    /// * `instructions`: Routing path instructions. A copy of the command is sent to each node in the route.
-    pub async fn install_path(
-        &self,
-        t: u64,
-        path_id: u32,
-        instructions: &PathInstructions,
-    ) -> Result<()> {
-        let cmd = InstallPathCmd {
-            cmd: CMD_INSTALL_PATH.to_string(),
-            path_id: path_id,
-            instructions: instructions,
+    /// * `req_id`: Request identifier.
+    /// * `paths`: Slice of routing path instructions belonging to this request.
+    pub async fn path_insert(&self, t: u64, req_id: u32, paths: &[PathInstructions]) -> Result<()> {
+        let msg = PathInsertMsg {
+            cmd: CMD_PATH_INSERT,
+            req_id,
+            paths,
         };
-        let payload = Bytes::from(serde_json::to_vec(&cmd)?);
-        self.send_instructions(t, payload, instructions).await
+        let payload = Bytes::from(serde_json::to_vec(&msg)?);
+        self.send_instructions(t, payload, paths).await
     }
 
-    /// Send uninstall_path command.
+    /// Send PATH_DELETE command.
     ///
     /// * `t`: Command transmission time in time slots.
-    /// * `path_id`: Path identifier.
-    /// * `instructions`: Routing path instructions. A copy of the command is sent to each node in the route.
-    pub async fn uninstall_path(
-        &self,
-        t: u64,
-        path_id: u32,
-        instructions: &PathInstructions,
-    ) -> Result<()> {
-        let cmd = UninstallPathCmd {
-            cmd: CMD_UNINSTALL_PATH.to_string(),
-            path_id: path_id,
+    /// * `req_id`: Request identifier.
+    /// * `paths`: Slice of routing path instructions belonging to this request.
+    pub async fn path_delete(&self, t: u64, req_id: u32, paths: &[PathInstructions]) -> Result<()> {
+        let msg = PathDeleteMsg {
+            cmd: CMD_PATH_DELETE,
+            req_id,
         };
-        let payload = Bytes::from(serde_json::to_vec(&cmd)?);
-        self.send_instructions(t, payload, instructions).await
+        let payload = Bytes::from(serde_json::to_vec(&msg)?);
+        self.send_instructions(t, payload, paths).await
     }
 
     async fn send_instructions(
         &self,
         t: u64,
         payload: Bytes,
-        instructions: &PathInstructions,
+        paths: &[PathInstructions],
     ) -> Result<()> {
-        for dst in &instructions.route {
-            let subject = format!("{}.I.{dst}.ctrl", self.nats_prefix);
+        // Collect unique node names in deterministic order across all paths
+        let nodes: BTreeSet<&str> = paths
+            .iter()
+            .flat_map(|p| p.route.iter().map(|s| s.as_str()))
+            .collect();
+
+        for dest in nodes {
+            let subject = format!("{}.I.{dest}.ctrl", self.nats_prefix);
             let mut headers = HeaderMap::new();
             headers.insert("t", t.to_string());
             headers.insert("fmt", "json");
@@ -212,7 +227,7 @@ impl Southbound {
                 .await?
                 .await
             {
-                return Err(anyhow!("Failed to deliver instructions to {}: {}", dst, e));
+                return Err(anyhow!("Failed to deliver instructions to {}: {}", dest, e));
             }
         }
         Ok(())

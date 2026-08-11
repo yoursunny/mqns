@@ -6,7 +6,7 @@ from mqns.entity.cchannel import ClassicCommandModule, ClassicPacket, classic_cm
 from mqns.entity.memory import QuantumMemory
 from mqns.entity.node import Application, Node, QNode
 from mqns.models.epr import Entanglement
-from mqns.network.fw.fib import Fib, FibEntry
+from mqns.network.fw.fib import Fib, FibPath
 from mqns.network.network import QuantumNetwork
 from mqns.simulator import Simulator
 from mqns.utils import LogSelfMixin, log
@@ -37,25 +37,25 @@ def fw_signaling_cmd_handler(cmd: str):
     """
     Method decorator for a signaling message handler in Forwarder.
 
-    ``handle_message(self, msg: dict, fib_entry: FibEntry) -> Any``
+    ``handle_message(self, msg: dict, fp: FibPath) -> Any``
     """
 
-    def decorator(f: Callable[[Any, Any, FibEntry], Any]):
+    def decorator(f: Callable[[Any, Any, FibPath], Any]):
         @functools.wraps(f)
         def wrapper(self: "ForwarderModule", pkt: ClassicPacket, msg: dict):
             path_id: int = msg["path_id"]
             try:
-                fib_entry = self.fib.get(path_id)
+                fp = self.fib.get_path(path_id)
             except LookupError:
                 self.log_debug("dropping signaling message from %s, reason=no-fib-entry | %s", pkt.src.name, msg)
                 return
 
             if pkt.dest != self.node:
-                self.send_msg(pkt.dest, msg, fib_entry, forward_from=pkt.src)
+                self.send_msg(pkt.dest, msg, fp, forward_from=pkt.src)
                 return
 
             self.log_debug("received signaling message from %s | %s", pkt.src.name, msg)
-            f(self, msg, fib_entry)
+            f(self, msg, fp)
 
         return classic_cmd_handler(cmd)(wrapper)
 
@@ -94,13 +94,13 @@ class ForwarderModule(LogSelfMixin, ClassicCommandModule):
         log.debug("%s: sending control message to controller | %s", self, msg)
         self.node.send_cpacket(ctrl, ClassicPacket(msg, src=self.node, dest=ctrl))
 
-    def send_msg(self, dest: Node, msg: Mapping, fib_entry: FibEntry, *, forward_from: Node | None = None):
+    def send_msg(self, dest: Node, msg: Mapping, fp: FibPath, *, forward_from: Node | None = None):
         """
-        Send/forward a signaling message along the path specified in FIB entry.
+        Send/forward a signaling message along the path specified in FIB path entry.
         """
-        dest_idx = fib_entry.route.index(dest.name)
-        nh_idx = fib_entry.own_idx + 1 if dest_idx > fib_entry.own_idx else fib_entry.own_idx - 1
-        next_hop = self.network.get_node(fib_entry.route[nh_idx])
+        dest_idx = fp.route.index(dest.name)
+        nh_idx = fp.own_idx + 1 if dest_idx > fp.own_idx else fp.own_idx - 1
+        next_hop = self.network.get_node(fp.route[nh_idx])
 
         pkt = ClassicPacket(msg, src=forward_from or self.node, dest=dest)
         log.debug(

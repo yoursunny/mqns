@@ -15,32 +15,29 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Final, Literal, final
 
+import numpy as np
+
 from mqns.network.fw.message import SwapSequence
-from mqns.simulator import Time
+from mqns.simulator import Time, func_to_event
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
 
 
 @final
-class FibEntry:
-    """FIB entry."""
+class FibPath:
+    """FIB path entry --- information related to a path."""
 
-    __slots__ = ("req_id", "path_id", "active_until", "route", "own_idx", "swap", "swap_cutoff", "purif", "sg")
+    __slots__ = ("req", "path_id", "route", "own_idx", "swap", "swap_cutoff", "purif", "sg")
 
-    req_id: Final[int]
-    """Request identifier, identifies source-destination pair."""
+    req: "FibRequest"
+    """Request entry reference, assigned by ``FibRequest.__init__``."""
     path_id: Final[int]
     """Path identifier, identifies end-to-end path."""
-
-    active_until: Time
-    """
-    Active period upper bound (exclusive), ``Time.MAX`` means no restriction.
-    This field becomes valid when the request is added to a network and a simulator is installed into the network.
-    """
 
     route: Final[Sequence[str]]
     """List of nodes traversed by the path."""
@@ -58,7 +55,6 @@ class FibEntry:
     def __init__(
         self,
         *,
-        req_id: int,
         path_id: int,
         route: Sequence[str],
         own_idx: int,
@@ -66,9 +62,7 @@ class FibEntry:
         swap_cutoff: Sequence[Time | None],
         purif: Mapping[str, int],
     ):
-        self.req_id = req_id
         self.path_id = path_id
-        self.active_until = Time.MAX
         self.route = route
         self.own_idx = own_idx
         self.swap = swap
@@ -77,26 +71,13 @@ class FibEntry:
         self.sg = None if self.own_swap_rank == self.swap[0] else FibSwapGroup(self)
 
     @property
-    def own_swap_rank(self) -> int:
-        return self.swap[self.own_idx]
+    def req_id(self) -> int:
+        """Request identifier."""
+        return self.req.req_id
 
     @property
-    def is_swap_disabled(self) -> bool:
-        """
-        Determine whether swapping has been disabled.
-
-        To disable swapping, set SwapSequence to a list of zeros.
-
-        When swapping is disabled, the forwarder will consume entanglement upon completing purification,
-        without attempting entanglement swapping.
-        """
-        return self.swap[0] == 0 == self.swap[-1]
-
-    def is_active(self, t: Time) -> bool:
-        """
-        Determine if the time point ``t`` is within the FIB entry's active period.
-        """
-        return t < self.active_until
+    def own_swap_rank(self) -> int:
+        return self.swap[self.own_idx]
 
     def find_index_and_swap_rank(self, node_name: str) -> tuple[int, int]:
         """
@@ -162,29 +143,27 @@ class FibSwapGroup:
     own_idx: Final[int]
     """Index of own node within ``nodes``."""
 
-    def __init__(self, entry: FibEntry):
-        route_len = len(entry.route)
-        if entry.own_idx in (0, route_len - 1):
-            raise ValueError("FibSwapGroup is undefined for end nodes")
+    def __init__(self, fp: FibPath):
+        route_len = len(fp.route)
 
-        self.path_id = entry.path_id
-        self.rank = entry.own_swap_rank
+        self.path_id = fp.path_id
+        self.rank = fp.own_swap_rank
 
-        nodes = [entry.route[entry.own_idx]]
-        self.l_neigh, l_rank = self._extend_1d(entry, nodes, range(entry.own_idx - 1, -1, -1))
+        nodes = [fp.route[fp.own_idx]]
+        self.l_neigh, l_rank = self._extend_1d(fp, nodes, range(fp.own_idx - 1, -1, -1))
         self.own_idx = len(nodes) - 1
         nodes.reverse()
-        self.r_neigh, r_rank = self._extend_1d(entry, nodes, range(entry.own_idx + 1, route_len))
+        self.r_neigh, r_rank = self._extend_1d(fp, nodes, range(fp.own_idx + 1, route_len))
         self.nodes = nodes
 
-        if l_rank == r_rank or entry.purif.get(f"{self.l_neigh}-{self.r_neigh}", 0) > 0:
+        if l_rank == r_rank or fp.purif.get(f"{self.l_neigh}-{self.r_neigh}", 0) > 0:
             self.dir = "b"
         elif l_rank < r_rank:
             self.dir = "l"
         else:
             self.dir = "r"
 
-    def _extend_1d(self, entry: FibEntry, nodes: list[str], index_range: Iterable[int]) -> tuple[str, int]:
+    def _extend_1d(self, entry: FibPath, nodes: list[str], index_range: Iterable[int]) -> tuple[str, int]:
         for i in index_range:
             node_rank = entry.swap[i]
             if node_rank > self.rank:
@@ -241,119 +220,154 @@ class FibSwapGroup:
         return f"FibSwapGroup({self.repr_route()}, rank={self.rank})"
 
 
-class FibRequestGroup:
-    """FIB information grouped by req_id."""
+class FibRequest:
+    """FIB request entry --- information related to an end-to-end request."""
 
-    def __init__(self, entry: FibEntry):
-        """Construct from first FIB entry."""
-        self.req_id = entry.req_id
-        self.src = entry.route[0]
-        self.dst = entry.route[-1]
-        self.path_ids = {entry.path_id}
+    __slots__ = ("req_id", "src", "dst", "paths", "active_until", "epr_count_remain")
 
-    def add(self, entry: FibEntry) -> None:
-        """Check consistency and save FIB entry."""
-        assert self.req_id == entry.req_id
-        assert self.src == entry.route[0]
-        assert self.dst == entry.route[-1]
-        self.path_ids.add(entry.path_id)
+    req_id: Final[int]
+    """Request identifier."""
+    src: Final[str]
+    """Source node."""
+    dst: Final[str]
+    """Destination node."""
+    paths: Final[Sequence[FibPath]]
+    """List of ``FibPath`` entries."""
 
-    def remove(self, entry: FibEntry) -> bool:
+    active_until: Time
+    """
+    Active period upper bound (exclusive), ``Time.MAX`` means no restriction.
+    """
+    epr_count_remain: int | float
+    """
+    If ``epr_count`` is restricted, remaining quantity of entangled pairs.
+    Otherwise, positive infinity.
+    This field is only used on end nodes.
+    """
+
+    def __init__(self, req_id: int, entries: Sequence[FibPath], *, epr_count=-1):
+        self.req_id = req_id
+        self.src, *_, self.dst = entries[0].route
+        self.paths = entries
+        self.active_until = Time.MAX
+        self.epr_count_remain = np.inf if epr_count < 0 else epr_count
+
+        for entry in entries:
+            entry.req = self
+            assert entry.route[0] == self.src
+            assert entry.route[-1] == self.dst
+
+    def is_active(self, now: Time) -> bool:
         """
-        Remove FIB entry.
+        Determine if the request is active.
 
-        Returns:
-            Whether the group has become empty.
+        The condition is same as ``Request.is_active``.
         """
-        assert self.req_id == entry.req_id
-        self.path_ids.remove(entry.path_id)
-        return len(self.path_ids) == 0
+        return now < self.active_until and self.epr_count_remain > 0
 
 
 class Fib:
+    """
+    Forwarding Information Base of a forwarder.
+    """
+
     def __init__(self):
-        self.table: dict[int, FibEntry] = {}
-        """
-        FIB table.
-        Key is path_id.
-        Value is FIB entry.
-        """
-        self.by_req_id: dict[int, FibRequestGroup] = {}
-        """
-        Lookup table indexed by req_id.
-        Key is req_id.
-        Value contains aggregated information.
-        """
+        self._reqs: dict[int, FibRequest] = {}  # keyed by req_id
+        self._end_reqs = defaultdict[str, list[FibRequest]](list)  # own node is end-node, keyed by opposite end-node
+        self._paths: dict[int, FibPath] = {}  # keyed by path_id
 
     def install(self, fw: "Forwarder") -> None:
         self.simulator = fw.simulator
+        self._own_name = fw.node.name
 
-    def get(self, path_id: int) -> FibEntry:
+    def clear(self) -> None:
         """
-        Retrieve an entry by path_id.
+        Clear all tables.
+        """
+        self._reqs.clear()
+        self._end_reqs.clear()
+        self._paths.clear()
+
+    def get_path(self, path_id: int) -> FibPath:
+        """
+        Retrieve FIB path entry by path identifier.
 
         Raises:
-            LookupError: Entry not found.
+            LookupError: Path entry not found.
         """
         try:
-            return self.table[path_id]
+            return self._paths[path_id]
         except KeyError:
-            raise LookupError(f"FIB entry not found for path_id={path_id}") from None
+            raise LookupError(f"FibPath({path_id}) not found") from None
 
-    def insert_or_replace(self, entry: FibEntry):
+    def get_req(self, req_id: int) -> FibRequest:
         """
-        Insert an entry or replace entry with same path_id.
-        """
-        self.erase(entry.path_id)
-        self.table[entry.path_id] = entry
+        Retrieve FIB request entry by request identifier.
 
-        rg = self.by_req_id.get(entry.req_id)
-        if rg:
-            rg.add(entry)
-        else:
-            rg = FibRequestGroup(entry)
-            self.by_req_id[rg.req_id] = rg
-
-    def erase(self, path_id: int):
-        """
-        Remove an entry from the table.
-
-        Nonexistent entry is silent ignored.
+        Raises:
+            LookupError: Request entry not found.
         """
         try:
-            entry = self.table.pop(path_id)
+            return self._reqs[req_id]
         except KeyError:
-            return
+            raise LookupError(f"FibRequest({req_id}) not found") from None
 
-        rg = self.by_req_id[entry.req_id]
-        if rg.remove(entry):
-            del self.by_req_id[entry.req_id]
+    def _req_opposite_end(self, fr: FibRequest) -> str | None:
+        if fr.src == self._own_name:
+            return fr.dst
+        if fr.dst == self._own_name:
+            return fr.src
+        return None
 
-    def find_request(
-        self,
-        predicate: Callable[[FibRequestGroup], bool],
-        *,
-        has_active=False,
-    ) -> Iterator[FibRequestGroup]:
+    def insert_req(self, fr: FibRequest) -> None:
         """
-        List ``FibRequestGroup`` satisfying a predicate.
+        Insert a request entry and all its path entries.
+        """
+        if fr.req_id in self._reqs:
+            raise ValueError(f"FibRequest({fr.req_id}) already exists")
+        self._reqs[fr.req_id] = fr
+
+        for entry in fr.paths:
+            if entry.path_id in self._paths:
+                raise ValueError(f"FibEntry({entry.path_id}) already exists")
+            self._paths[entry.path_id] = entry
+
+        if opposite := self._req_opposite_end(fr):
+            self._end_reqs[opposite].append(fr)
+
+    def delete_req(self, req_id: int, *, delay: Time) -> FibRequest:
+        """
+        Schedule the deletion of a request entry and all its path entries.
 
         Args:
-            predicate: Function to determine the condition.
-            has_active: Also require at least one FIB entry to be within the active period.
+            delay: Delay for the final deletion.
+
+        Returns:
+            The FIB request entry.
         """
-        for rg in self.by_req_id.values():
-            if predicate(rg) and ((not has_active) or self._request_has_active(rg)):
-                yield rg
+        fr = self.get_req(req_id)
+        fr.active_until = self.simulator.tc
+        self.simulator.add_event(func_to_event(fr.active_until + delay, self._delete_req, req_id))
+        return fr
 
-    def _request_has_active(self, rg: FibRequestGroup) -> bool:
-        now = self.simulator.tc
-        return any(self.table[path_id].is_active(now) for path_id in rg.path_ids)
+    def _delete_req(self, req_id: int) -> None:
+        fr = self.get_req(req_id)
+        del self._reqs[req_id]
 
-    def __repr__(self):
-        """Return a string representation of the forwarding table."""
-        return "\n".join(
-            f"Path ID: {path_id}, Request ID: {entry.req_id}, Path: {entry.route}, "
-            f"Swap Sequence: {entry.swap}, Purification: {entry.purif}"
-            for path_id, entry in self.table.items()
-        )
+        for entry in fr.paths:
+            del self._paths[entry.path_id]
+
+        if opposite := self._req_opposite_end(fr):
+            l = self._end_reqs[opposite]
+            l.remove(fr)
+            if not l:
+                del self._end_reqs[opposite]
+
+    def list_end_reqs(self, opposite_end: str) -> list[FibRequest]:
+        """
+        List FIB request entries where own node is an end-node.
+
+        Args:
+            opposite_end: The opposite end-node.
+        """
+        return self._end_reqs.get(opposite_end, [])

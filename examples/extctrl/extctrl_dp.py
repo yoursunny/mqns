@@ -1,7 +1,6 @@
 import math
 from collections.abc import Iterable
-from dataclasses import dataclass
-from typing import Literal, override
+from typing import Literal, NamedTuple, override
 
 from tap import Tap
 
@@ -33,8 +32,7 @@ class Args(Tap):
         self.add_argument("--M", metavar=("M_edge", "M_center"))
 
 
-@dataclass
-class Stats:
+class Stats(NamedTuple):
     path1: RequestCounters
     path2: RequestCounters
     fw: dict[str, ForwarderCounters]

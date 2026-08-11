@@ -18,7 +18,7 @@ def _():
 
 class SimpleEvent(Event):
     seq = 0
-    invokes = defaultdict[str, list[int]](lambda: [])
+    invokes = defaultdict[str, list[int]](list)
 
     @override
     def invoke(self) -> None:

@@ -7,7 +7,7 @@ from mqns.models.core import QuantumModel
 from mqns.models.delay import DelayModel
 from mqns.models.epr import Entanglement
 from mqns.models.error import ErrorModel
-from mqns.network.fw.fib import FibEntry, FibSwapGroup
+from mqns.network.fw.fib import FibPath, FibSwapGroup
 from mqns.network.fw.fw_module import ForwarderModule, fw_signaling_cmd_handler
 from mqns.network.fw.message import SwapUpdateMsg
 from mqns.simulator import Event, Time, func_to_event
@@ -59,7 +59,7 @@ class _SwapHerald(NamedTuple):
 class _SwapParsedUpdate(NamedTuple):
     """SWAP_UPDATE parsed in own node context."""
 
-    fib_entry: FibEntry
+    fp: FibPath
     expiry: int
     q_paths: Sequence[int]
 
@@ -125,9 +125,9 @@ class _SwapTask:
     has_expire_event = False
     """Whether ``ForwarderSwapProc._u_expire_task`` is scheduled."""
 
-    def __init__(self, proc: "ForwarderSwapProc", fib_entry: FibEntry):
+    def __init__(self, proc: "ForwarderSwapProc", fp: FibPath):
         self.proc = proc
-        self.sg = unwrap(fib_entry.sg)
+        self.sg = unwrap(fp.sg)
 
     def begin_local_swap(self, la: _SwapArm, ra: _SwapArm) -> None:
         """
@@ -235,8 +235,8 @@ class _SwapTask:
         if not self.q_paths or self.sg.path_id in self.q_paths:
             return
 
-        fib_entry = self.proc.fib.get(self.q_paths[0])
-        sg = unwrap(fib_entry.sg)
+        fp = self.proc.fib.get_path(self.q_paths[0])
+        sg = unwrap(fp.sg)
         if sg.l_adj == self.sg.r_adj or sg.r_adj == self.sg.l_adj:
             self.l_complete, self.r_complete = self.r_complete, self.l_complete
             self.lc_paths, self.rc_paths = self.rc_paths, self.lc_paths
@@ -437,27 +437,27 @@ class ForwarderSwapProc(ForwarderModule):
         Send heralding messages.
         """
         for h in heralds:
-            fib_entry = None
+            fp = None
             for p in h.paths:
-                fe = self.fib.get(p)
-                if h.dest in fe.route:
-                    fib_entry = fe
+                fib_path = self.fib.get_path(p)
+                if h.dest in fib_path.route:
+                    fp = fib_path
                     break
 
-            if not fib_entry:
+            if not fp:
                 raise RuntimeError(f"{self}: cannot herald {h.dest} among paths {h.paths} | {h.su}")
 
-            h.su["path_id"] = fib_entry.path_id
-            self.send_msg(self.network.get_node(h.dest), h.su, fib_entry)
+            h.su["path_id"] = fp.path_id
+            self.send_msg(self.network.get_node(h.dest), h.su, fp)
 
-    def start(self, mq0: MemoryQubit, mq1: MemoryQubit, fib_entry: FibEntry):
+    def start(self, mq0: MemoryQubit, mq1: MemoryQubit, fp: FibPath):
         """
         Start swapping between two memory qubits.
 
         Args:
             mq0: Left qubit.
             mq1: Right qubit.
-            fib_entry: FIB entry.
+            fp: FIB path entry.
         """
         assert mq0.addr != mq1.addr
         assert mq0.qchannel is not mq1.qchannel
@@ -466,7 +466,7 @@ class ForwarderSwapProc(ForwarderModule):
         arms = [_SwapArm.new(mq0), _SwapArm.new(mq1)]
 
         # Record local swap start in SwapTask.
-        task, task_from = self._s_get_task(fib_entry, arms)
+        task, task_from = self._s_get_task(fp, arms)
         task.begin_local_swap(*arms)
         task_saved = self._s_put_task(task, arms)
 
@@ -478,17 +478,17 @@ class ForwarderSwapProc(ForwarderModule):
         # Schedule swap completion event.
         # If the FIB entry is being uninstalled, swap delay is bypassed and local swap is deemed failed.
         now = self.simulator.tc
-        if fib_entry.is_active(now):
+        if fp.req.is_active(now):
             finish_time = now + self.delay.calculate()
         else:
             finish_time = now
         error_time = finish_time if self.error_at_finish else now
-        self.simulator.add_event(func_to_event(finish_time, self._s_finish, arms, fib_entry, error_time, task))
+        self.simulator.add_event(func_to_event(finish_time, self._s_finish, arms, fp, error_time, task))
 
         self.log_debug("SWAP_START %s retrieved-from=%s saved-at=%s finish-time=%s", task, task_from, task_saved, finish_time)
 
     def _s_get_task(
-        self, fib_entry: FibEntry, arms: Sequence[_SwapArm], task_via_event: _SwapTask | None = None
+        self, fp: FibPath, arms: Sequence[_SwapArm], task_via_event: _SwapTask | None = None
     ) -> tuple[_SwapTask, str]:
         task: _SwapTask | None = None
         task_from: list[str] = []
@@ -501,7 +501,7 @@ class ForwarderSwapProc(ForwarderModule):
 
         if task_via_event:
             return task_via_event, "event"
-        return _SwapTask(self, fib_entry), "constructor"
+        return _SwapTask(self, fp), "constructor"
 
     def _s_put_task(self, task: _SwapTask, arms: Sequence[_SwapArm]) -> list[str]:
         task_saved: list[str] = []
@@ -513,7 +513,7 @@ class ForwarderSwapProc(ForwarderModule):
             task_saved.append(f"task_by_qubit[{arm.o_key}]")
         return task_saved
 
-    def _s_finish(self, arms: Sequence[_SwapArm], fib_entry: FibEntry, error_t: Time, task_via_event: _SwapTask):
+    def _s_finish(self, arms: Sequence[_SwapArm], fp: FibPath, error_t: Time, task_via_event: _SwapTask):
         """
         Complete swapping between two memory qubits.
 
@@ -535,19 +535,19 @@ class ForwarderSwapProc(ForwarderModule):
             phy_eprs.append(phy)
 
         # If the FIB entry is being uninstalled, local swap is deemed failed.
-        if not fib_entry.is_active(self.simulator.tc):
+        if not fp.req.is_active(self.simulator.tc):
             phy_eprs.clear()
 
         # Attempt physical swap.
         new_epr, outcome_str, local_success = self._s_physical_swap(error_t, phy_eprs)
-        self.log_debug("%s rank=%s | %s x %s = %s", outcome_str, fib_entry.own_swap_rank, arms[0], arms[1], new_epr)
+        self.log_debug("%s rank=%s | %s x %s = %s", outcome_str, fp.own_swap_rank, arms[0], arms[1], new_epr)
 
         # Release consumed qubits.
         for arm in alive_arms:
             self.fw.release_qubit(arm.mq)
 
         # Record local swap outcome in SwapTask, and then send heralding if allowed.
-        task, task_from = self._s_get_task(fib_entry, arms, task_via_event)
+        task, task_from = self._s_get_task(fp, arms, task_via_event)
         heralds = task.end_local_swap(min(local_expiry) if local_success else 0)
         task_saved = self._s_put_task(task, arms)
         if task_saved:
@@ -617,13 +617,9 @@ class ForwarderSwapProc(ForwarderModule):
             self.handle_update(su)
 
     @fw_signaling_cmd_handler("SWAP_UPDATE")
-    def receive_update(self, msg: SwapUpdateMsg, fib_entry: FibEntry) -> None:
+    def receive_update(self, msg: SwapUpdateMsg, fp: FibPath) -> None:
         """
         Receive an SWAP_UPDATE signaling message.
-
-        Args:
-            msg: The SWAP_UPDATE message.
-            fib_entry: FIB entry associated with path_id in the message.
         """
         ends = msg["ends"]
         if ends[0] == self.node.name:
@@ -635,17 +631,17 @@ class ForwarderSwapProc(ForwarderModule):
 
         swapper = msg["swapper"]
         q_paths = msg["q_paths"]
-        if partner not in fib_entry.route and q_paths:
+        if partner not in fp.route and q_paths:
             for path_id in q_paths:
-                fe = self.fib.get(path_id)
+                fe = self.fib.get_path(path_id)
                 if swapper in fe.route and partner in fe.route:
-                    fib_entry = fe
+                    fp = fe
                     break
-        _, swapper_rank = fib_entry.find_index_and_swap_rank(swapper)
+        _, swapper_rank = fp.find_index_and_swap_rank(swapper)
 
         self.handle_update(
             _SwapParsedUpdate(
-                fib_entry=fib_entry,
+                fp=fp,
                 expiry=msg["expiry"],
                 q_paths=q_paths,
                 swapper=swapper,
@@ -671,13 +667,13 @@ class ForwarderSwapProc(ForwarderModule):
 
         # If the swapper has a lower rank, it indicates the completion of a lower-ranked swap task.
         # Save its outcome into memory, so that this node can start purification and own-rank swapping,
-        if su.swapper_rank < su.fib_entry.own_swap_rank:
+        if su.swapper_rank < su.fp.own_swap_rank:
             self._u_lower(su, qubit_pair)
             return
 
         # If the swapper has the same rank, it is part of the swap task that is potentially parallel.
         # qubit_pair would be None, if own node has already swapped.
-        assert su.swapper_rank == su.fib_entry.own_swap_rank
+        assert su.swapper_rank == su.fp.own_swap_rank
         self._u_same(su, qubit_pair)
 
     def _u_lower(
@@ -729,7 +725,7 @@ class ForwarderSwapProc(ForwarderModule):
             raise ValueError(f"new_phy does not match node {self.node.name} | {new_phy}")
         assert partner.name == su.partner
 
-        assert su.partner in su.fib_entry.route
+        assert su.partner in su.fp.route
 
         # Store new EPR.
         qubit.partner = partner, su.p_key
@@ -746,7 +742,7 @@ class ForwarderSwapProc(ForwarderModule):
         # Progress toward purification and this-rank swap.
         qubit.purif_rounds = 0
         qubit.state = QubitState.PURIF
-        self.fw.qubit_is_purif(qubit, su.fib_entry, partner)
+        self.fw.qubit_is_purif(qubit, su.fp, partner)
 
     def _u_same(
         self,
@@ -756,7 +752,7 @@ class ForwarderSwapProc(ForwarderModule):
         """Process SWAP_UPDATE sent from a same-ranked node."""
 
         # Retrieve SwapTask.
-        task, task_from = self._u_get_task(su.fib_entry, su.o_key)
+        task, task_from = self._u_get_task(su.fp, su.o_key)
 
         # If qubit does not exist, it means own node had swap failure previously and already notified both sides,
         # but the remote swap occurred while the outgoing SWAP_UPDATE is still in flight.
@@ -790,10 +786,10 @@ class ForwarderSwapProc(ForwarderModule):
         self.log_debug("SWAP_UPDATE_SAME %s retrieved-from=%s saved-at=%s", task, task_from, task_saved)
         self._heralds(heralds)
 
-    def _u_get_task(self, fib_entry: FibEntry, qubit_key: str) -> tuple[_SwapTask, str]:
+    def _u_get_task(self, fp: FibPath, qubit_key: str) -> tuple[_SwapTask, str]:
         if t := self.task_by_qubit.pop(qubit_key, None):
             return t, f"task_by_qubit[qubit_key:={qubit_key}]"
-        return _SwapTask(self, fib_entry), "constructor"
+        return _SwapTask(self, fp), "constructor"
 
     def sched_expire_task(self, task: _SwapTask) -> None:
         if task.has_expire_event:

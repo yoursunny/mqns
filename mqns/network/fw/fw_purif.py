@@ -1,6 +1,6 @@
 from mqns.entity.memory import MemoryQubit, QubitState
 from mqns.entity.node import QNode
-from mqns.network.fw.fib import FibEntry
+from mqns.network.fw.fib import FibPath
 from mqns.network.fw.fw_module import ForwarderModule, fw_signaling_cmd_handler
 from mqns.network.fw.message import PurifResponseMsg, PurifSolicitMsg
 
@@ -15,14 +15,14 @@ class ForwarderPurifProc(ForwarderModule):
     Part of ``Forwarder`` logic related to purification procedure.
     """
 
-    def start(self, mq0: MemoryQubit, mq1: MemoryQubit, fib_entry: FibEntry, partner: QNode):
+    def start(self, mq0: MemoryQubit, mq1: MemoryQubit, fp: FibPath, partner: QNode):
         """
         Initiate purification protocol.
 
         Args:
             mq0: first memory qubit, which would be kept if purification succeeds.
             mq1: second memory qubit, which is consumed during purification.
-            fib_entry: FIB entry.
+            fp: FIB path entry.
             partner: quantum node with which entanglements are shared.
         """
         # read qubits to set fidelity at this time
@@ -44,20 +44,20 @@ class ForwarderPurifProc(ForwarderModule):
         # send purif_solicit to partner
         msg: PurifSolicitMsg = {
             "cmd": "PURIF_SOLICIT",
-            "path_id": fib_entry.path_id,
+            "path_id": fp.path_id,
             "purif_node": self.node.name,
             "partner": partner.name,
             "key0": _qubit_p_key(mq0),
             "key1": _qubit_p_key(mq1),
             "round": mq0.purif_rounds,
         }
-        self.send_msg(partner, msg, fib_entry)
+        self.send_msg(partner, msg, fp)
 
         mq0.state = QubitState.PENDING
         self.fw.release_qubit(mq1)
 
     @fw_signaling_cmd_handler("PURIF_SOLICIT")
-    def handle_solicit(self, msg: PurifSolicitMsg, fib_entry: FibEntry):
+    def handle_solicit(self, msg: PurifSolicitMsg, fp: FibPath):
         """
         Process a PURIF_SOLICIT message from primary node as part of the purification protocol.
 
@@ -65,10 +65,6 @@ class ForwarderPurifProc(ForwarderModule):
         2. Attempt purification.
         3. If successful, update the EPR and send a PURIF_RESPONSE with result=True.
         4. Otherwise, mark both qubits for release and reply with result=False.
-
-        Args:
-            msg: Message containing purification parameters and EPR names.
-            fib_entry: FIB entry associated with path_id in the message.
 
         Notes:
             If EPR purification succeeds, if the qubit has completed the required rounds of purifications,
@@ -115,7 +111,7 @@ class ForwarderPurifProc(ForwarderModule):
             self.fw_cnt.increment_n_purif(mq0.purif_rounds)
             mq0.purif_rounds += 1
             mq0.state = QubitState.PURIF
-            self.fw.qubit_is_purif(mq0, fib_entry, primary)
+            self.fw.qubit_is_purif(mq0, fp, primary)
         else:
             # in case of purification failure, release mq0
             self.fw.release_qubit(mq0, need_remove=True)
@@ -131,10 +127,10 @@ class ForwarderPurifProc(ForwarderModule):
             "key1": p_key1,
             "result": result,
         }
-        self.send_msg(primary, resp, fib_entry)
+        self.send_msg(primary, resp, fp)
 
     @fw_signaling_cmd_handler("PURIF_RESPONSE")
-    def handle_response(self, msg: PurifResponseMsg, fib_entry: FibEntry):
+    def handle_response(self, msg: PurifResponseMsg, fp: FibPath):
         """
         Process a PURIF_RESPONSE message indicating the outcome of a purification attempt.
 
@@ -147,11 +143,6 @@ class ForwarderPurifProc(ForwarderModule):
         If the purification failed:
 
         1. Release the qubit.
-
-        Args:
-            msg: Response message containing the result and identifiers of the purified EPRs.
-            fib_entry: FIB entry associated with path_id in the message.
-
         """
         qubit, epr = self.memory.read(msg["key0"], has=self.epr_type)
         # TODO: handle the exception case when an EPR is decohered and not found in memory
@@ -175,4 +166,4 @@ class ForwarderPurifProc(ForwarderModule):
         self.fw_cnt.increment_n_purif(qubit.purif_rounds)
         qubit.purif_rounds += 1
         qubit.state = QubitState.PURIF
-        self.fw.qubit_is_purif(qubit, fib_entry, self.network.get_node(msg["partner"]))
+        self.fw.qubit_is_purif(qubit, fp, self.network.get_node(msg["partner"]))

@@ -63,7 +63,7 @@ class Node(Entity):
         self._install_channels(self.cchannels, self._cchannel_by_dst)
         self._node_install()
 
-        apps_by_type = defaultdict[type, list[Application]](lambda: [])
+        apps_by_type = defaultdict[type, list[Application]](list)
         for app in self.apps:
             apps_by_type[type(app)].append(app)
             app.install(self)

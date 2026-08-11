@@ -1,6 +1,6 @@
 from mqns.network.fw.controller import RoutingController
 from mqns.network.fw.cutoff import CutoffScheme, CutoffSchemeWaitTime, CutoffSchemeWaitTimeCounters
-from mqns.network.fw.fib import Fib, FibEntry
+from mqns.network.fw.fib import Fib, FibPath, FibRequest
 from mqns.network.fw.forwarder import Forwarder, ForwarderCounters, ForwarderInitKwargs
 from mqns.network.fw.fw_module import fw_control_cmd_handler, fw_signaling_cmd_handler
 from mqns.network.fw.fw_nb import ForwarderNorthbound
@@ -25,7 +25,8 @@ __all__ = [
     "CutoffSchemeWaitTime",
     "CutoffSchemeWaitTimeCounters",
     "Fib",
-    "FibEntry",
+    "FibPath",
+    "FibRequest",
     "Forwarder",
     "ForwarderCounters",
     "ForwarderInitKwargs",

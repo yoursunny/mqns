@@ -9,12 +9,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-          cache: pip
-      - run: pip install ruff
-      - run: |
-          ruff check . --output-format=github
-          ruff format --check .
+      - name: Run the Ruff Linter
+        uses: astral-sh/ruff-action@v4.1.0
+      - name: Run the Ruff Formatter
+        run: ruff format --check .
     timeout-minutes: 5

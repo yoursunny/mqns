@@ -4,7 +4,7 @@ from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
-from mqns.network.fw.fib import FibEntry
+from mqns.network.fw.fib import FibPath
 from mqns.network.fw.fw_module import ForwarderModule
 from mqns.network.fw.message import PathInstructions
 
@@ -13,28 +13,28 @@ class MuxScheme(ForwarderModule, ABC):
     """Path multiplexing scheme."""
 
     @abstractmethod
-    def validate_path_instructions(self, instructions: PathInstructions) -> None:
+    def validate_path_instructions(self, inst: PathInstructions) -> None:
         """Validate install_path instructions are compatible."""
 
     @abstractmethod
-    def install_path_adj(self, inst: PathInstructions, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+    def install_path_adj(self, inst: PathInstructions, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
         """
         Store information about adjacent quantum channel and allocate resources.
 
         Args:
             instructions: Path instructions.
-            fib_entry: FIB entry derived from path instructions.
+            fp: FIB path entry.
             direction: Direction of adjacency.
             qchannel: Quantum channel to the neighbor.
         """
 
     @abstractmethod
-    def uninstall_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+    def uninstall_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
         """
         Erase information about adjacent quantum channel and deallocate resources.
 
         Args:
-            fib_entry: FIB entry.
+            fp: FIB path entry.
             direction: Direction of adjacency.
             qchannel: Quantum channel to the neighbor.
         """
@@ -52,7 +52,7 @@ class MuxScheme(ForwarderModule, ABC):
         """
 
     @abstractmethod
-    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibEntry | None:
+    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibPath | None:
         """
         Handle a qubit entering ENTANGLED state, i.e. having an elementary entanglement.
 
@@ -69,19 +69,14 @@ class MuxScheme(ForwarderModule, ABC):
         """
 
     @abstractmethod
-    def find_swap_with(
-        self,
-        mq0: MemoryQubit,
-        epr0: Entanglement,
-        fib_entry: FibEntry | None,
-    ) -> tuple[MemoryQubit, FibEntry] | None:
+    def find_swap_with(self, mq0: MemoryQubit, epr0: Entanglement, fp: FibPath | None) -> tuple[MemoryQubit, FibPath] | None:
         """
         Choose another qubit to swap with a qubit entering ELIGIBLE state and ready to swap.
 
         Args:
             mq0: The qubit entering ELIGIBLE state.
             epr0: The entanglement stored in the qubit.
-            fib_entry: FIB entry found by ``MuxScheme.qubit_is_entangled`` or used in last round of purification.
+            fp: FIB path entry found by ``MuxScheme.qubit_is_entangled`` or used in last round of purification.
 
         Returns:
             None: Do not swap.

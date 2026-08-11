@@ -1,5 +1,5 @@
 from collections.abc import Iterator, Mapping
-from typing import Literal, TypedDict, Unpack
+from typing import Literal, TypedDict, Unpack, cast
 
 import numpy as np
 
@@ -22,14 +22,14 @@ Missing node pairs have zero probability.
 class MatrixTrafficGeneratorInitArgs(TypedDict, total=False):
     sched: Literal["never", "eager", "lazy"]
     """
-    Scheduling method in ``MatrixTrafficGenerator.install()``.
+    How should ``MatrixTrafficGenerator.install()`` schedule the requests.
 
     * "never": Do not schedule requests automatically.
-                Requests may be retrieved with ``.iter()`` method.
+      Requests may be retrieved with ``.iter()`` method.
     * "eager": Schedule all requests upfront.
-                This is incompatible with continuous simulation.
+      This is incompatible with continuous simulation.
     * "lazy": Schedule the first request, then schedule the next request
-                upon the previous request's arrival. This is the default.
+      upon the previous request's arrival. This is the default.
     """
 
     rate: float
@@ -38,9 +38,15 @@ class MatrixTrafficGeneratorInitArgs(TypedDict, total=False):
     This is expected number of requests per second.
     """
 
-    duration: float
+    duration: Time | float
     """
     Request active period duration, defaults to 1 second.
+    """
+
+    epr_count: int
+    """
+    Desired quantity of entangled pairs per request, defaults to 1.
+    ``-1`` means infinity (subject to ``duration``); ``0`` is invalid.
     """
 
 
@@ -66,7 +72,8 @@ class MatrixTrafficGenerator:
 
         self._sched = kwargs.get("sched", "lazy")
         self._scale = 1 / kwargs.get("rate", 1.0)
-        self._duration: Time | float = kwargs.get("duration", 1.0)
+        self._duration = kwargs.get("duration", 1.0)
+        self._epr_count = kwargs.get("epr_count", 1)
 
     def _convert_tm_map(self, tm: TrafficMatrixMapping):
         n = len(self.node_names)
@@ -86,8 +93,7 @@ class MatrixTrafficGenerator:
         Install this traffic generator into a simulator.
         """
         self.simulator = simulator
-        if not isinstance(self._duration, Time):
-            self._duration = Time.from_sec(self._duration, accuracy=simulator.accuracy)
+        self._duration = Time.from_time_or_sec(self._duration, accuracy=simulator.accuracy)
 
         match self._sched:
             case "eager":
@@ -115,7 +121,11 @@ class MatrixTrafficGenerator:
         Build request with specified arrival time.
         """
         src, dst = self.tm.sample()
-        return Request((self.node_names[src], self.node_names[dst]), active_period=(t, t + self._duration))
+        return Request(
+            (self.node_names[src], self.node_names[dst]),
+            active_period=(t, t + self._duration),
+            epr_count=self._epr_count,
+        )
 
     def _sched_eager(self):
         assert not self.simulator.is_continuous, "sched=eager is incompatible with continuous simulation"
@@ -127,4 +137,4 @@ class MatrixTrafficGenerator:
             return
 
         self.net.add_request(req)
-        self.simulator.add_event(func_to_event(req.active_since, self._sched_lazy, it))
+        self.simulator.add_event(func_to_event(cast(Time, req.active_since), self._sched_lazy, it))

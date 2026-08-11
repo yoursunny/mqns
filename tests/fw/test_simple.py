@@ -5,7 +5,7 @@ Test suite for simple data structure objects in forwarding.
 import pytest
 
 from mqns.network.fw import parse_swap_sequence
-from mqns.network.fw.fib import FibEntry
+from mqns.network.fw.fib import FibPath
 from mqns.network.fw.message import validate_path_instructions
 
 
@@ -48,41 +48,41 @@ def test_path_validation():
     mv3 = [(1, 1)] * 2
 
     with pytest.raises(ValueError, match="route is empty"):
-        validate_path_instructions({"req_id": 0, "route": [], "swap": [], "swap_cutoff": [], "purif": {}})
+        validate_path_instructions({"path_id": 0, "route": [], "swap": [], "swap_cutoff": [], "purif": {}})
 
     with pytest.raises(ValueError, match="swapping order"):
         validate_path_instructions(
-            {"req_id": 0, "route": ["A", "B", "C", "D", "E"], "swap": swap3, "swap_cutoff": scut3, "purif": {}}
+            {"path_id": 0, "route": ["A", "B", "C", "D", "E"], "swap": swap3, "swap_cutoff": scut3, "purif": {}}
         )
 
     with pytest.raises(ValueError, match="swap_cutoff"):
         validate_path_instructions(
-            {"req_id": 0, "route": route3, "swap": swap3, "swap_cutoff": [2000, 1000, 1000], "purif": {}}
+            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": [2000, 1000, 1000], "purif": {}}
         )
 
     with pytest.raises(ValueError, match="multiplexing vector"):
         validate_path_instructions(
-            {"req_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": [(1, 1)] * 3, "purif": {}}
+            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": [(1, 1)] * 3, "purif": {}}
         )
 
     with pytest.raises(ValueError, match="purif segment"):
         validate_path_instructions(
-            {"req_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"P-Q": 1}}
+            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"P-Q": 1}}
         )
 
     with pytest.raises(ValueError, match="purif segment"):
         validate_path_instructions(
-            {"req_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"A-B-C": 1}}
+            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"A-B-C": 1}}
         )
 
     with pytest.raises(ValueError, match="purif segment"):
         validate_path_instructions(
-            {"req_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"B-B": 1}}
+            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"B-B": 1}}
         )
 
     with pytest.raises(ValueError, match="purif segment"):
         validate_path_instructions(
-            {"req_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"C-A": 1}}
+            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"C-A": 1}}
         )
 
 
@@ -110,8 +110,7 @@ def test_path_validation():
 def test_fib_swap_group(purif: str | None, own: str, expected: tuple[str, str, str, str] | None):
     nodes = "ABCDEFGHIJ"
     ranks = "3001012003"
-    entry = FibEntry(
-        req_id=0,
+    entry = FibPath(
         path_id=0,
         route=nodes,
         own_idx=nodes.index(own),

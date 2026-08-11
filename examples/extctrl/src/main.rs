@@ -5,6 +5,7 @@ use mqns_example_extctrl::{
     LinkStateEntry, LinkStateMsg, MultiplexingVectorElem, PathInstructions, Southbound,
     sec_to_time_slot,
 };
+use serde_json;
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -115,7 +116,7 @@ struct Args {
     #[bpaf(fallback(PathOpt::L2R))]
     path1: PathOpt,
 
-    /// S1-D1 path install time in seconds
+    /// S1-D1 path insertion time in seconds
     #[bpaf(long("path1_i"), argument("SEC"), fallback(0))]
     path1_i: u64,
 
@@ -123,7 +124,7 @@ struct Args {
     #[bpaf(fallback(PathOpt::Disabled))]
     path2: PathOpt,
 
-    /// S2-D2 path install time in seconds
+    /// S2-D2 path insertion time in seconds
     #[bpaf(long("path2_i"), argument("SEC"), fallback(0))]
     path2_i: u64,
 }
@@ -153,27 +154,17 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn make_path(req_id: u32, nodes: &str, opt: PathOpt) -> PathInstructions {
+fn make_path(path_id: u32, nodes: &str, opt: PathOpt) -> PathInstructions {
     let route: Vec<String> = nodes.split('-').map(String::from).collect();
     let len = route.len();
     PathInstructions {
-        req_id,
+        path_id,
         route,
         swap: opt.to_swap(),
         swap_cutoff: None,
         m_v: Some(vec![MultiplexingVectorElem::Count(1, 1); len - 1]),
         purif: HashMap::new(),
     }
-}
-
-fn replace_path_mv(mut path: PathInstructions, qubits: Vec<String>) -> PathInstructions {
-    path.m_v = Some(
-        qubits
-            .iter()
-            .map(|key| MultiplexingVectorElem::Key(key.clone()))
-            .collect(),
-    );
-    path
 }
 
 async fn tx_loop_pca(args: &Args, sb: &Southbound) -> Result<()> {
@@ -184,13 +175,13 @@ async fn tx_loop_pca(args: &Args, sb: &Southbound) -> Result<()> {
         if args.path1 != PathOpt::Disabled && args.path1_i == sec {
             let path = make_path(10, "S1-R1-R2-D1", args.path1);
             println!("    Installing path1");
-            sb.install_path(t, 10, &path).await?;
+            sb.path_insert(t, path.path_id, &[path]).await?;
         }
 
         if args.path2 != PathOpt::Disabled && args.path2_i == sec {
             let path = make_path(20, "S2-R1-R2-D2", args.path2);
             println!("    Installing path2");
-            sb.install_path(t, 20, &path).await?;
+            sb.path_insert(t, path.path_id, &[path]).await?;
         }
 
         if args.sim_duration == sec {
@@ -293,20 +284,26 @@ async fn tx_loop_rcs(
         println!("    {:?}", tls);
 
         if args.path1 != PathOpt::Disabled && args.path1_i <= sec {
-            let path = make_path(10, "S1-R1-R2-D1", args.path1);
+            let mut path = make_path(10, "S1-R1-R2-D1", args.path1);
             if let Some(consumed) = tls.try_consume(&path.route) {
-                let path = replace_path_mv(path, consumed);
-                println!("    Installing path1: {:?}", path.m_v);
-                sb.install_path(t, 10, &path).await?;
+                path.set_mv_qubits(consumed);
+                println!(
+                    "    Installing path1: {}",
+                    serde_json::to_string(&path.m_v).unwrap()
+                );
+                sb.path_insert(t, path.path_id, &[path]).await?;
             }
         }
 
         if args.path2 != PathOpt::Disabled && args.path2_i <= sec {
-            let path = make_path(20, "S2-R1-R2-D2", args.path2);
+            let mut path = make_path(20, "S2-R1-R2-D2", args.path2);
             if let Some(consumed) = tls.try_consume(&path.route) {
-                let path = replace_path_mv(path, consumed);
-                println!("    Installing path2: {:?}", path.m_v);
-                sb.install_path(t, 20, &path).await?;
+                path.set_mv_qubits(consumed);
+                println!(
+                    "    Installing path2: {}",
+                    serde_json::to_string(&path.m_v).unwrap()
+                );
+                sb.path_insert(t, path.path_id, &[path]).await?;
             }
         }
 

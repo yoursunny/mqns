@@ -22,7 +22,7 @@ class NetworkLayer(Application[QNode]):
         """If non-empty, ``QubitReleasedEvent`` would be emitted after specified duration for the next entanglement."""
         self.entangle: list[tuple[float, float]] = []
         """Entanglement events, each entry contains entanglement time and EPR creation time."""
-        self.path_entangle = defaultdict[int | None, list[float]](lambda: [])
+        self.path_entangle = defaultdict[int | None, list[float]](list)
         """Entanglement times per path_id."""
         self.decohere: list[float] = []
         """Decoherence events, each entry is event time."""
@@ -127,10 +127,10 @@ def test_basic(epr_type: type[Entanglement]):
         # t=8.7, entanglement established
         # t=8.5 is assumed time of entanglement creation
         assert nl.entangle[2] == pytest.approx((8.7, 8.5), abs=1e-3)
-        # t=8.8, path is uninstalled
+        # t=8.8, path is deleted
         # t=12.6, qubits decohered 4.1 seconds since entanglement creation
         assert nl.decohere[1] == pytest.approx(12.6, abs=1e-3)
-        # no more entanglements because the path has been uninstalled
+        # no more entanglements because the path has been deleted
 
     ll_cnt_agg = LinkLayerCounters.aggregate(net.nodes)
     print("ll_cnt_agg", ll_cnt_agg)
@@ -138,7 +138,7 @@ def test_basic(epr_type: type[Entanglement]):
     assert ll_cnt_agg.n_attempts == 3
     # n_decoh is only incremented on the primary node.
     # Although there are two decoherence events in the simulation, l1.n_decoh is incremented only at t=8.3.
-    # For the t=12.6 event, the path is uninstalled, so that l1 cannot recognize itself as primary.
+    # For the t=12.6 event, the path is deleted, so that l1 cannot recognize itself as primary.
     assert ll_cnt_agg.n_decoh == 1
     assert ll_cnt_agg.decoh_ratio == pytest.approx(1 / 3, abs=1e-6)
 
@@ -192,28 +192,28 @@ def test_multiple_paths():
 
 
 @pytest.mark.parametrize(
-    ("uninstall_t", "qubits_state", "n_entangle"),
+    ("t_delete", "qubits_state", "n_entangle"),
     [
-        # don't uninstall, only check timeline states (expected qubits_state are ignored)
+        # don't delete, only check timeline states (expected qubits_state are ignored)
         (9.9, (QubitState.CONSUME, QubitState.CONSUME), (3, 3)),
-        # uninstall when RESERVE_REQ is in-flight
+        # path deleted when RESERVE_REQ is in-flight
         (0.2, (QubitState.RAW, QubitState.RAW), (0, 0)),
-        # uninstall when RESERVE_RES is in-flight
+        # path deleted when RESERVE_RES is in-flight
         (0.5, (QubitState.RAW, QubitState.RAW), (0, 0)),
-        # uninstall when LinkArch is waiting for t_notify_a
+        # path deleted when LinkArch is waiting for t_notify_a
         (0.8, (QubitState.RAW, QubitState.RAW), (0, 0)),
-        # uninstall when LinkArch is waiting for t_notify_b
+        # path deleted when LinkArch is waiting for t_notify_b
         (1.1, (QubitState.ENTANGLED1, QubitState.RAW), (1, 0)),
-        # uninstall when both qubits are owned by NetworkLayer
+        # path deleted when both qubits are owned by NetworkLayer
         (1.5, (QubitState.ENTANGLED1, QubitState.ENTANGLED1), (1, 1)),
-        # uninstall when one qubit is owned by NetworkLayer
+        # path deleted when one qubit is owned by NetworkLayer
         (4.3, (QubitState.RAW, QubitState.ENTANGLED1), (2, 2)),
         (6.1, (QubitState.ENTANGLED1, QubitState.RAW), (3, 3)),
     ],
 )
-def test_uninstall(uninstall_t: float, qubits_state: tuple[QubitState, QubitState], n_entangle: tuple[int, int]):
+def test_path_delete(t_delete: float, qubits_state: tuple[QubitState, QubitState], n_entangle: tuple[int, int]):
     """
-    Verify proper cleanups when the path is uninstalled in various steps.
+    Verify PATH_DELETE cleanup when deletion occurs in various steps.
     """
     topo = LinearTopology(
         nodes_number=2,
@@ -229,7 +229,7 @@ def test_uninstall(uninstall_t: float, qubits_state: tuple[QubitState, QubitStat
     simulator = Simulator(0.0, 6.5, install_to=(log, net))
 
     nl1, nl2 = (node.get_app(NetworkLayer) for node in net.nodes)
-    activate_path(0.1, uninstall_t, nl1, nl2, None)
+    activate_path(0.1, t_delete, nl1, nl2, None)
 
     def assert_states(expected: tuple[QubitState, QubitState]) -> None:
         mq1 = nl1.memory.read(0, must=True)
@@ -238,13 +238,13 @@ def test_uninstall(uninstall_t: float, qubits_state: tuple[QubitState, QubitStat
         assert actual == expected
 
     def check_states(t: float, expected0: QubitState, expected1: QubitState) -> None:
-        if t > uninstall_t:
+        if t > t_delete:
             return
         event = func_to_event(simulator.time(sec=t), assert_states, (expected0, expected1))
         event.priority = 10000
         simulator.add_event(event)
 
-    check_states(uninstall_t, *qubits_state)
+    check_states(t_delete, *qubits_state)
 
     # t=0.1, path is installed with n1 as primary and n2 as secondary
     # t=0.1, n1 sets qubit state to ACTIVE, sends RESERVE_REQ
@@ -369,8 +369,8 @@ def test_timing_mode_sync():
         # τ=0.1 for the channel between n2 and n3.
         # Entanglement (including reservation) requires 4τ i.e. 0.4 seconds.
         # No entanglement occurs in the first EXTERNAL phase window, because reservations are only initiated
-        # at the start of each EXTERNAL phase window, not when ManageActiveChannels arrives.
-        # The uninstall_path stop event takes effect for the EXTERNAL phase window starting at t=6.0.
+        # at the start of each EXTERNAL phase window, not when PathActivateEvent arrives.
+        # The PathDeactivateEvent takes effect for the EXTERNAL phase window starting at t=6.0.
         assert [t_notify for t_notify, _ in nl.entangle] == pytest.approx([1.4, 2.4, 3.4, 4.4, 5.4], abs=1e-3)
         # All qubits are cleared at the start of each EXTERNAL phase, before memory decoherence occurs.
         # Decoherence events are not emitted for cleared qubits.

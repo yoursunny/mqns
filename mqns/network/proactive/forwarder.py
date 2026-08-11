@@ -19,37 +19,41 @@ from typing import Unpack, override
 
 from mqns.entity.memory import PathDirection
 from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw import FibEntry, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
+from mqns.network.fw import FibPath, FibRequest, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
 from mqns.network.protocol.event import PathActivateEvent, PathDeactivateEvent
 
 
 class ProactiveForwarderNorthbound(ForwarderNorthbound):
     @override
-    def install_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+    def install_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
         self.simulator.add_event(
             PathActivateEvent(
                 self.node,
                 ch,
-                self._ll_path_id(fib_entry),
+                self._ll_path_id(fp),
                 t=self.simulator.tc,
                 is_primary=dir is PathDirection.R,
             )
         )
 
     @override
-    def uninstall_path_adj(self, fib_entry: FibEntry, dir: PathDirection, ch: QuantumChannel) -> None:
+    def uninstall_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
         _ = dir
-        self.simulator.add_event(
-            PathDeactivateEvent(
-                self.node,
-                ch,
-                self._ll_path_id(fib_entry),
-                t=self.simulator.tc,
-            )
+        event = PathDeactivateEvent(
+            self.node,
+            ch,
+            self._ll_path_id(fp),
+            t=self.simulator.tc,
         )
+        # Give PathDeactivateEvent a lower priority so that it occurs after QubitEntangledEvent.
+        # Otherwise, in S-R-D topology, if R receives QubitEntangledEvent before path deactivation and performs a swap,
+        # but S processes path deactivation first so its forwarder never gets QubitEntangledEvent, S would
+        # receive SWAP_UPDATE message without ever receiving the qubit, and the physical deposit would be leaked.
+        event.priority = 1000
+        self.simulator.add_event(event)
 
-    def _ll_path_id(self, fib_entry: FibEntry) -> int | None:
-        return fib_entry.path_id if self.mux.qubit_has_path_id() else None
+    def _ll_path_id(self, fp: FibPath) -> int | None:
+        return fp.path_id if self.mux.qubit_has_path_id() else None
 
 
 class ProactiveForwarder(Forwarder):
@@ -70,3 +74,7 @@ class ProactiveForwarder(Forwarder):
     def install(self, node):
         super().install(node)
         self.nb.install(self)
+
+    @override
+    def request_reached_epr_count(self, fr: FibRequest) -> None:
+        self.nb.send_reach_epr_count(fr)

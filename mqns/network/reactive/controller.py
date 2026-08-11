@@ -15,15 +15,21 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import itertools
-from collections import defaultdict, deque
 from typing import cast, override
 
-from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
-from mqns.network.fw import RoutingController, RoutingPathStatic
-from mqns.network.network import Request, TimingModeSync, TimingPhase, sync_phase_handler
+from mqns.entity.cchannel import ClassicPacket, classic_cmd_handler
+from mqns.network.fw import RoutingController
+from mqns.network.network import (
+    Request,
+    RequestActiveEvent,
+    RequestInactiveEvent,
+    TimingModeSync,
+    TimingPhase,
+    sync_phase_handler,
+)
 from mqns.network.reactive.message import LinkStateMsg
-from mqns.simulator import func_to_event
+from mqns.network.reactive.routing import ReactiveRoutingPath, ReactiveRoutingPathDef, TopoLinkState
+from mqns.simulator import event_handler, func_to_event
 from mqns.utils import json_encodable
 
 
@@ -41,20 +47,22 @@ class ReactiveRoutingControllerCounters:
         return f"ls={self.n_ls} satisfy={self.n_satisfy}"
 
 
-class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController):
+class ReactiveRoutingController(RoutingController):
     """
     Centralized control plane for reactive routing.
     Works with ``ReactiveForwarder`` on quantum nodes.
 
     This controller is only compatible with SYNC timing mode.
-    It can automatically pick up requests from ``QuantumNetwork.requests`` list.
+    It can automatically pick up requests added through ``QuantumNetwork``.
+
+    The requests added to the network must not contain:
+
+    * predefined ``RoutingPath``
+    * multiplexing vector
+    * purification scheme
     """
 
     def __init__(self):
-        """
-        Args:
-            swap: Swapping policy applied to all paths.
-        """
         super().__init__(mv_auto="max")
 
         self.cnt = ReactiveRoutingControllerCounters()
@@ -62,12 +70,15 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         Counters.
         """
 
-        self._tls = defaultdict[tuple[str, str], deque[str]](deque)
+        self._tls = TopoLinkState()
         """
         Topology link state.
+        """
 
-        Key: node names, sorted.
-        Value: entanglement reservation keys.
+        self._reqs: dict[int, Request] = {}
+        """
+        Active requests.
+        Key: request identifier.
         """
 
     @override
@@ -76,11 +87,23 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
 
         if self.node.timing.is_async():
             raise TypeError("ReactiveRoutingController only works with SYNC timing mode")
-        self.timing = cast(TimingModeSync, self.node.timing)
-        self.d_rtg = self.simulator.time(time_slot=self.timing.t_rtg.time_slot // 2)
+        timing = cast(TimingModeSync, self.node.timing)
+        self.d_rtg = self.simulator.time(time_slot=timing.t_rtg.time_slot // 2)
+
+    @event_handler
+    def handle_request_active(self, event: RequestActiveEvent) -> None:
+        req = event.req
+        if req.rp:
+            raise TypeError("ReactiveRoutingController disallows predefined RoutingPath in Request")
+        req.rp = ReactiveRoutingPath(req)
+        self._reqs[req.req_id] = req
+
+    @event_handler
+    def handle_request_inactive(self, event: RequestInactiveEvent) -> None:
+        del self._reqs[event.req.req_id]
 
     @sync_phase_handler(TimingPhase.ROUTING, True)
-    def handle_sync_phase(self) -> None:
+    def sync_routing_enter(self) -> None:
         """
         In SYNC timing mode, enter ROUTING phase.
         """
@@ -90,64 +113,57 @@ class ReactiveRoutingController(ClassicCommandDispatcherMixin, RoutingController
         self.simulator.add_event(func_to_event(self.simulator.tc + self.d_rtg, self.do_routing))
 
     @classic_cmd_handler("LS")
-    def handle_ls(self, pkt: ClassicPacket, msg: LinkStateMsg):
+    def handle_ls(self, pkt: ClassicPacket, msg: LinkStateMsg) -> None:
         """
         Process received link_states from ReactiveForwarder.
         """
 
         if not self.node.timing.is_routing():  # should be in SYNC timing mode ROUTING phase
-            self.log_warning("received LS message from %s outside of ROUTING phase | %s", pkt.src, msg)
-            return True
+            self.log_warning("received LS message from %s outside of ROUTING phase | %s", pkt.src.name, msg)
+            return
 
-        self.log_debug("received LS message from %s | %s", pkt.src, msg)
+        self.log_debug("received LS message from %s | %s", pkt.src.name, msg)
         self.cnt.n_ls += 1
 
         for entry in msg["ls"]:
-            n0, n1 = entry["node"], entry["neighbor"]
-            if n0 < n1:
-                self._tls[(n0, n1)].append(entry["qubit"])
+            self._tls.add(entry)
 
-        return True
-
-    def do_routing(self):
+    def do_routing(self) -> None:
         """
-        Attempt to satisfy each active request in ``QuantumNetwork.requests`` list with available entanglements.
+        Attempt to satisfy each active request with available entanglements.
         Repeat multiple rounds until no more requests can be satisfied.
         """
-        some_satisfied = True
-        while some_satisfied:
-            some_satisfied = False
-            for req in self.net.active_requests:
-                if self._try_satisfy(req):
-                    self.cnt.n_satisfy += 1
-                    some_satisfied = True
+        satisfied: dict[int, ReactiveRoutingPath] = {}
+        this_round_satisfied = True
+        while this_round_satisfied:
+            this_round_satisfied = False
+            for req in self._reqs.values():
+                path_def = self._try_satisfy(req)
+                if path_def is None:
+                    continue
 
-    def _try_satisfy(self, req: Request) -> bool:
+                try:
+                    rp = satisfied[req.req_id]
+                except KeyError:
+                    rp = cast(ReactiveRoutingPath, req.rp)
+                    rp.paths.clear()
+                    satisfied[req.req_id] = rp
+
+                rp.paths.append(path_def)
+                self.cnt.n_satisfy += 1
+                this_round_satisfied = True
+
+        for rp in satisfied.values():
+            self.install_path(rp)
+
+    def _try_satisfy(self, req: Request) -> ReactiveRoutingPathDef | None:
         """
         Attempt to satisfy an active request with available entanglements.
         If the routing algorithm returns multiple routes, they will be tried in order.
         """
         routes = self.net.query_route(req.src, req.dst, error_on_empty=False)
         for route in routes:
-            if (qubits := self._try_consume(route.path)) is None:
+            if (qubits := self._tls.try_consume(route.path)) is None:
                 continue
-
-            self.install_path(RoutingPathStatic(route.path, **(req.rp_args | {"m_v": qubits})))
-            return True
-
-        return False
-
-    def _try_consume(self, route: list[str]) -> list[str] | None:
-        """
-        Attempt to match a computed route with available entanglements.
-        The entanglements are removed from ``self._tls`` only if every link along the path has an entanglement.
-        """
-        link_etgs: list[deque[str]] = []
-
-        for n0, n1 in itertools.pairwise(route):
-            etgs = self._tls.get((n0, n1) if n0 < n1 else (n1, n0))
-            if etgs is None or len(etgs) == 0:
-                return None
-            link_etgs.append(etgs)
-
-        return [etgs.popleft() for etgs in link_etgs]
+            return route.path, qubits
+        return None

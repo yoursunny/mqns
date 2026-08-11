@@ -16,7 +16,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import functools
-from typing import Final, final
+from typing import ClassVar, Final, final
 
 _ACCURACY0_STRS: dict[int, str] = {
     0: "(sentinel)",
@@ -34,11 +34,11 @@ class Time:
 
     __slots__ = ("time_slot", "accuracy")
 
-    SENTINEL: "Time"
+    SENTINEL: ClassVar["Time"]
     """Invalid Time instance as placeholder."""
-    MIN: "Time"
+    MIN: ClassVar["Time"]
     """Minimum value, compares less than all other instances."""
-    MAX: "Time"
+    MAX: ClassVar["Time"]
     """Maximum value, compares greater than all other instances."""
 
     def __init__(self, time_slot: int, *, accuracy: int):
@@ -65,10 +65,17 @@ class Time:
         Construct Time from seconds.
 
         Args:
-            sec: seconds.
-            accuracy: how many time slots per second.
+            sec: Seconds.
+            accuracy: How many time slots per second.
         """
         return Time(Time.sec_to_time_slot(sec, accuracy), accuracy=accuracy)
+
+    @staticmethod
+    def from_time_or_sec(sec: "Time|float", *, accuracy: int) -> "Time":
+        """
+        Construct Time from seconds, unless it's already Time instance.
+        """
+        return sec if type(sec) is Time else Time.from_sec(sec, accuracy=accuracy)
 
     @property
     def sec(self) -> float:
@@ -92,7 +99,9 @@ class Time:
     def __lt__(self, other: "Time") -> bool:
         """
         Less than comparison operator.
-        Two Time instances can be compared only if they have the same accuracy.
+
+        Two Time instances can be compared only if they have the same accuracy,
+        unless either instance is ``Time.MIN`` and ``Time.MAX``.
         """
         if self.accuracy == other.accuracy:
             return self.time_slot < other.time_slot
@@ -110,7 +119,7 @@ class Time:
         Add a duration and returns a new Time object.
 
         Args:
-            ts: either a Time object with same accuracy, or a duration number in seconds.
+            ts: Either a Time object with same accuracy, or a duration number in seconds.
         """
         if type(ts) is Time:
             assert ts.accuracy == self.accuracy
@@ -124,7 +133,7 @@ class Time:
         Subtract a duration and returns a new Time object.
 
         Args:
-            ts: either a Time object with same accuracy, or a duration number in seconds.
+            ts: Either a Time object with same accuracy, or a duration number in seconds.
         """
         if type(ts) is Time:
             assert ts.accuracy == self.accuracy

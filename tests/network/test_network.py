@@ -1,4 +1,5 @@
 import itertools
+from typing import cast
 
 import numpy as np
 import pytest
@@ -9,13 +10,14 @@ from mqns.network.network import (
     MatrixTrafficGenerator,
     QuantumNetwork,
     RequestActiveEvent,
+    RequestInactiveEvent,
     TimingModeSync,
     TimingPhase,
     TrafficMatrixMapping,
     sync_phase_handler,
 )
 from mqns.network.topology import BasicTopology
-from mqns.simulator import Simulator, event_handler, func_to_event
+from mqns.simulator import Simulator, Time, event_handler, func_to_event
 
 
 class SyncCheckApp(Application[Node]):
@@ -72,6 +74,10 @@ def test_timing_mode_sync():
     ],
 )
 def test_mtg_eager(tm: TrafficMatrixInput | TrafficMatrixMapping, src_dst: NodePair):
+    """
+    Test MatrixTrafficGenerator with sched=eager.
+    Also validate each traffic matrix input format; the inputs are one-hot.
+    """
     topo = BasicTopology(3, nodes_naming="A")
     net = QuantumNetwork(topo)
 
@@ -86,7 +92,7 @@ def test_mtg_eager(tm: TrafficMatrixInput | TrafficMatrixMapping, src_dst: NodeP
         assert (req.src, req.dst) == src_dst
 
     for req0, req1 in itertools.pairwise(net.requests):
-        assert req0.active_since <= req1.active_until
+        assert cast(Time, req0.active_since) <= cast(Time, req1.active_until)
 
 
 class RequestCheckApp(Application[Controller]):
@@ -95,28 +101,45 @@ class RequestCheckApp(Application[Controller]):
     def __init__(self):
         super().__init__()
         self.enters: list[int] = []
-        """Length of ``net.requests`` upon entering each request."""
+        """Length of ``net.requests`` upon each ``RequestActiveEvent``."""
         self.exits = 0
+        """Count of ``RequestInactiveEvent``."""
 
     @event_handler
     def handle_request_active(self, event: RequestActiveEvent) -> None:
         req = event.req
         assert (req.src, req.dst) == ("A", "C")
-        assert req.is_active(event.t) is event.enter
+        assert (cast(Time, req.active_until) - cast(Time, req.active_since)).sec == pytest.approx(0.1, abs=1e-6)
+        assert req.epr_count == 2
+        assert req.is_active(event.t) is True
+        self.enters.append(len(self.net.requests))
 
-        if event.enter:
-            self.enters.append(len(self.net.requests))
-        else:
-            self.exits += 1
+    @event_handler
+    def handle_request_inactive(self, event: RequestInactiveEvent) -> None:
+        req = event.req
+        assert (req.src, req.dst) == ("A", "C")
+        assert req.is_active(event.t) is False
+        self.exits += 1
 
 
 def test_mtg_lazy():
+    """
+    Test MatrixTrafficGenerator with sched=lazy.
+    Also validate request attributes.
+    """
     topo = BasicTopology(3, nodes_naming="A")
     topo.controller = Controller("ctrl", apps=[app := RequestCheckApp()])
     net = QuantumNetwork(topo)
     app.net = net
 
-    mtg = MatrixTrafficGenerator(net, {"A-C": 1}, rate=10, sched="lazy")
+    mtg = MatrixTrafficGenerator(
+        net,
+        {"A-C": 1},
+        rate=10,
+        sched="lazy",
+        duration=0.1,
+        epr_count=2,
+    )
     s = Simulator(100, np.inf, need_synchronized=False, install_to=(net, mtg))
     s.add_event(func_to_event(s.time(sec=200), s.stop))
     s.run()
