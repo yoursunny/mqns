@@ -5,6 +5,7 @@ Test suite for ProactiveForwarder integrated with LinkLayer.
 import pytest
 
 from mqns.entity.memory import QuantumMemory
+from mqns.entity.qchannel import LinkArch, LinkArchAlways, LinkArchDimBk, LinkArchSr
 from mqns.entity.timer import Timer
 from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
 from mqns.network.fw import (
@@ -23,7 +24,14 @@ from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Time
 
-from .fw_common import build_grid_network, build_linear_network, build_tree_network, collect_cpacket_counts, print_node_counters
+from .fw_common import (
+    build_grid_network,
+    build_linear_network,
+    build_tree_network,
+    collect_cpacket_counts,
+    dflt_qchannel_args,
+    print_node_counters,
+)
 
 
 @pytest.mark.parametrize("epr_type", [WernerStateEntanglement, MixedStateEntanglement])
@@ -58,11 +66,13 @@ def test_4_swap(epr_type: type[Entanglement], timing: TimingMode, swap: SwapSequ
     ],
 )
 @pytest.mark.parametrize("route_len", [3, 5])
-def test_tree2_bidir(mux: MuxScheme, swap: SwapSequenceInput, end_time: float, route_len: int):
+@pytest.mark.parametrize("LA", [LinkArchDimBk, LinkArchSr])
+def test_tree2_bidir(mux: MuxScheme, swap: SwapSequenceInput, end_time: float, route_len: int, LA: type[LinkArch]):
     """Test bidirectional paths in tree topology."""
     net, simulator = build_tree_network(
         t_cohere=1.0,
         ch_capacity=2,
+        qchannel_args=dflt_qchannel_args | {"link_arch": LinkArchAlways(LA())},
         fw={"p_swap": 1, "mux": mux},
         swap_table_leak_tol=256,
         end_time=end_time,
@@ -142,9 +152,16 @@ def test_rect2_path_delete():
         # Currently allocation logic cannot accommodate multi-path and multi-request simultaneously.
     ],
 )
-def test_rect3_epr_count(monkeypatch: pytest.MonkeyPatch, k_paths: int, n_requests: int):
+@pytest.mark.parametrize("LA", [LinkArchDimBk, LinkArchSr])
+def test_rect3_epr_count(monkeypatch: pytest.MonkeyPatch, k_paths: int, n_requests: int, LA: type[LinkArch]):
     """Test Request.epr_count in 3x3 rectangle topology."""
-    net, simulator = build_grid_network((3, 3), k_paths=k_paths, swap_table_leak_tol=256, has_link_layer=True)
+    net, simulator = build_grid_network(
+        (3, 3),
+        k_paths=k_paths,
+        qchannel_args=dflt_qchannel_args | {"link_arch": LinkArchAlways(LA())},
+        swap_table_leak_tol=256,
+        has_link_layer=True,
+    )
 
     requests: list[Request] = [
         Request("A-B", epr_count=7),
