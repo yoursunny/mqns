@@ -7,6 +7,10 @@ type TrafficMatrixInput = np.ndarray | list[list[int]]
 
 
 class TrafficMatrix:
+    """
+    Traffic matrix low-level model, where each node is represented by an index number.
+    """
+
     _matrix: np.ndarray[tuple[int, int], np.dtype[np.float64]]
     """
     Traffic matrix for N nodes, shape is (N,N).
