@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 class MuxSchemeDynamicBase(MuxScheme):
     def __init__(self):
         super().__init__()
-        self.qchannel_paths_map = defaultdict[str, list[int]](lambda: [])
+        self.qchannel_paths_map = defaultdict[str, list[int]](list)
         """stores path-qchannel relationship"""
 
     @override

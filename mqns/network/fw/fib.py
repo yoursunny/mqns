@@ -15,7 +15,8 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Final, Literal, final
 
 import numpy as np
@@ -29,12 +30,12 @@ if TYPE_CHECKING:
 
 @final
 class FibPath:
-    """FIB information related to a path."""
+    """FIB path entry --- information related to a path."""
 
     __slots__ = ("req", "path_id", "route", "own_idx", "swap", "swap_cutoff", "purif", "sg")
 
     req: "FibRequest"
-    """Request group reference, assigned by ``FibRequestGroup.__init__``."""
+    """Request entry reference, assigned by ``FibRequest.__init__``."""
     path_id: Final[int]
     """Path identifier, identifies end-to-end path."""
 
@@ -220,7 +221,7 @@ class FibSwapGroup:
 
 
 class FibRequest:
-    """FIB information related to an end-to-end request."""
+    """FIB request entry --- information related to an end-to-end request."""
 
     __slots__ = ("req_id", "src", "dst", "paths", "active_until", "epr_count_remain")
 
@@ -271,17 +272,20 @@ class Fib:
     """
 
     def __init__(self):
-        self._reqs: dict[int, FibRequest] = {}  # req_id => FibEntry
-        self._paths: dict[int, FibPath] = {}  # path_id => FibPath
+        self._reqs: dict[int, FibRequest] = {}  # keyed by req_id
+        self._end_reqs = defaultdict[str, list[FibRequest]](list)  # own node is end-node, keyed by opposite end-node
+        self._paths: dict[int, FibPath] = {}  # keyed by path_id
 
     def install(self, fw: "Forwarder") -> None:
         self.simulator = fw.simulator
+        self._own_name = fw.node.name
 
     def clear(self) -> None:
         """
         Clear all tables.
         """
         self._reqs.clear()
+        self._end_reqs.clear()
         self._paths.clear()
 
     def get_path(self, path_id: int) -> FibPath:
@@ -306,20 +310,30 @@ class Fib:
         try:
             return self._reqs[req_id]
         except KeyError:
-            raise LookupError(f"FibRequestGroup({req_id}) not found") from None
+            raise LookupError(f"FibRequest({req_id}) not found") from None
+
+    def _req_opposite_end(self, fr: FibRequest) -> str | None:
+        if fr.src == self._own_name:
+            return fr.dst
+        if fr.dst == self._own_name:
+            return fr.src
+        return None
 
     def insert_req(self, fr: FibRequest) -> None:
         """
         Insert a request entry and all its path entries.
         """
         if fr.req_id in self._reqs:
-            raise ValueError(f"FibRequestGroup({fr.req_id}) already exists")
+            raise ValueError(f"FibRequest({fr.req_id}) already exists")
         self._reqs[fr.req_id] = fr
 
         for entry in fr.paths:
             if entry.path_id in self._paths:
                 raise ValueError(f"FibEntry({entry.path_id}) already exists")
             self._paths[entry.path_id] = entry
+
+        if opposite := self._req_opposite_end(fr):
+            self._end_reqs[opposite].append(fr)
 
     def delete_req(self, req_id: int, *, delay: Time) -> FibRequest:
         """
@@ -343,13 +357,17 @@ class Fib:
         for entry in fr.paths:
             del self._paths[entry.path_id]
 
-    def find_active_req(self, node0: str, node1: str) -> Iterator[FibRequest]:
-        """
-        List FIB request entries between two nodes.
+        if opposite := self._req_opposite_end(fr):
+            l = self._end_reqs[opposite]
+            l.remove(fr)
+            if not l:
+                del self._end_reqs[opposite]
 
-        The request must be active and may have either direction.
+    def list_end_reqs(self, opposite_end: str) -> list[FibRequest]:
         """
-        now = self.simulator.tc
-        for req in self._reqs.values():
-            if req.is_active(now) and ((req.src == node0 and req.dst == node1) or (req.src == node1 and req.dst == node0)):
-                yield req
+        List FIB request entries where own node is an end-node.
+
+        Args:
+            opposite_end: The opposite end-node.
+        """
+        return self._end_reqs.get(opposite_end, [])

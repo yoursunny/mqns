@@ -98,7 +98,7 @@ def test_tree2_two():
         assert len(ctrl.ls_pkts) == 7
         assert len(ctrl.ls_entries) == 16
 
-        qubits_by_channel = defaultdict[str, list[str]](lambda: [])
+        qubits_by_channel = defaultdict[str, list[str]](list)
         for entry in ctrl.ls_entries:
             qubits_by_channel[f"{entry['node']}{entry['neighbor']}"].append(entry["qubit"])
 

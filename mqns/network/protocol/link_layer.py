@@ -356,21 +356,21 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             return
 
         # If the path on a channel is being deactivated, reset qubits owned by LinkLayer.
-        addrs: list[int] = []
+        resets: list[tuple[int, str | None]] = []
         for mq, _ in self.memory.find(
             lambda q, _: q.state in (QubitState.ACTIVE, QubitState.RESERVED) and q.path_id == path_id, qchannel=ch
         ):
+            resets.append((mq.addr, mq.key))
             mq.state = QubitState.RAW
-            addrs.append(mq.addr)
 
         del ac.paths[path_id]
         self.log_debug(
-            "PATH_DEACTIVATE_%s %s path=%s partner=%s reset-addrs=%s",
+            "PATH_DEACTIVATE_%s %s path=%s partner=%s reset-qubits=%s",
             PathActivateEvent.ROLE_STR[ac.is_primary],
             ch.name,
             path_id,
             partner.name,
-            addrs,
+            resets,
         )
         if len(ac.paths) > 0:
             return

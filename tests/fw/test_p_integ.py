@@ -176,8 +176,10 @@ def test_rect3_epr_count(monkeypatch: pytest.MonkeyPatch, k_paths: int, n_reques
     print("cpacket_cnt", cpacket_cnt)
 
     for req in requests:
-        assert req.epr_count <= RequestCounters.of(net, req).n_consumed < req.epr_count + 3
+        assert RequestCounters.of(net, req).n_consumed == req.epr_count
         for target in req.src, req.dst:
             assert cpacket_cnt[f"ctrl-{target}:PATH_INSERT"] == 1
             assert cpacket_cnt[f"ctrl-{target}:PATH_DELETE"] == 1
             assert cpacket_cnt[f"{target}-ctrl:PATH_REACH_EPR_COUNT"] == 1
+
+    QuantumMemory.check_leaks(net.nodes)

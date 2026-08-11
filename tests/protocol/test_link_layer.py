@@ -22,7 +22,7 @@ class NetworkLayer(Application[QNode]):
         """If non-empty, ``QubitReleasedEvent`` would be emitted after specified duration for the next entanglement."""
         self.entangle: list[tuple[float, float]] = []
         """Entanglement events, each entry contains entanglement time and EPR creation time."""
-        self.path_entangle = defaultdict[int | None, list[float]](lambda: [])
+        self.path_entangle = defaultdict[int | None, list[float]](list)
         """Entanglement times per path_id."""
         self.decohere: list[float] = []
         """Decoherence events, each entry is event time."""
