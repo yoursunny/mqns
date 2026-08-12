@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=80", "wheel"]
+requires = ["setuptools>=84", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
@@ -17,7 +17,7 @@ lint.select = [
   "W", # pycodestyle warnings
   "I", # isort (import sorting)
   # "D",  # pydocstyle
-  # "UP", # pyupgrade
+  "UP", # pyupgrade
   "PT", # pytest-style
   "Q",  # quote-conventions
   "PL", # pylint (useful for layout, blank lines, etc.)

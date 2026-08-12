@@ -49,9 +49,9 @@ class Node(Entity):
             apps: Applications on the node.
         """
         super().__init__(name)
-        self.cchannels: list["ClassicChannel"] = []
+        self.cchannels: list[ClassicChannel] = []
         """Classic channels connected to this node."""
-        self._cchannel_by_dst = dict["Node", "ClassicChannel"]()
+        self._cchannel_by_dst: dict[Node, ClassicChannel] = {}
         self.apps: list[Application] = [] if apps is None else apps
         """Applications on this node."""
         self._app_by_type: dict[type, Application] | None = None

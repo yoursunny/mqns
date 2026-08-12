@@ -46,7 +46,7 @@ def _save_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], ch: C
     l.append(ch)
     if len(ch.node_list) != 2:
         return
-    a, b = sorted((node.name for node in cast(list[Node], ch.node_list)))
+    a, b = sorted(node.name for node in cast(list[Node], ch.node_list))
     d[(a, b)] = ch
 
 

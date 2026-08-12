@@ -810,7 +810,9 @@ def test_tree3_statistical(
     def select_qubit(candidates: list[MemoryEprTuple], fw: Forwarder, mt0: MemoryEprTuple) -> MemoryEprTuple:
         _ = mt0
         partner = selected_qubit[fw.node.name]
-        chosen = next((mt1 for mt1 in candidates if partner in (unwrap_cast(mt1[1].src).name, unwrap_cast(mt1[1].dst).name)))
+        chosen = next(
+            (mt1 for mt1 in candidates if partner in (unwrap_cast(mt1[1].src).name, unwrap_cast(mt1[1].dst).name)), None
+        )
         return unwrap(chosen)
 
     def select_path(candidates: list[int], fw: Forwarder, epr0: Entanglement, epr1: Entanglement) -> int:

@@ -1,3 +1,5 @@
+# ruff: noqa: UP031
+
 import os
 import pickle
 import time
@@ -243,7 +245,7 @@ def greedyswap(C, p=1, q=0.5, prnt=False, cutoff=1, Bq=None, Ts=1):
     EXT = np.dot(1 + np.arange(len(p_e2e)), p_e2e) / Ts
     runtime = time.time() - start_time
     if prnt:
-        print("Swapping order", swap_sq, "  => E[ent.]: {:.6f}".format(EXT), "\ttime: {:.6f}".format(runtime))
+        print("Swapping order", swap_sq, f"  => E[ent.]: {EXT:.6f}", f"\ttime: {runtime:.6f}")
 
     return {"order": swap_sq, "EXT": EXT, "P": P, "time": runtime}
 
@@ -295,7 +297,7 @@ def thruput(C, swap_sq, p=1, q=0.5, prnt=False, cutoff=1, Bq=None, Ts=1):
     runtime = time.time() - start_time
 
     if prnt:
-        print("Swapping order", swap_sq, "  => E[ent.]: {:.6f}".format(EXT), "\ttime: {:.6f}".format(runtime))
+        print("Swapping order", swap_sq, f"  => E[ent.]: {EXT:.6f}", f"\ttime: {runtime:.6f}")
 
     return {"order": swap_sq, "EXT": EXT, "P": P, "time": runtime}
 

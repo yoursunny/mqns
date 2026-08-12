@@ -16,7 +16,8 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import copy
-from typing import Callable, Literal, TypedDict, Unpack, override
+from collections.abc import Callable
+from typing import Literal, TypedDict, Unpack, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin
 from mqns.entity.memory import MemoryDecohereEvent, MemoryQubit, PathDirection, QubitState

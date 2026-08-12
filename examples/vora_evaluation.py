@@ -165,7 +165,7 @@ def vora_train_row(p: ParameterSet, num_routers: int, dist_prop: str) -> str:
     p = p.clone_with(num_routers, dist_prop, "disabled")
 
     distances = p.compute_distances()
-    L = " ".join([str(d) for d in distances])
+    L = " ".join(str(d) for d in distances)
     filename = p.to_linear_attempts_csv_filename()
     return f"python linear_attempts.py --runs {p.n_runs} --L {L} --M 1 --csv $OUTDIR/{filename}"
 

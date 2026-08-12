@@ -138,7 +138,7 @@ def _EntanglementSwappingMessage_init(self: EntanglementSwappingMessage, msg_typ
         self.generation_time = kwargs.get("generation_time", 0)
         self.fidelity_time = kwargs.get("fidelity_time")
     else:
-        raise Exception("Entanglement swapping protocol create unknown type of message: %s" % str(msg_type))
+        raise Exception(f"Entanglement swapping protocol create unknown type of message: {msg_type}")
 
 
 def _EntanglementSwappingB_received_message(self: EntanglementSwappingB, src: str, msg: EntanglementSwappingMessage) -> None:

@@ -103,7 +103,7 @@ class ClassicConnector:
             )
 
         self.simulator = simulator
-        self.bridges: dict[str, "ClassicBridge"] = {}
+        self.bridges: dict[str, ClassicBridge] = {}
         self.nats_servers = os.getenv("NATS_URL", "nats://127.0.0.1:4222").split(",")
         self.nats_prefix = nats_prefix
 

@@ -108,10 +108,10 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         # swap sequence must be [1, 0, 0, .., 0, 0, 1]
         s0, *s1, s2 = inst["swap"]
         assert s0 == 1 == s2
-        assert all((s == 0 for s in s1))
+        assert all(s == 0 for s in s1)
 
         # purif scheme must be empty / zeros
-        assert all((r == 0 for r in inst["purif"].values()))
+        assert all(r == 0 for r in inst["purif"].values())
 
     @override
     def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibPath | None:

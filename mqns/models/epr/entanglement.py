@@ -238,7 +238,7 @@ class Entanglement(QuantumModel):
             else:
                 orig_eprs.append(epr)
 
-        orig_names = "-".join((e.name for e in orig_eprs))
+        orig_names = "-".join(e.name for e in orig_eprs)
         name = hashlib.sha256(orig_names.encode()).hexdigest()[:32]  # same length as default name
         ne = cast(
             E,
