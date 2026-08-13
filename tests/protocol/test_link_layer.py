@@ -230,9 +230,9 @@ def test_multiple_paths():
         (0.2, (QubitState.RAW, QubitState.RAW), (0, 0)),
         # path deleted when RESERVE_RES is in-flight
         (0.5, (QubitState.RAW, QubitState.RAW), (0, 0)),
-        # path deleted when LinkArch is waiting for t_notify_a
+        # path deleted when LinkArch is waiting for t_notify_pri
         (0.8, (QubitState.RAW, QubitState.RAW), (0, 0)),
-        # path deleted when LinkArch is waiting for t_notify_b
+        # path deleted when LinkArch is waiting for t_notify_2nd
         (1.1, (QubitState.ENTANGLED1, QubitState.RAW), (1, 0)),
         # path deleted when both qubits are owned by NetworkLayer
         (1.5, (QubitState.ENTANGLED1, QubitState.ENTANGLED1), (1, 1)),

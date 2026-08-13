@@ -310,8 +310,10 @@ def provide_entanglements(
         simulator = src.simulator
         t_creation = simulator.tc
         ch = src.node.get_qchannel(dst.node)
+        la = ch.link_arch
 
-        ch.link_arch.set(
+        la.set(
+            time_accuracy=simulator.accuracy,
             ch=ch,
             eta_s=1,
             eta_d=1,
@@ -319,7 +321,6 @@ def provide_entanglements(
             tau_0=0,
             epr_type=src.network.epr_type,
         )
-        _, d_notify_a, d_notify_b = ch.link_arch.delays(1)
 
         ll_key = _provide_entanglements_autoid()
         epr = src.network.epr_type(
@@ -332,7 +333,7 @@ def provide_entanglements(
         )
         epr.fidelity = fidelity
 
-        for node, neighbor, d_notify in (src, dst, d_notify_a), (dst, src, d_notify_b):
+        for node, neighbor, d_notify in (src, dst, la.d_notify_pri), (dst, src, la.d_notify_2nd):
             q, _ = next(node.memory.find(lambda _, v: v is None, qchannel=ch), (None, None))
             assert q is not None, f"insufficient qubits assigned to {ch}"
             q._state = QubitState.ENTANGLED0

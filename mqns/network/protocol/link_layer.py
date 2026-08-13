@@ -37,7 +37,7 @@ from mqns.utils import AutoIncrementIdentifier, json_encodable, rng, unwrap
 
 _AUTOID = AutoIncrementIdentifier("llk_")
 """
-Automatically assigned ``ReservationRequest.key`` name.
+Automatically assigned ``RESERVE_REQ["key"]`` name.
 """
 
 
@@ -309,31 +309,33 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             self.log_debug("CHANNEL_ACTIVATE_2nd %s partner=%s", ch.name, ac.partner.name)
             return
 
+        la = ch.link_arch
+
         # link_arch.set() may be called multiple times in several situations:
         # - qchannel is activated, deactivated, and re-activated.
         # - qchannel is activated from both sides due to shared paths in opposite directions.
         # Nevertheless, we assume every LinkLayer instance has the same parameters,
         # so that the parameters saved into LinkArch are the same every time.
-        ch.link_arch.set(
+        la.set(
+            time_accuracy=self.simulator.accuracy,
             ch=ch,
             eta_s=self.eta_s,
             eta_d=self.eta_d,
             reset_time=self.reset_time,
             tau_0=self.tau_0,
             epr_type=self.node.network.epr_type,
-            t0=self.simulator.tc,
             store_decays=(self.memory.time_decay, ac.partner.memory.time_decay),
         )
 
-        epr_tpl, t_notify_a, t_notify_b = ch.link_arch.make_epr(1, self.simulator.ts, src=self.node, dst=ac.partner, key=None)
+        epr_tpl = la.make_epr(self.simulator.ts, self.node, ac.partner, key=None)
 
         self.log_debug(
             "CHANNEL_ACTIVATE_pri %s partner=%s link_arch=%s t_notify=%s,%s | template %s",
             ch.name,
             ac.partner.name,
             ch.link_arch.name,
-            t_notify_a,
-            t_notify_b,
+            la.d_notify_pri,
+            la.d_notify_2nd,
             epr_tpl,
         )
 
@@ -539,39 +541,47 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             qubit: The memory qubit used for this attempt.
         """
         qchannel = ac.qchannel
-        src = self.node
-        dst = ac.partner
         key = unwrap(mq.key)
+        la = qchannel.link_arch
 
-        # Calculate which attempt would succeed.
+        # Calculate which attempt would succeed (1-based).
         k = self._calc_attempt(qchannel)
 
         # Calculate when would the k-th attempt (1-based) succeed.
         # TODO space out EPRs on a qchannel by attempt_interval or qchannel.bandwidth
-        epr, t_notify_a, t_notify_b = qchannel.link_arch.make_epr(k, self.simulator.tc, src=src, dst=dst, key=key)
+        t_epr_creation = self.simulator.tc + la.attempt_interval * (k - 1)
+        t_notify_pri = t_epr_creation + la.d_notify_pri
+        t_notify_2nd = t_epr_creation + la.d_notify_2nd
+        epr = la.make_epr(t_epr_creation, self.node, ac.partner, key=key)
 
         # If the network uses SYNC timing mode but the successful attempt would exceed the current EXTERNAL phase,
         # the EPR would not arrive in time, and therefore is not scheduled.
-        if not src.timing.is_external(max(t_notify_a, t_notify_b)):
+        if not self.node.timing.is_external(max(t_notify_pri, t_notify_2nd)):
             self.log_debug(
-                "EPR_SKIP %s dst=%s key=%s attempts=%s notify-times=%s,%s reason=beyond-external-phase",
+                "EPR_SKIP %s partner=%s key=%s attempts=%s notify-times=%s,%s reason=beyond-external-phase",
                 epr.name,
-                dst.name,
+                ac.partner.name,
                 key,
                 k,
-                t_notify_a,
-                t_notify_b,
+                t_notify_pri,
+                t_notify_2nd,
             )
             return
 
         # If the network uses ASYNC timing mode or the successful attempt can complete within the current EXTERNAL phase,
         # schedule the EPR arrival on both nodes via LinkArchSuccessEvents.
         self.log_debug(
-            "EPR_PREPARE %s dst=%s key=%s attempts=%s notify-times=%s,%s", epr.name, dst.name, key, k, t_notify_a, t_notify_b
+            "EPR_PREPARE %s partner=%s key=%s attempts=%s notify-times=%s,%s",
+            epr.name,
+            ac.partner.name,
+            key,
+            k,
+            t_notify_pri,
+            t_notify_2nd,
         )
 
-        self.simulator.sched(LinkArchNotifyPriEvent(key, epr, t=t_notify_a, attempts=k))
-        self.simulator.sched(LinkArchNotify2ndEvent(key, epr, t=t_notify_b))
+        self.simulator.sched(LinkArchNotifyPriEvent(key, epr, t=t_notify_pri, attempts=k))
+        self.simulator.sched(LinkArchNotify2ndEvent(key, epr, t=t_notify_2nd))
 
     def _calc_attempt(self, qchannel: QuantumChannel) -> int:
         return rng.geometric(qchannel.link_arch.success_prob)
