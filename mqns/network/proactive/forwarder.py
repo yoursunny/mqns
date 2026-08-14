@@ -26,7 +26,7 @@ from mqns.network.protocol.event import PathActivateEvent, PathDeactivateEvent
 class ProactiveForwarderNorthbound(ForwarderNorthbound):
     @override
     def install_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        self.simulator.add_event(
+        self.simulator.sched(
             PathActivateEvent(
                 self.node,
                 ch,
@@ -50,7 +50,7 @@ class ProactiveForwarderNorthbound(ForwarderNorthbound):
         # but S processes path deactivation first so its forwarder never gets QubitEntangledEvent, S would
         # receive SWAP_UPDATE message without ever receiving the qubit, and the physical deposit would be leaked.
         event.priority = 1000
-        self.simulator.add_event(event)
+        self.simulator.sched(event)
 
     def _ll_path_id(self, fp: FibPath) -> int | None:
         return fp.path_id if self.mux.qubit_has_path_id() else None

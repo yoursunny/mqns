@@ -84,7 +84,7 @@ def parse_time_decay(input: TimeDecayInput, t_cohere: Time) -> TimeDecayFunc:
     * The above models concatenated with ``:``, such as ``DEPOLAR:rate_depolar:DEPHASE:-t_dephase``.
     """
     if input is None:
-        error = DephaseErrorModel().set(t=0, rate=1 / t_cohere.time_slot)
+        error = DephaseErrorModel().set(t=0, rate=1 / t_cohere.slot)
     elif isinstance(input, str):
         error = parse_error_str(input, "rate", (lambda m, v: _set_rate(m, v, t_cohere.accuracy)))
     else:
@@ -92,7 +92,7 @@ def parse_time_decay(input: TimeDecayInput, t_cohere: Time) -> TimeDecayFunc:
         error = _set_rate(ctor(), d["rate"] if "rate" in d else -d["t_cohere"], t_cohere.accuracy)
 
     def apply_error_on(target: "QuantumModel", t: Time):
-        error.set(t=t.time_slot)
+        error.set(t=t.slot)
         target.apply_error(error)
 
     return apply_error_on

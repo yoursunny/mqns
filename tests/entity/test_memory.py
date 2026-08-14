@@ -245,8 +245,8 @@ def test_memory_async_qubit():
     q1 = Qubit(name="q1")
     write_request = MemoryWriteRequestEvent(memory=m, qubit=q1, t=s.time(sec=0))
     read_request = MemoryReadRequestEvent(memory=m, key="q1", t=s.time(sec=1))
-    s.add_event(write_request)
-    s.add_event(read_request)
+    s.sched(write_request)
+    s.sched(read_request)
     s.run()
 
     assert app.nReads == 1

@@ -176,7 +176,7 @@ class Entanglement(QuantumModel):
         """
         t = now - self.fidelity_time
         assert self.consumed_sides == 0b00
-        if t.time_slot == 0:
+        if t.slot == 0:
             return
         for se in self.store_decays:
             se(self, t)

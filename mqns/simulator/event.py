@@ -39,8 +39,8 @@ class Event(ABC):
 
     def __lt__(self, other: "Event") -> bool:
         """Compare event ordering in Simulator heap."""
-        if self.t.time_slot != other.t.time_slot:
-            return self.t.time_slot < other.t.time_slot
+        if self.t.slot != other.t.slot:
+            return self.t.slot < other.t.slot
         return self.priority < other.priority
 
     def __repr__(self) -> str:

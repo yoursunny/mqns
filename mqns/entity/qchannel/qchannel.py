@@ -148,7 +148,7 @@ class QuantumChannel(BaseChannel[QNode]):
         qubit.apply_error(self.transfer_error)
 
         event = RecvQubitPacket(self, qubit, next_hop, t=recv_time)
-        self.simulator.add_event(event)
+        self.simulator.sched(event)
 
     def __repr__(self) -> str:
         return "<qchannel " + self.name + ">"

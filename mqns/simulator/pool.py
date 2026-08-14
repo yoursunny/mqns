@@ -86,7 +86,7 @@ class HeapEventPool(EventPool):
             return None
 
         event = heapq.heappop(self._list)
-        self.tc = event.t.time_slot
+        self.tc = event.t.slot
         return event
 
     def __repr__(self):
@@ -143,7 +143,7 @@ class SynchronizedEventPool(EventPool):
                     return None
 
                 if self._list:  # has events
-                    next_t = self._list[0].t.time_slot
+                    next_t = self._list[0].t.slot
 
                     if next_t <= self._gate:  # event is before gate and can be executed
                         event = heapq.heappop(self._list)

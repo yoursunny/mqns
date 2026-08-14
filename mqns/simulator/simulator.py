@@ -69,7 +69,7 @@ class Simulator:
         else:
             pool_typ = HeapEventPool
 
-        self._pool = pool_typ(self.ts.time_slot, None if self.is_continuous else self.te.time_slot)
+        self._pool = pool_typ(self.ts.slot, None if self.is_continuous else self.te.slot)
         self.total_events = 0
         """How many events have been inserted into the simulator."""
 
@@ -92,7 +92,7 @@ class Simulator:
         * When a finite simulation has finished, this is same as ``.te``.
         * Otherwise, this reflects the time of the currently processing or last processed event.
         """
-        return self.time(time_slot=self._pool.tc)
+        return self.time(slot=self._pool.tc)
 
     @property
     def running(self) -> bool:
@@ -100,25 +100,25 @@ class Simulator:
         return self._pool.running
 
     @overload
-    def time(self, *, time_slot: int) -> Time:
+    def time(self, *, slot: int) -> Time:
         """Produce ``Time`` from time slot."""
 
     @overload
     def time(self, *, sec: float) -> Time:
         """Produce ``Time`` from seconds."""
 
-    def time(self, *, time_slot: int | None = None, sec: float = math.nan) -> Time:
-        if time_slot is not None:
-            return Time(time_slot, accuracy=self.accuracy)
+    def time(self, *, slot: int | None = None, sec: float = math.nan) -> Time:
+        if slot is not None:
+            return Time(slot, accuracy=self.accuracy)
         return Time.from_sec(sec, accuracy=self.accuracy)
 
-    def add_event(self, event: Event) -> None:
+    def sched(self, event: Event) -> None:
         """
         Add an event into simulator event pool.
         """
         assert event.t.accuracy == self.accuracy
 
-        t = event.t.time_slot
+        t = event.t.slot
         if t < self._pool.tc:
             log.warning("Event %s dropped: scheduled for %s but simulator is at %s", event, event.t, self.tc)
             return
@@ -230,13 +230,13 @@ class Simulator:
         event = func_to_event(self.tc, self._update_gate, gate)
         event.name = "Simulator.update_gate"
         event.priority = priority
-        self.add_event(event)
+        self.sched(event)
         return event
 
     def _update_gate(self, gate: Time) -> None:
         assert gate.accuracy == self.accuracy
-        log.debug("Simulator.update_gate(%s)", gate.time_slot)
-        self._pool.update_gate(gate.time_slot)
+        log.debug("Simulator.update_gate(%s)", gate.slot)
+        self._pool.update_gate(gate.slot)
 
     def set_gate_reached_handler(self, h: Callable[[int], None]) -> None:
         """

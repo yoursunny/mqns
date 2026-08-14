@@ -75,10 +75,10 @@ class OwnerSub(OwnerBase):
 def test_dispatcher():
     simulator = Simulator(0, 1, accuracy=1000)
     owner = OwnerSub()
-    simulator.add_event(EventA(simulator.time(time_slot=1), owner))
-    simulator.add_event(EventB(simulator.time(time_slot=2), owner))
-    simulator.add_event(EventC(simulator.time(time_slot=3), owner))
-    simulator.add_event(EventD(simulator.time(time_slot=4), owner))
+    simulator.sched(EventA(simulator.time(slot=1), owner))
+    simulator.sched(EventB(simulator.time(slot=2), owner))
+    simulator.sched(EventC(simulator.time(slot=3), owner))
+    simulator.sched(EventD(simulator.time(slot=4), owner))
 
     simulator.run()
     assert owner.invoked == ["B.a", "S.b", "B.b", "S.c", "S.d"]

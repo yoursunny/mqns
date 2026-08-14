@@ -69,13 +69,13 @@ class Monitor(Entity):
         super().install(simulator)
 
         if self.watch_at_start:
-            simulator.add_event(MonitorEvent(simulator.ts, self, name="start watch event"))
+            simulator.sched(MonitorEvent(simulator.ts, self, name="start watch event"))
 
         if not simulator.is_continuous and self.watch_at_finish:
-            simulator.add_event(MonitorEvent(simulator.te, self, name="finish watch event"))
+            simulator.sched(MonitorEvent(simulator.te, self, name="finish watch event"))
 
         for p in self.watch_period:
-            simulator.add_event(MonitorEvent(simulator.ts, self, period=simulator.time(sec=p), name=f"period watch event({p})"))
+            simulator.sched(MonitorEvent(simulator.ts, self, period=simulator.time(sec=p), name=f"period watch event({p})"))
 
         for event_type in self.watch_event:
             if not simulator.watchers:
@@ -90,7 +90,7 @@ class Monitor(Entity):
 
         if isinstance(event, MonitorEvent) and event.period is not None:
             event.t += event.period
-            self.simulator.add_event(event)
+            self.simulator.sched(event)
 
     def get_data(self) -> pd.DataFrame:
         """

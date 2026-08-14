@@ -46,18 +46,18 @@ class NetworkLayer(Application[QNode]):
         except IndexError:
             return
         if release_after is not None:
-            self.simulator.add_event(func_to_event(event.t + release_after, self._release, mq))
+            self.simulator.sched(func_to_event(event.t + release_after, self._release, mq))
 
     def _release(self, mq: MemoryQubit):
         self.memory.read(mq.addr, remove=True)
         mq.state = QubitState.RELEASE
-        self.simulator.add_event(QubitReleasedEvent(self.node, mq, t=self.simulator.tc))
+        self.simulator.sched(QubitReleasedEvent(self.node, mq, t=self.simulator.tc))
 
     @event_handler
     def handle_decohere(self, event: MemoryDecohereEvent) -> None:
         self.decohere.append(event.t.sec)
         event.qubit.state = QubitState.RELEASE
-        self.simulator.add_event(QubitReleasedEvent(self.node, event.qubit, is_decoh=True, t=event.t))
+        self.simulator.sched(QubitReleasedEvent(self.node, event.qubit, is_decoh=True, t=event.t))
 
 
 def activate_path(t0: float | None, t1: float | None, src: Application[QNode], dst: Application[QNode], path_id: int | None):
@@ -69,13 +69,13 @@ def activate_path(t0: float | None, t1: float | None, src: Application[QNode], d
 
     if t0 is not None:
         t = simulator.time(sec=t0)
-        simulator.add_event(PathActivateEvent(src.node, ch, path_id, t=t, is_primary=True))
-        simulator.add_event(PathActivateEvent(dst.node, ch, path_id, t=t, is_primary=False))
+        simulator.sched(PathActivateEvent(src.node, ch, path_id, t=t, is_primary=True))
+        simulator.sched(PathActivateEvent(dst.node, ch, path_id, t=t, is_primary=False))
 
     if t1 is not None:
         t = simulator.time(sec=t1)
-        simulator.add_event(PathDeactivateEvent(src.node, ch, path_id, t=t))
-        simulator.add_event(PathDeactivateEvent(dst.node, ch, path_id, t=t))
+        simulator.sched(PathDeactivateEvent(src.node, ch, path_id, t=t))
+        simulator.sched(PathDeactivateEvent(dst.node, ch, path_id, t=t))
 
 
 @pytest.mark.parametrize("epr_type", [WernerStateEntanglement, MixedStateEntanglement])
@@ -242,7 +242,7 @@ def test_path_delete(t_delete: float, qubits_state: tuple[QubitState, QubitState
             return
         event = func_to_event(simulator.time(sec=t), assert_states, (expected0, expected1))
         event.priority = 10000
-        simulator.add_event(event)
+        simulator.sched(event)
 
     check_states(t_delete, *qubits_state)
 

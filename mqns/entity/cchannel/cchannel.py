@@ -96,7 +96,7 @@ class ClassicChannel(BaseChannel[Node]):
             return
 
         event = RecvClassicPacket(self, packet, next_hop, t=recv_time)
-        self.simulator.add_event(event)
+        self.simulator.sched(event)
 
     def __repr__(self) -> str:
         return "<cchannel " + self.name + ">"

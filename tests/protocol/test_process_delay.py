@@ -24,7 +24,7 @@ class ProcessApp(Application[Node]):
         for i in range(0, 10):
             t = self.simulator.time(sec=i)
             event = ProcessEvent(t=t, dest=self.node)
-            self.simulator.add_event(event)
+            self.simulator.sched(event)
 
     @event_handler
     def EventHandler(self, event: ProcessEvent) -> None:

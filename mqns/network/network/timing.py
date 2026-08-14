@@ -161,9 +161,9 @@ class TimingModeSync(TimingMode):
         log.info(
             "TIME_SYNC: using %s mode, t_ext=%s, t_rtg=%s, t_int=%s",
             self.name,
-            self.t_ext.time_slot,
-            self.t_rtg.time_slot,
-            self.t_int.time_slot,
+            self.t_ext.slot,
+            self.t_rtg.slot,
+            self.t_int.slot,
         )
 
         self._sequence = [
@@ -173,14 +173,14 @@ class TimingModeSync(TimingMode):
                 (TimingPhase.ROUTING, self.t_rtg),
                 (TimingPhase.INTERNAL, self.t_int),
             ]
-            if duration.time_slot > 0
+            if duration.slot > 0
         ]
         self._pos = -1
 
         self.end_time = self.simulator.ts
         """Current phase end time (exclusive)."""
 
-        self.simulator.add_event(func_to_event(self.simulator.ts, self._enter_phase))
+        self.simulator.sched(func_to_event(self.simulator.ts, self._enter_phase))
 
     @property
     def phase(self) -> TimingPhase:
@@ -209,7 +209,7 @@ class TimingModeSync(TimingMode):
         log.debug("TIME_SYNC: entering %s phase", phase.name)
 
         self.end_time = self.simulator.tc + duration
-        self.simulator.add_event(func_to_event(self.end_time, self._change_phase))
+        self.simulator.sched(func_to_event(self.end_time, self._change_phase))
 
         self._broadcast_event(EnterEvent)
 

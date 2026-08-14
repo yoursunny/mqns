@@ -338,13 +338,13 @@ def provide_entanglements(
             q._state = QubitState.ENTANGLED0
             q.key = ll_key
             node.memory.write(q.addr, epr)
-            simulator.add_event(QubitEntangledEvent(node.node, neighbor.node, q, t=t_creation + d_notify))
+            simulator.sched(QubitEntangledEvent(node.node, neighbor.node, q, t=t_creation + d_notify))
 
     def sched_entangle(t: float, src: Forwarder, dst: Forwarder):
         if t < 0:
             return
         simulator = src.simulator
-        simulator.add_event(func_to_event(simulator.time(sec=transform_t(t)), make_entangle, src, dst))
+        simulator.sched(func_to_event(simulator.time(sec=transform_t(t)), make_entangle, src, dst))
 
     for etg in etgs:
         if len(etg) == 3:

@@ -52,7 +52,7 @@ def test_3_disabled():
             fp = fw.fib.get_path(rp.path_id)
             assert fp.sg is None
 
-    simulator.add_event(func_to_event(simulator.time(sec=2.0), check_fib_entries))
+    simulator.sched(func_to_event(simulator.time(sec=2.0), check_fib_entries))
     provide_entanglements(
         (1.001, fwA, fwB),
         (1.002, fwB, fwC),
@@ -605,7 +605,7 @@ def test_rect2_multipath(has_etg: tuple[int, int, int, int], n_swapped: tuple[in
         routes = {"-".join(fwA.fib.get_path(path_id).route) for path_id in (rp.path_id, rp.path_id + 1)}
         assert routes == {"A-B-D", "A-C-D"}
 
-    simulator.add_event(func_to_event(simulator.time(sec=2.0), check_fib_entries))
+    simulator.sched(func_to_event(simulator.time(sec=2.0), check_fib_entries))
     provide_entanglements(
         (1.001 if has_etg[0] else -1, fwA, fwB),
         (1.002 if has_etg[1] else -1, fwB, fwD),

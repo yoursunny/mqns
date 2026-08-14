@@ -113,4 +113,4 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         self.log_debug("reach_epr_count req=%s end_node=%s outcome=deactivate_request", req_id, end_node)
         if req.inactive_event:
             req.inactive_event.cancel()
-        self.simulator.add_event(RequestInactiveEvent(self.node, req, t=self.simulator.tc))
+        self.simulator.sched(RequestInactiveEvent(self.node, req, t=self.simulator.tc))

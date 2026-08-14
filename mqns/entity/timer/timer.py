@@ -55,7 +55,7 @@ class Timer(Entity):
         for t in time_list:
             time = self.simulator.time(sec=t)
             event = TimerEvent(timer=self, t=time)
-            self.simulator.add_event(event)
+            self.simulator.sched(event)
 
     @override
     def handle(self, event: Event):

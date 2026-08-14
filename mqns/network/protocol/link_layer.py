@@ -569,8 +569,8 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             "EPR_PREPARE %s dst=%s key=%s attempts=%s notify-times=%s,%s", epr.name, dst.name, key, k, t_notify_a, t_notify_b
         )
 
-        self.simulator.add_event(LinkArchNotifyPriEvent(key, epr, t=t_notify_a, attempts=k))
-        self.simulator.add_event(LinkArchNotify2ndEvent(key, epr, t=t_notify_b))
+        self.simulator.sched(LinkArchNotifyPriEvent(key, epr, t=t_notify_a, attempts=k))
+        self.simulator.sched(LinkArchNotify2ndEvent(key, epr, t=t_notify_b))
 
     def _calc_attempt(self, qchannel: QuantumChannel) -> int:
         return rng.geometric(qchannel.link_arch.success_prob)
@@ -615,7 +615,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         assert epr.decohere_time > self.simulator.tc
 
         mq.state = QubitState.ENTANGLED0
-        self.simulator.add_event(QubitEntangledEvent(self.node, partner, mq, t=self.simulator.tc))
+        self.simulator.sched(QubitEntangledEvent(self.node, partner, mq, t=self.simulator.tc))
 
     @event_handler
     def handle_release(self, event: QubitReleasedEvent) -> None:

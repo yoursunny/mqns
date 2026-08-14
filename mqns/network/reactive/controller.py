@@ -88,7 +88,7 @@ class ReactiveRoutingController(RoutingController):
         if self.node.timing.is_async():
             raise TypeError("ReactiveRoutingController only works with SYNC timing mode")
         timing = cast(TimingModeSync, self.node.timing)
-        self.d_rtg = self.simulator.time(time_slot=timing.t_rtg.time_slot // 2)
+        self.d_rtg = self.simulator.time(slot=timing.t_rtg.slot // 2)
 
     @event_handler
     def handle_request_active(self, event: RequestActiveEvent) -> None:
@@ -110,7 +110,7 @@ class ReactiveRoutingController(RoutingController):
         # Delete topology link state from previous time slot.
         self._tls.clear()
         # Wait half of ROUTING phase, then perform routing computation.
-        self.simulator.add_event(func_to_event(self.simulator.tc + self.d_rtg, self.do_routing))
+        self.simulator.sched(func_to_event(self.simulator.tc + self.d_rtg, self.do_routing))
 
     @classic_cmd_handler("LS")
     def handle_ls(self, pkt: ClassicPacket, msg: LinkStateMsg) -> None:

@@ -300,8 +300,8 @@ class QuantumNetwork:
             return
 
         t_enter = self.simulator.tc if req.active_since is Time.MIN else req.active_since
-        self.simulator.add_event(RequestActiveEvent(self.controller, req, t=t_enter))
+        self.simulator.sched(RequestActiveEvent(self.controller, req, t=t_enter))
 
         if req.active_until is not Time.MAX:
             req.inactive_event = RequestInactiveEvent(self.controller, req, t=req.active_until)
-            self.simulator.add_event(req.inactive_event)
+            self.simulator.sched(req.inactive_event)

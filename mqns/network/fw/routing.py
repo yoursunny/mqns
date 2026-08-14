@@ -109,7 +109,7 @@ class RoutingPath(ABC):
 
         if self.swap_cutoff is not None:
             accuracy = net.simulator.accuracy
-            inst["swap_cutoff"] = [-1 if t < 0 else Time.sec_to_time_slot(t, accuracy) for t in self.swap_cutoff]
+            inst["swap_cutoff"] = [-1 if t < 0 else Time.sec_to_slot(t, accuracy) for t in self.swap_cutoff]
 
         if m_v is None:
             m_v = self._compute_mv(net, route)

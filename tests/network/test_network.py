@@ -27,22 +27,22 @@ class SyncCheckApp(Application[Node]):
 
     @sync_phase_handler(TimingPhase.EXTERNAL, True)
     def sync_external_enter(self) -> None:
-        assert self.simulator.tc.time_slot % 5000 == 0
+        assert self.simulator.tc.slot % 5000 == 0
         self.records.append("E+")
 
     @sync_phase_handler(TimingPhase.EXTERNAL, False)
     def sync_external_exit(self) -> None:
-        assert self.simulator.tc.time_slot % 5000 == 4000
+        assert self.simulator.tc.slot % 5000 == 4000
         self.records.append("E-")
 
     @sync_phase_handler(TimingPhase.INTERNAL, True)
     def sync_internal_enter(self) -> None:
-        assert self.simulator.tc.time_slot % 5000 == 4000
+        assert self.simulator.tc.slot % 5000 == 4000
         self.records.append("I+")
 
     @sync_phase_handler(TimingPhase.INTERNAL, False)
     def sync_internal_exit(self) -> None:
-        assert self.simulator.tc.time_slot % 5000 == 0
+        assert self.simulator.tc.slot % 5000 == 0
         self.records.append("I-")
 
 
@@ -54,9 +54,9 @@ def test_timing_mode_sync():
 
     s = Simulator(0.0, 29.9, accuracy=1000, install_to=(net,))
     assert set(node.name for node in net.all_nodes) == {"ctrl", "n1", "n2"}
-    assert timing.t_ext.time_slot == 4000
-    assert timing.t_rtg.time_slot == 0
-    assert timing.t_int.time_slot == 1000
+    assert timing.t_ext.slot == 4000
+    assert timing.t_rtg.slot == 0
+    assert timing.t_int.slot == 1000
 
     s.run()
 
@@ -141,7 +141,7 @@ def test_mtg_lazy():
         epr_count=2,
     )
     s = Simulator(100, np.inf, need_synchronized=False, install_to=(net, mtg))
-    s.add_event(func_to_event(s.time(sec=200), s.stop))
+    s.sched(func_to_event(s.time(sec=200), s.stop))
     s.run()
 
     # expect 1000 requests in 100 seconds for 10Hz

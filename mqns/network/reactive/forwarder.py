@@ -88,7 +88,7 @@ class ReactiveForwarder(Forwarder):
     def activate_qchannels(self):
         for ch in self.node.qchannels:
             is_primary = ch.node_list[0] is self.node
-            self.simulator.add_event(PathActivateEvent(self.node, ch, None, t=self.simulator.tc, is_primary=is_primary))
+            self.simulator.sched(PathActivateEvent(self.node, ch, None, t=self.simulator.tc, is_primary=is_primary))
 
     @sync_phase_handler(TimingPhase.ROUTING, True)
     def sync_routing_enter(self):

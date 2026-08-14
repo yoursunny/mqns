@@ -51,7 +51,7 @@ def test_operator_async():
 
     qubit = Qubit()
     request = OperateRequestEvent(o1, qubits=[qubit], t=s.time(sec=0))
-    s.add_event(request)
+    s.sched(request)
 
     s.run()
     assert a1.count == 1

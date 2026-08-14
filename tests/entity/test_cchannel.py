@@ -37,7 +37,7 @@ class SendRecvApp(Application[Node]):
         t = self.simulator.time(sec=since)
         for i in range(n):
             event = func_to_event(t, self.send, dest, list(msgs(i)))
-            self.simulator.add_event(event)
+            self.simulator.sched(event)
             t += interval
 
 
