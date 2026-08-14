@@ -65,7 +65,7 @@ class _WrapperEvent(Event):
         return super().__repr__()
 
 
-def func_to_event(t: Time, fn: Callable, *args, **kwargs):
+def func_to_event[**P, R](t: Time, fn: Callable[P, R], *args: P.args, **kwargs: P.kwargs):
     """
     Convert a function to an event, the function ``fn`` will be called at ``t``.
 
