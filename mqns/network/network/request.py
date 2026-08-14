@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Final, Self, TypedDict, Unpack, cast, final, overload, override
 
 from mqns.entity.node import Controller, NodePair, split_node_pair
-from mqns.simulator import Event, Time
+from mqns.simulator import Event, EventHandleSlot, Time
 
 if TYPE_CHECKING:
     from mqns.network.fw.routing import RoutingPath, RoutingPathInitArgs
@@ -62,7 +62,7 @@ class Request:
     Active period upper bound (exclusive), ``Time.MAX`` means no restriction.
     This field is guaranteed to be ``Time`` after the request is added to a network and a simulator is installed.
     """
-    inactive_event: "RequestInactiveEvent|None" = None
+    inactive_event: EventHandleSlot["RequestInactiveEvent"]
     """
     Event when the request becomes inactive.
     This field is assigned by the controller.
@@ -95,6 +95,7 @@ class Request:
         """
 
     def __init__(self, arg1: "NodePair|RoutingPath", /, **kwargs: Unpack[RequestInitArgs]):
+        self.inactive_event = EventHandleSlot()
         if isinstance(arg1, str | tuple):
             self.src, self.dst = split_node_pair(cast(NodePair, arg1))
         else:

@@ -303,5 +303,5 @@ class QuantumNetwork:
         self.simulator.sched(RequestActiveEvent(self.controller, req, t=t_enter))
 
         if req.active_until is not Time.MAX:
-            req.inactive_event = RequestInactiveEvent(self.controller, req, t=req.active_until)
-            self.simulator.sched(req.inactive_event)
+            self.simulator.sched(event := RequestInactiveEvent(self.controller, req, t=req.active_until))
+            req.inactive_event.set(event)

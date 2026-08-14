@@ -7,7 +7,7 @@ from typing import Protocol, override
 
 from mqns.entity.cchannel import ClassicPacket, RecvClassicPacket
 from mqns.entity.node import Application, Node
-from mqns.simulator import Event, Simulator, event_handler, func_to_event
+from mqns.simulator import EventHandleSlot, Simulator, event_handler, func_to_event
 from mqns.utils import log
 
 try:
@@ -111,7 +111,7 @@ class ClassicConnector:
         simulator.set_gate_reached_handler(lambda t: self.queue.put(GateReached(t)))
 
         self._last_t = 0
-        self._last_gate_event: Event | None = None
+        self._last_gate_event = EventHandleSlot()
 
         self.queue = queue.Queue[TransmittableItem](maxsize=4096)
         self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
@@ -199,15 +199,13 @@ class ClassicConnector:
             t = self.simulator.time(slot=t)
             match src:
                 case "gate":
-                    if self._last_gate_event:
-                        self._last_gate_event.cancel()
-                    self._last_gate_event = self.simulator.update_gate(t)
+                    self._last_gate_event.set(self.simulator.update_gate(t))
                 case "stop":
                     event = func_to_event(t, self.simulator.stop)
                     event.name = "ClassicConnector.stop"
                     event.priority = 0xFFFFFFFF
                     self.simulator.sched(event)
-                    self.simulator.update_gate(t)
+                    self._last_gate_event.set(self.simulator.update_gate(t))
                 case _:
                     log.error("ClassicConnector received unexpected special subject ._.%s", src)
             return

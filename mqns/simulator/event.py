@@ -78,8 +78,33 @@ def func_to_event[**P, R](t: Time, fn: Callable[P, R], *args: P.args, **kwargs: 
     return _WrapperEvent(t, fn, args, kwargs)
 
 
+class EventHandleSlot[T: Event]:
+    """Event handle with automatic cancellation."""
+
+    __slots__ = ("_event",)
+
+    def __init__(self):
+        self._event: T | None = None
+
+    def get(self) -> T | None:
+        """Retrieve event handle."""
+        return self._event
+
+    def set(self, evt: T | None) -> None:
+        """Store new event handle, cancel old event."""
+        if self._event:
+            self._event.cancel()
+        self._event = evt
+
+    def cancel(self) -> None:
+        """Cancel existing event."""
+        self.set(None)
+
+
 class EventHandleSet:
     """Type distinguished set of event handles with automatic cancellation."""
+
+    __slots__ = ("_events",)
 
     def __init__(self):
         self._events: dict[type, Event] = {}
