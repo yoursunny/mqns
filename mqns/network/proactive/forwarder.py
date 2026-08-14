@@ -39,18 +39,14 @@ class ProactiveForwarderNorthbound(ForwarderNorthbound):
     @override
     def uninstall_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
         _ = dir
-        event = PathDeactivateEvent(
-            self.node,
-            ch,
-            self._ll_path_id(fp),
-            t=self.simulator.tc,
+        self.simulator.sched(
+            PathDeactivateEvent(
+                self.node,
+                ch,
+                self._ll_path_id(fp),
+                t=self.simulator.tc,
+            )
         )
-        # Give PathDeactivateEvent a lower priority so that it occurs after QubitEntangledEvent.
-        # Otherwise, in S-R-D topology, if R receives QubitEntangledEvent before path deactivation and performs a swap,
-        # but S processes path deactivation first so its forwarder never gets QubitEntangledEvent, S would
-        # receive SWAP_UPDATE message without ever receiving the qubit, and the physical deposit would be leaked.
-        event.priority = 1000
-        self.simulator.sched(event)
 
     def _ll_path_id(self, fp: FibPath) -> int | None:
         return fp.path_id if self.mux.qubit_has_path_id() else None

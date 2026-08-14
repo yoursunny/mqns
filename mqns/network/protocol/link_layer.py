@@ -32,7 +32,7 @@ from mqns.network.protocol.event import (
     QubitEntangledEvent,
     QubitReleasedEvent,
 )
-from mqns.simulator import event_handler
+from mqns.simulator import EventHandleSlot, event_handler, func_to_event
 from mqns.utils import AutoIncrementIdentifier, json_encodable, rng, unwrap
 
 _AUTOID = AutoIncrementIdentifier("llk_")
@@ -67,8 +67,6 @@ class _ActivePath:
     LinkLayer data structure related to an active path in an active quantum channel.
     """
 
-    __slots__ = ("path_id", "insertion_count", "oreq_table", "ireq_queue")
-
     path_id: Final[int | None]
     """
     Path identifier.
@@ -81,6 +79,13 @@ class _ActivePath:
     """
     How many times this channel+path_id combination has been activated.
     It would take the same number of deactivation commands to deactivate the channel+path_id combination.
+
+    If this is zero, the path is pending deletion.
+    """
+
+    delete_event: EventHandleSlot
+    """
+    Delayed deletion event, scheduled upon ``insertion_count`` reaches zero.
     """
 
     oreq_table: dict[str, int]
@@ -101,6 +106,7 @@ class _ActivePath:
     def __init__(self, path_id: int | None, is_primary: bool):
         self.path_id = path_id
         self.insertion_count = 0
+        self.delete_event = EventHandleSlot()
         if is_primary:
             self.oreq_table = {}
         else:
@@ -113,8 +119,6 @@ class _ActiveChannel:
     LinkLayer data structure related to an active quantum channel.
     """
 
-    __slots__ = ("qchannel", "partner", "is_primary", "paths")
-
     qchannel: Final[QuantumChannel]
     """Quantum channel."""
 
@@ -126,9 +130,14 @@ class _ActiveChannel:
 
     paths: dict[int | None, _ActivePath]
     """
-    Active paths.
+    Active paths, including those pending deletion.
     Key is ``path_id``.
     Value is ActivePath record.
+    """
+
+    live_paths: set[int | None]
+    """
+    ``path_id`` for paths that could initiate entanglements, excluding those pending deletion.
     """
 
     def __init__(self, qchannel: QuantumChannel, partner: QNode, is_primary: bool):
@@ -136,6 +145,7 @@ class _ActiveChannel:
         self.partner = partner
         self.is_primary = is_primary
         self.paths = {}
+        self.live_paths = set()
 
 
 @json_encodable
@@ -267,7 +277,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         self.memory.clear()
 
     @event_handler
-    def path_activate(self, event: PathActivateEvent) -> None:
+    def activate(self, event: PathActivateEvent) -> None:
         """
         Handle path activation command.
         """
@@ -276,13 +286,15 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         partner = ch.find_peer(self.node)
         path_id = event.path_id
 
+        # Find or insert the ActiveChannel record.
         ac = self.channels.get(partner.name)
         if not ac:
             ac = _ActiveChannel(ch, partner, event.is_primary)
             self.channels[partner.name] = ac
 
-            self._path_activate_channel(ac)
+            self._activate_channel(ac)
 
+        # Find or insert the ActivePath record.
         ap = ac.paths.get(path_id)
         if not ap:
             ap = _ActivePath(path_id, ac.is_primary)
@@ -298,12 +310,20 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
                 addrs,
             )
 
+        # Increment the insertion count.
         ap.insertion_count += 1
+        if ap.insertion_count > 1:
+            return
 
+        # If the path is new, mark it as live.
+        ac.live_paths.add(path_id)
+        ap.delete_event.cancel()
+
+        # Start the reservations if the network is in ASYNC timing mode.
         if ac.is_primary and self.node.timing.is_async():
             self.run_channel(ac, ap)
 
-    def _path_activate_channel(self, ac: _ActiveChannel) -> None:
+    def _activate_channel(self, ac: _ActiveChannel) -> None:
         ch = ac.qchannel
         if not ac.is_primary:
             self.log_debug("CHANNEL_ACTIVATE_2nd %s partner=%s", ch.name, ac.partner.name)
@@ -340,7 +360,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         )
 
     @event_handler
-    def path_deactivate(self, event: PathDeactivateEvent) -> None:
+    def deactivate(self, event: PathDeactivateEvent) -> None:
         """
         Handle path deactivation command.
         """
@@ -349,13 +369,30 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         partner = ch.find_peer(self.node)
         path_id = event.path_id
 
+        # Find the ActiveChannel record.
         ac = self.channels[partner.name]
         assert ac.qchannel is ch
 
+        # Find the ActivePath record and decrement its insertion count.
         ap = ac.paths[path_id]
         ap.insertion_count -= 1
         if ap.insertion_count > 0:
             return
+
+        # If a path has reached insertion_count==0, it is marked as pending deletion.
+        ac.live_paths.remove(path_id)
+        self.simulator.sched(
+            delete_event := func_to_event(self.simulator.tc + self.memory.t_cohere, self._deactivate_path, ac, ap)
+        )
+        ap.delete_event.set(delete_event)
+
+    def _deactivate_path(self, ac: _ActiveChannel, ap: _ActivePath) -> None:
+        # If the path has been re-inserted, the delete_event should have been canceled.
+        assert ap.insertion_count == 0
+
+        ch = ac.qchannel
+        partner = ac.partner
+        path_id = ap.path_id
 
         # If the path on a channel is being deactivated, reset qubits owned by LinkLayer.
         resets: list[tuple[int, str | None]] = []
@@ -365,6 +402,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             resets.append((mq.addr, mq.key))
             mq.state = QubitState.RAW
 
+        # Delete the path from the channel.
         del ac.paths[path_id]
         self.log_debug(
             "PATH_DEACTIVATE_%s %s path=%s partner=%s reset-qubits=%s",
@@ -377,6 +415,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         if len(ac.paths) > 0:
             return
 
+        # If the channel has no more active paths, delete the channel.
         del self.channels[partner.name]
         self.log_debug("CHANNEL_DEACTIVATE_%s %s partner=%s", PathActivateEvent.ROLE_STR[ac.is_primary], ch.name, partner.name)
 
@@ -389,7 +428,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             ap: If set, only consider qubits allocated to a specified path.
         """
         qubits = self.memory.find(
-            (lambda q, _: q.state is QubitState.RAW)
+            (lambda q, _: q.state is QubitState.RAW and q.path_id in ac.live_paths)
             if ap is None
             else (lambda q, _: q.state is QubitState.RAW and q.path_id == ap.path_id),
             qchannel=ac.qchannel,
@@ -410,6 +449,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         """
         assert ac.is_primary
         ap = ap or ac.paths[mq.path_id]
+        assert ap.insertion_count > 0
 
         # Generate a unique reservation key to represent this entanglement generation protocol execution
         # and the entanglement, which is valid until the entanglement is released.
@@ -641,7 +681,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             return
 
         ap = ac.paths.get(mq.path_id)
-        if ap is None:
+        if ap is None or ap.insertion_count == 0:
             self.log_debug("%s ignored reason=no-active-path", event)
             return
 

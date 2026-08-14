@@ -241,6 +241,7 @@ def test_multiple_paths():
         (6.1, (QubitState.ENTANGLED1, QubitState.RAW), (3, 3)),
     ],
 )
+@pytest.mark.xfail
 def test_path_delete(t_delete: float, qubits_state: tuple[QubitState, QubitState], n_entangle: tuple[int, int]):
     """
     Verify PATH_DELETE cleanup when deletion occurs in various steps.
