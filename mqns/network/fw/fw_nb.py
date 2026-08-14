@@ -23,7 +23,7 @@ class ForwarderNorthbound(ForwarderModule):
     def install(self, fw: "Forwarder"):
         super().install(fw)
         self.mux = fw.mux
-        self._fib_erase_delay = self.simulator.time(slot=4 * self.memory.t_cohere.slot)
+        self._fib_erase_delay = self.memory.t_cohere * 4
 
     @fw_control_cmd_handler("PATH_INSERT")
     def handle_path_insert(self, msg: PathInsertMsg) -> None:

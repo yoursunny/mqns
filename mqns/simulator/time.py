@@ -116,7 +116,7 @@ class Time:
 
     def __add__(self, ts: "Time|float") -> "Time":
         """
-        Add a duration and returns a new Time object.
+        Add a duration and return a new Time instance.
 
         Args:
             ts: Either a Time object with same accuracy, or a duration number in seconds.
@@ -130,7 +130,7 @@ class Time:
 
     def __sub__(self, ts: "Time|float") -> "Time":
         """
-        Subtract a duration and returns a new Time object.
+        Subtract a duration and return a new Time instance.
 
         Args:
             ts: Either a Time object with same accuracy, or a duration number in seconds.
@@ -141,6 +141,12 @@ class Time:
         else:
             slot = Time.sec_to_slot(ts, self.accuracy)
         return Time(self.slot - slot, accuracy=self.accuracy)
+
+    def __mul__(self, multiplier: int) -> "Time":
+        """
+        Multiply this duration and return a new Time instance.
+        """
+        return Time(self.slot * multiplier, accuracy=self.accuracy)
 
     def __repr__(self) -> str:
         return _ACCURACY0_STRS[self.slot] if self.accuracy == 0 else str(self.sec)
