@@ -108,22 +108,27 @@ class QuantumChannel(BaseChannel[QNode]):
         self.transfer_error = parse_error(kwargs.get("transfer_error"), DepolarErrorModel, self.length)
         self.bsa_error = parse_error(kwargs.get("bsa_error"), DepolarErrorModel, -1)
 
-    def assign_memory_qubits(self, *, capacity: int | dict[str, int] = 1):
+    def assign_memory_qubits(self, *, capacity: int | dict[str, int] = 1, path_id: int | None = None):
         """
         Assign memory qubits at each node connected to the qchannel.
 
         Args:
-            capacity: required quantity of qubits.
+            capacity: Required quantity of qubits.
                       If given as an integer, this applies to every node.
                       If given as a dict, it should be a mapping from node name to capacity of this node,
                       where every node connected to the qchannel must appear in the dict.
+            path_id: If not ``None``, also allocate the qubits to the specified path.
 
         Raises:
             OverflowError: insufficient qubits.
         """
-        for node in self.node_list:
+        from mqns.entity.memory import PathDirection  # noqa: PLC0415
+
+        for node, dir in zip(self.node_list, (PathDirection.R, PathDirection.L), strict=True):
             cap = capacity if isinstance(capacity, int) else capacity[node.name]
             node.memory.assign(self, n=cap)
+            if path_id is not None:
+                node.memory.allocate(self, path_id, dir, n=cap)
 
     def send(self, qubit: QuantumModel, next_hop: QNode):
         """

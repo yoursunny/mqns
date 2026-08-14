@@ -395,17 +395,19 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         for q, v in qubits:
             assert q.key is None
             assert v is None
-            self.start_reservation(ac, q)
+            self.start_reservation(ac, None, q)
 
-    def start_reservation(self, ac: _ActiveChannel, mq: MemoryQubit):
+    def start_reservation(self, ac: _ActiveChannel, ap: _ActivePath | None, mq: MemoryQubit):
         """
         Start entanglement generation on a qubit assigned to a channel.
 
         Args:
             ac: ActiveChannel record of the quantum channel, where this node is primary.
+            ap: ActivePath record, if known.
             mq: The qubit, which must be in RAW state.
         """
         assert ac.is_primary
+        ap = ap or ac.paths[mq.path_id]
 
         # Generate a unique reservation key to represent this entanglement generation protocol execution
         # and the entanglement, which is valid until the entanglement is released.
@@ -413,7 +415,6 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         mq.state = QubitState.ACTIVE
 
         # Remember the pending reservation in ActivePath record.
-        ap = ac.paths[mq.path_id]
         ap.oreq_table[mq.key] = mq.addr
         self.log_debug(
             "RESERVE_REQ(%s:%s, %s) sent addr=%s secondary=%s", self.node.name, mq.path_id, mq.key, mq.addr, ac.partner.name
@@ -639,7 +640,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             if event.is_decoh:
                 self.cnt.n_decoh += 1
             if self.node.timing.is_async():
-                self.start_reservation(ac, mq)
+                self.start_reservation(ac, ap, mq)
         else:
             self.log_debug("%s processed role=secondary", event)
             if ap.ireq_queue and self.try_accept_reservation(ac, ap, ap.ireq_queue[0], hint=mq):
