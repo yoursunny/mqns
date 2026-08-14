@@ -1,6 +1,5 @@
 import copy
 import itertools
-import os
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping
 from typing import Literal, TypedDict, Unpack
@@ -30,27 +29,6 @@ from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm, YenRouteA
 from mqns.network.topology import ClassicTopology, GridTopology, LinearTopology, Topology, TopologyInitKwargs, TreeTopology
 from mqns.simulator import Simulator, Time, event_handler, func_to_event
 from mqns.utils import AutoIncrementIdentifier, log, rng
-
-next_seed: list[int] = []
-"""
-If this contains an integer, ``build_*_network`` functions adopt the specified random seed.
-This enables detecting seed-specific test failures.
-
-The first seed is set with MQNS_TESTFW_SEED environment variable.
-Subsequent seeds are auto-incremented.
-The actual seed value is printed during test setup.
-
-To run a test case repeatedly with increasing seeds:
-
-    MQNS_TESTFW_SEED=0 pytest test_file.py::test_case --count=100 -x
-
-To run a test case with a specific seed:
-
-    MQNS_TESTFW_SEED=47 pytest test_file.py::test_case
-"""
-if _next_seed_env := os.getenv("MQNS_TESTFW_SEED"):
-    next_seed.append(int(_next_seed_env))
-del _next_seed_env
 
 
 class QubitReleaseReset(Application[QNode]):
@@ -143,10 +121,7 @@ def _build_network_finish(
     *,
     route: RouteAlgorithm | None = None,
 ):
-    if next_seed:
-        rng.reseed(next_seed[0])
-        print(f"MQNS_TESTFW_SEED={next_seed[0]}")
-        next_seed[0] += 1
+    rng.reseed("env")
 
     ForwarderSwapProc.table_leak_tol = d.get("swap_table_leak_tol", 0)
 

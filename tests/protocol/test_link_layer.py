@@ -12,7 +12,7 @@ from mqns.network.protocol.event import PathActivateEvent, PathDeactivateEvent, 
 from mqns.network.protocol.link_layer import LinkLayer, LinkLayerCounters
 from mqns.network.topology import ClassicTopology, CustomTopology, LinearTopology
 from mqns.simulator import Simulator, event_handler, func_to_event
-from mqns.utils import log
+from mqns.utils import log, rng
 
 
 class NetworkLayer(Application[QNode]):
@@ -296,6 +296,8 @@ def test_path_delete(t_delete: float, qubits_state: tuple[QubitState, QubitState
 
 
 def test_skip_ahead():
+    rng.reseed("env")
+
     topo = LinearTopology(
         nodes_number=2,
         nodes_apps=[NetworkLayer(), LinkLayer()],
