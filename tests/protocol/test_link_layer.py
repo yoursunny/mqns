@@ -15,6 +15,11 @@ from mqns.simulator import Simulator, event_handler, func_to_event
 from mqns.utils import log, rng
 
 
+@pytest.fixture(autouse=True)
+def _reseed_env():
+    rng.reseed("env")
+
+
 class NetworkLayer(Application[QNode]):
     check_epr_creation_prior: float | None = None
     """
@@ -167,8 +172,8 @@ def test_basic(monkeypatch: pytest.MonkeyPatch, epr_type: type[Entanglement], pa
     assert ll_cnt_agg.n_etg == 3
     assert ll_cnt_agg.n_attempts == 4
     # n_decoh is only incremented on the primary node.
-    # Although there are two decoherence events in the simulation, l1.n_decoh is incremented only at t=8.3.
-    # For the t=12.6 event, the path is deleted, so that l1 cannot recognize itself as primary.
+    # Although there are two decoherence events in the simulation, n1.n_decoh is incremented only at t=8.3.
+    # For the t=12.6 event, the path is deleted, so that n1 cannot recognize itself as primary.
     assert ll_cnt_agg.n_decoh == 1
     assert ll_cnt_agg.decoh_ratio == pytest.approx(1 / 3, abs=1e-6)
 
@@ -197,8 +202,8 @@ def test_multiple_paths():
     nl1, nl2 = (node.get_app(NetworkLayer) for node in net.nodes)
 
     def alloc_activate_path(src: NetworkLayer, dst: NetworkLayer, path_id: int, n: int) -> None:
-        src.memory.allocate(ch, path_id, PathDirection.R, n=path_id)
-        dst.memory.allocate(ch, path_id, PathDirection.L, n=path_id)
+        src.memory.allocate(ch, path_id, PathDirection.R, n=n)
+        dst.memory.allocate(ch, path_id, PathDirection.L, n=n)
         activate_path(0.1, 9.9, src, dst, path_id)
 
     alloc_activate_path(nl1, nl2, 1, 1)
@@ -222,113 +227,159 @@ def test_multiple_paths():
 
 
 @pytest.mark.parametrize(
-    ("t_delete", "qubits_state", "n_entangle"),
+    ("t_delete", "entangled_at_delete", "n_entangle"),
     [
-        # don't delete, only check timeline states (expected qubits_state are ignored)
-        (9.9, (QubitState.CONSUME, QubitState.CONSUME), (3, 3)),
+        # don't delete, only check timeline states
+        (999, (0, 0), 3),
+        # ---------------- first entanglement ----------------
         # path deleted when RESERVE_REQ is in-flight
-        (0.2, (QubitState.RAW, QubitState.RAW), (0, 0)),
+        (0.2, (0, 0), 0),
         # path deleted when RESERVE_RES is in-flight
-        (0.5, (QubitState.RAW, QubitState.RAW), (0, 0)),
-        # path deleted when LinkArch is waiting for t_notify_pri
-        (0.8, (QubitState.RAW, QubitState.RAW), (0, 0)),
-        # path deleted when LinkArch is waiting for t_notify_2nd
-        (1.1, (QubitState.ENTANGLED1, QubitState.RAW), (1, 0)),
+        (0.5, (0, 0), 0),
+        # path deleted when waiting for t_notify_pri
+        (0.8, (0, 0), 1),
+        # path deleted when waiting for t_notify_2nd
+        (1.1, (1, 0), 1),
         # path deleted when both qubits are owned by NetworkLayer
-        (1.5, (QubitState.ENTANGLED1, QubitState.ENTANGLED1), (1, 1)),
-        # path deleted when one qubit is owned by NetworkLayer
-        (4.3, (QubitState.RAW, QubitState.ENTANGLED1), (2, 2)),
-        (6.1, (QubitState.ENTANGLED1, QubitState.RAW), (3, 3)),
+        (1.5, (1, 1), 1),
+        # ---------------- second entanglement ----------------
+        # path deleted during first failed attempt
+        (3.4, (0, 0), 1),
+        # path deleted during second failed attempt
+        (4.0, (0, 0), 1),
+        # path deleted when nl2 owns a qubit
+        (6.4, (0, 1), 2),
+        # ---------------- third entanglement ----------------
+        # path deleted when nl1 owns a qubit
+        (8.2, (1, 0), 3),
     ],
 )
-@pytest.mark.xfail
-def test_path_delete(t_delete: float, qubits_state: tuple[QubitState, QubitState], n_entangle: tuple[int, int]):
+def test_path_delete(
+    monkeypatch: pytest.MonkeyPatch,
+    t_delete: float,
+    entangled_at_delete: tuple[int, int],
+    n_entangle: int,
+):
     """
     Verify PATH_DELETE cleanup when deletion occurs in various steps.
     """
     topo = LinearTopology(
         nodes_number=2,
         nodes_apps=[NetworkLayer(), LinkLayer()],
-        qchannel_args={"delay": 0.3, "link_arch": LinkArchAlways(LinkArchSr())},
+        qchannel_args={"delay": 0.3, "link_arch": LinkArchSr()},
         cchannel_args={"delay": 0.3},
         memory_args={"t_cohere": 2.0},
     )
     net = QuantumNetwork(topo, classic_topo=ClassicTopology.Follow)
     net.build_route()
-    net.get_qchannel("n1", "n2").assign_memory_qubits(capacity=1)
+    ch = net.get_qchannel("n1", "n2")
+    ch.assign_memory_qubits(capacity=1, path_id=7)
 
-    simulator = Simulator(0.0, 6.5, install_to=(log, net))
+    simulator = Simulator(0.0, 100.0, install_to=(log, net))
 
+    ll1, ll2 = (node.get_app(LinkLayer) for node in net.nodes)
     nl1, nl2 = (node.get_app(NetworkLayer) for node in net.nodes)
-    activate_path(0.1, t_delete, nl1, nl2, None)
+    nl1.check_epr_creation_prior = 0.3
+    nl2.check_epr_creation_prior = 0.6
+    activate_path(0.1, t_delete, nl1, nl2, 7)
+    force_attempts(monkeypatch, ll1, n2=[1, 4, 1, 10000])
 
-    def assert_states(expected: tuple[QubitState, QubitState]) -> None:
-        mq1 = nl1.memory.read(0, must=True)
-        mq2 = nl2.memory.read(0, must=True)
-        actual = mq1[0].state, mq2[0].state
-        assert actual == expected
+    def assert_la_delays() -> None:
+        la = ch.link_arch
+        assert la.attempt_interval == simulator.time(sec=0.6)
+        assert la.d_notify_pri == simulator.time(sec=0.3)
+        assert la.d_notify_2nd == simulator.time(sec=0.6)
 
-    def check_states(t: float, expected0: QubitState, expected1: QubitState) -> None:
+    simulator.sched(func_to_event(simulator.time(sec=0.2), assert_la_delays))
+
+    def check_states(t: float, expected1: QubitState | None, expected2: QubitState | None) -> None:
         if t > t_delete:
             return
-        event = func_to_event(simulator.time(sec=t), assert_states, (expected0, expected1))
+
+        def assert_states():
+            if expected1 is not None:
+                mq1, _ = nl1.memory.read(0, must=True)
+                assert mq1.state is expected1
+            if expected2 is not None:
+                mq2, _ = nl2.memory.read(0, must=True)
+                assert mq2.state is expected2
+
+        event = func_to_event(simulator.time(sec=t), assert_states)
         event.priority = 10000
         simulator.sched(event)
 
-    check_states(t_delete, *qubits_state)
+    check_states(t_delete, *(QubitState.ENTANGLED1 if is_entangled else None for is_entangled in entangled_at_delete))
 
+    expect_t_entangle1: list[float] = []
+    expect_t_entangle2: list[float] = []
+    # ---------------- first entanglement, k=1, decohere ----------------
     # t=0.1, path is installed with n1 as primary and n2 as secondary
     # t=0.1, n1 sets qubit state to ACTIVE, sends RESERVE_REQ
     check_states(0.1, QubitState.ACTIVE, QubitState.RAW)
     # t=0.4, n2 receives RESERVE_REQ, sets qubit state to RESERVED, sends RESERVE_RES
     check_states(0.4, QubitState.ACTIVE, QubitState.RESERVED)
-    # t=0.7, n1 receives RESERVE_RES, sets qubit state to RESERVED; n2 emits photon
+    # t=0.7, n1 receives RESERVE_RES, sets qubit state to RESERVED; first attempt begins and it would succeed
     check_states(0.7, QubitState.RESERVED, QubitState.RESERVED)
-    # t=1.0, n1 absorbs photon, sends S-R heralding, sets qubit state to ENTANGLED
+    # t=1.0, n1 is notified, sets qubit state to ENTANGLED
     check_states(1.0, QubitState.ENTANGLED1, QubitState.RESERVED)
-    # t=1.3, n2 receives S-R heralding, sets qubit state to ENTANGLED
+    expect_t_entangle1.append(1.0)
+    # t=1.3, n2 is notified, sets qubit state to ENTANGLED
     check_states(1.3, QubitState.ENTANGLED1, QubitState.ENTANGLED1)
+    expect_t_entangle2.append(1.3)
+    # t=2.7, EPR decoheres, qubit states are set to RELEASE then RAW
     nl1.release_after.append(None)
     nl2.release_after.append(None)
-    # t=2.7, EPR decoheres, qubit states are set to RELEASE then RAW
+    #
+    # ---------------- second entanglement, k=4, nl1 releases before nl2 ----------------
     # t=2.7, n1 sets qubit state to ACTIVE, sends RESERVE_REQ
     check_states(2.7, QubitState.ACTIVE, QubitState.RAW)
     # t=3.0, n2 receives RESERVE_REQ, sets qubit state to RESERVED, sends RESERVE_RES
     check_states(3.0, QubitState.ACTIVE, QubitState.RESERVED)
-    # t=3.3, n1 receives RESERVE_RES, sets qubit state to RESERVED; n2 emits photon
-    check_states(3.3, QubitState.RESERVED, QubitState.RESERVED)
-    # t=3.6, n1 absorbs photon, sends S-R heralding, sets qubit state to ENTANGLED
-    check_states(3.6, QubitState.ENTANGLED1, QubitState.RESERVED)
-    # t=3.9, n2 receives S-R heralding, sets qubit state to ENTANGLED
-    check_states(3.9, QubitState.ENTANGLED1, QubitState.ENTANGLED1)
-    nl1.release_after.append(4.2 - 3.6)
-    # t=4.2, n1 sets qubit state to RELEASE then RAW then ACTIVE, sends RESERVE_REQ
-    check_states(4.2, QubitState.ACTIVE, QubitState.ENTANGLED1)
-    # t=4.4, n2 receives RESERVE_REQ but has no available qubit
-    nl2.release_after.append(4.7 - 3.9)
-    # t=4.7, n2 sets qubit state to RELEASE then RAW then RESERVED, sends RESERVE_RES
-    check_states(4.7, QubitState.ACTIVE, QubitState.RESERVED)
-    # t=5.0, n1 receives RESERVE_RES, sets qubit state to RESERVED; n2 emits photon
-    check_states(5.0, QubitState.RESERVED, QubitState.RESERVED)
-    # t=5.3, n1 absorbs photon, sends S-R heralding, sets qubit state to ENTANGLED
-    check_states(5.3, QubitState.ENTANGLED1, QubitState.RESERVED)
-    # t=5.6, n2 receives S-R heralding, sets qubit state to ENTANGLED
-    check_states(5.6, QubitState.ENTANGLED1, QubitState.ENTANGLED1)
-    nl2.release_after.append(6.0 - 5.6)
-    # t=6.0, n2 sets qubit state to RELEASE then RAW but has no pending request
-    check_states(6.0, QubitState.ENTANGLED1, QubitState.RAW)
-    nl1.release_after.append(6.4 - 5.3)
-    # t=6.4, n1 sets qubit state to RELEASE then RAW then ACTIVE, sends RESERVE_REQ
-    # t=6.5, scenario ends
+    # t=3.3, n1 receives RESERVE_RES, sets qubit state to RESERVED; first attempt begins and it would fail
+    # t=3.9, first attempt fails, second attempt begins and it would fail
+    # t=4.5, second attempt fails, third attempt begins and it would fail
+    # t=5.1, third attempt fails, fourth attempt begins and it would succeed
+    check_states(5.3, QubitState.RESERVED, QubitState.RESERVED)
+    # t=5.4, n1 is notified, sets qubit state to ENTANGLED
+    check_states(5.4, QubitState.ENTANGLED1, QubitState.RESERVED)
+    expect_t_entangle1.append(5.4)
+    # t=5.7, n2 is notified, sets qubit state to ENTANGLED
+    check_states(5.7, QubitState.ENTANGLED1, QubitState.ENTANGLED1)
+    expect_t_entangle2.append(5.7)
+    #
+    # ---------------- third entanglement, k=1, nl2 releases before nl1 ----------------
+    # t=6.3, n1 sets qubit state to RELEASE then RAW then ACTIVE, sends RESERVE_REQ
+    nl1.release_after.append(6.3 - expect_t_entangle1[-1])
+    check_states(6.3, QubitState.ACTIVE, QubitState.ENTANGLED1)
+    # t=6.5, n2 receives RESERVE_REQ but has no available qubit
+    # t=6.8, n2 sets qubit state to RELEASE then RAW then RESERVED, sends RESERVE_RES
+    nl2.release_after.append(6.8 - expect_t_entangle2[-1])
+    check_states(6.8, QubitState.ACTIVE, QubitState.RESERVED)
+    # t=7.1, n1 receives RESERVE_RES, sets qubit state to RESERVED; first attempt begins and it would succeed
+    check_states(7.1, QubitState.RESERVED, QubitState.RESERVED)
+    # t=7.4, n1 is notified, sets qubit state to ENTANGLED
+    expect_t_entangle1.append(7.4)
+    check_states(7.4, QubitState.ENTANGLED1, QubitState.RESERVED)
+    # t=7.7, n2 is notified, sets qubit state to ENTANGLED
+    check_states(7.7, QubitState.ENTANGLED1, QubitState.ENTANGLED1)
+    expect_t_entangle2.append(7.7)
+    # t=8.1, n2 sets qubit state to RELEASE then RAW but has no pending request
+    nl2.release_after.append(8.1 - expect_t_entangle2[-1])
+    check_states(8.1, QubitState.ENTANGLED1, QubitState.RAW)
+    # t=8.5, n1 sets qubit state to RELEASE then RAW then ACTIVE, sends RESERVE_REQ
+    nl1.release_after.append(8.5 - expect_t_entangle1[-1])
+    # t=100, scenario ends
 
     simulator.run()
 
-    assert (len(nl1.entangle), len(nl2.entangle)) == n_entangle
+    if t_delete < simulator.te.sec:
+        assert len(ll1.channels) == 0
+        assert len(ll2.channels) == 0
+    assert nl1.entangle == pytest.approx(expect_t_entangle1[:n_entangle], abs=1e-6)
+    assert nl2.entangle == pytest.approx(expect_t_entangle2[:n_entangle], abs=1e-6)
 
 
 def test_skip_ahead():
-    rng.reseed("env")
-
     topo = LinearTopology(
         nodes_number=2,
         nodes_apps=[NetworkLayer(), LinkLayer()],

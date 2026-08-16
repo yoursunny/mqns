@@ -56,6 +56,7 @@ class _WrapperEvent(Event):
 
     @override
     def invoke(self) -> None:
+        __tracebackhide__ = True
         self.fn(*self.args, **self.kwargs)
 
     @override
