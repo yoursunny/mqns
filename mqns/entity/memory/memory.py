@@ -347,7 +347,7 @@ class QuantumMemory(EventDispatcherMixin, Entity):
             Qubit and associated data (possibly empty), or None if qubit is not found by EPR name.
 
         Raises:
-            LookupError: Qubit address out of range.
+            LookupError: Qubit not found.
         """
 
     @overload
@@ -368,7 +368,6 @@ class QuantumMemory(EventDispatcherMixin, Entity):
 
         Raises:
             LookupError: Qubit not found.
-            ValueError: No quantum information is stored.
         """
 
     @overload

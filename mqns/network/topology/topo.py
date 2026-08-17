@@ -32,7 +32,7 @@ from collections.abc import Iterable
 from enum import Enum
 from typing import Literal, TypedDict, Unpack
 
-from mqns.entity.cchannel import ClassicChannel, ClassicChannelInitKwargs
+from mqns.entity.cchannel import ClassicChannel, ClassicChannelInitKwargs, extract_cchannel_args
 from mqns.entity.memory import QuantumMemory, QuantumMemoryInitKwargs
 from mqns.entity.node import Application, Controller, Node, QNode
 from mqns.entity.qchannel import QuantumChannel, QuantumChannelInitKwargs
@@ -42,7 +42,7 @@ class TopologyInitKwargs(TypedDict, total=False):
     nodes_naming: Literal["n1", "A"]
     nodes_apps: list[Application]
     qchannel_args: QuantumChannelInitKwargs
-    cchannel_args: ClassicChannelInitKwargs
+    cchannel_args: ClassicChannelInitKwargs | Literal["from_qchannel_args"]
     memory_args: QuantumMemoryInitKwargs
 
 
@@ -76,7 +76,10 @@ class Topology(ABC):
         self.nodes_naming = kwargs.get("nodes_naming", "n1")
         self.nodes_apps = kwargs.get("nodes_apps", [])
         self.qchannel_args = kwargs.get("qchannel_args", {})
-        self.cchannel_args = kwargs.get("cchannel_args", {})
+        if (cchannel_args := kwargs.get("cchannel_args", {})) == "from_qchannel_args":
+            self.cchannel_args = extract_cchannel_args(self.qchannel_args)
+        else:
+            self.cchannel_args = cchannel_args
         self.memory_args = kwargs.get("memory_args", {})
         self.controller: Controller | None = None
 

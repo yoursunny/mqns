@@ -26,7 +26,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import json
-from typing import Any, Unpack, final, override
+from typing import Any, Unpack, cast, final, override
 
 from mqns.entity.base_channel import BaseChannel, BaseChannelInitKwargs
 from mqns.entity.node import Node
@@ -66,6 +66,14 @@ class ClassicPacket:
 
 class ClassicChannelInitKwargs(BaseChannelInitKwargs):
     pass
+
+
+def extract_cchannel_args(args: BaseChannelInitKwargs) -> ClassicChannelInitKwargs:
+    """
+    Extract ``ClassicChannelInitKwargs``` from compatible fields of ``QuantumChannelInitKwargs``.
+    """
+    d: dict = {k: v for k, v in args.items() if k in ClassicChannelInitKwargs.__annotations__}
+    return cast(ClassicChannelInitKwargs, d)
 
 
 class ClassicChannel(BaseChannel[Node]):

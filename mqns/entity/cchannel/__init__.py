@@ -1,4 +1,10 @@
-from mqns.entity.cchannel.cchannel import ClassicChannel, ClassicChannelInitKwargs, ClassicPacket, RecvClassicPacket
+from mqns.entity.cchannel.cchannel import (
+    ClassicChannel,
+    ClassicChannelInitKwargs,
+    ClassicPacket,
+    RecvClassicPacket,
+    extract_cchannel_args,
+)
 from mqns.entity.cchannel.cdispatch import ClassicCommandDispatcherMixin, ClassicCommandModule, classic_cmd_handler
 
 __all__ = [
@@ -8,6 +14,7 @@ __all__ = [
     "ClassicCommandDispatcherMixin",
     "ClassicCommandModule",
     "ClassicPacket",
+    "extract_cchannel_args",
     "RecvClassicPacket",
 ]
 

@@ -3,14 +3,20 @@ from typing import override
 
 import pytest
 
-from mqns.entity.memory import MemoryDecohereEvent, MemoryQubit, PathDirection, QuantumMemory, QubitState
+from mqns.entity.memory import (
+    MemoryDecohereEvent,
+    MemoryQubit,
+    QuantumMemory,
+    QuantumMemoryInitKwargs,
+    QubitState,
+)
 from mqns.entity.node import Application, QNode
-from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk, LinkArchSr, QuantumChannel
+from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk, LinkArchSr, QuantumChannel, QuantumChannelInitKwargs
 from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
-from mqns.network.network import QuantumNetwork, TimingModeSync
+from mqns.network.network import QuantumNetwork, TimingMode, TimingModeAsync, TimingModeSync
 from mqns.network.protocol.event import PathActivateEvent, PathDeactivateEvent, QubitEntangledEvent, QubitReleasedEvent
 from mqns.network.protocol.link_layer import LinkLayer, LinkLayerCounters
-from mqns.network.topology import ClassicTopology, CustomTopology, LinearTopology
+from mqns.network.topology import ClassicTopology, LinearTopology
 from mqns.simulator import Simulator, event_handler, func_to_event
 from mqns.utils import log, rng
 
@@ -72,12 +78,37 @@ class NetworkLayer(Application[QNode]):
         self.simulator.sched(QubitReleasedEvent(self.node, event.qubit, is_decoh=True, t=event.t))
 
 
-def activate_path(t0: float | None, t1: float | None, src: Application[QNode], dst: Application[QNode], path_id: int | None):
+def make_2nodes(
+    *,
+    qchannel_args: QuantumChannelInitKwargs,
+    memory_args: QuantumMemoryInitKwargs,
+    timing: TimingMode = TimingModeAsync(),
+    epr_type: type[Entanglement] = WernerStateEntanglement,
+) -> tuple[QuantumNetwork, QuantumChannel, LinkLayer, LinkLayer, NetworkLayer, NetworkLayer]:
+    topo = LinearTopology(
+        nodes_number=2,
+        nodes_apps=[NetworkLayer(), LinkLayer()],
+        qchannel_args=qchannel_args,
+        cchannel_args="from_qchannel_args",
+        memory_args=memory_args,
+    )
+    net = QuantumNetwork(topo, classic_topo=ClassicTopology.Follow, timing=timing, epr_type=epr_type)
+    net.build_route()
+    ch = net.get_qchannel("n1", "n2")
+    n1 = net.get_node("n1")
+    n2 = net.get_node("n2")
+    return net, ch, n1.get_app(LinkLayer), n2.get_app(LinkLayer), n1.get_app(NetworkLayer), n2.get_app(NetworkLayer)
+
+
+def activate_path(
+    t0: float | None, t1: float | None, src: Application[QNode], dst: Application[QNode], *, path_id: int | None, n=1
+):
     """
     Schedule ``PathActivateEvent`` and ``PathDeactivateEvent``.
     """
     simulator = src.simulator
     ch = src.node.get_qchannel(dst.node)
+    ch.assign_memory_qubits(capacity=n, path_id=path_id)
 
     if t0 is not None:
         t = simulator.time(sec=t0)
@@ -88,6 +119,30 @@ def activate_path(t0: float | None, t1: float | None, src: Application[QNode], d
         t = simulator.time(sec=t1)
         simulator.sched(PathDeactivateEvent(src.node, ch, path_id, t=t))
         simulator.sched(PathDeactivateEvent(dst.node, ch, path_id, t=t))
+
+
+def check_link_arch_delays(
+    t: float,
+    ch: QuantumChannel,
+    *,
+    attempt_interval: float,
+    d_notify_pri: float,
+    d_notify_2nd: float,
+) -> None:
+    """
+    Verify LinkArch computed delays match the expectation.
+    """
+    simulator = ch.simulator
+
+    def assert_la_delays() -> None:
+        la = ch.link_arch
+        assert la.attempt_interval == simulator.time(sec=attempt_interval)
+        assert la.d_notify_pri == simulator.time(sec=d_notify_pri)
+        assert la.d_notify_2nd == simulator.time(sec=d_notify_2nd)
+
+    event = func_to_event(simulator.time(sec=t), assert_la_delays)
+    event.priority = 10000
+    simulator.sched(event)
 
 
 def force_attempts(monkeypatch: pytest.MonkeyPatch, ll: LinkLayer, /, **kwargs: list[int]):
@@ -113,28 +168,21 @@ def force_attempts(monkeypatch: pytest.MonkeyPatch, ll: LinkLayer, /, **kwargs: 
 @pytest.mark.parametrize("epr_type", [WernerStateEntanglement, MixedStateEntanglement])
 @pytest.mark.parametrize("path_id", [None, 7])
 def test_basic(monkeypatch: pytest.MonkeyPatch, epr_type: type[Entanglement], path_id: int | None):
-    topo = LinearTopology(
-        nodes_number=2,
-        nodes_apps=[NetworkLayer(), LinkLayer()],
+    net, ch, ll1, ll2, nl1, nl2 = make_2nodes(
         qchannel_args={"delay": 0.1, "link_arch": LinkArchDimBk()},
-        cchannel_args={"delay": 0.1},
         memory_args={"t_cohere": 4.1},
+        epr_type=epr_type,
     )
-    net = QuantumNetwork(topo, classic_topo=ClassicTopology.Follow, epr_type=epr_type)
-    net.build_route()
-    net.get_qchannel("n1", "n2").assign_memory_qubits(capacity=1, path_id=path_id)
-
     simulator = Simulator(0.0, 20.0, install_to=(log, net))
 
-    ll1, ll2 = (node.get_app(LinkLayer) for node in net.nodes)
-    nl1, nl2 = (node.get_app(NetworkLayer) for node in net.nodes)
-    activate_path(0.5, 9.4, nl1, nl2, path_id)
+    activate_path(0.5, 9.4, nl1, nl2, path_id=path_id)
+    check_link_arch_delays(0.5, ch, attempt_interval=0.2, d_notify_pri=0.2, d_notify_2nd=0.2)
+    force_attempts(monkeypatch, ll1, n2=[1, 2, 1])
 
     nl1.check_epr_creation_prior = 0.2
     nl2.check_epr_creation_prior = 0.2
     nl1.release_after.append(2.9)
     nl2.release_after.append(3.2)
-    force_attempts(monkeypatch, ll1, n2=[1, 2, 1])
 
     simulator.run()
 
@@ -184,32 +232,16 @@ def test_multiple_paths():
     """
     Test multiple active paths.
     """
-    topo = LinearTopology(
-        nodes_number=2,
-        nodes_apps=[NetworkLayer(), LinkLayer()],
+    net, _, ll1, ll2, nl1, nl2 = make_2nodes(
         qchannel_args={"delay": 0.005},
-        cchannel_args={"delay": 0.005},
         memory_args={"capacity": 1 + 2 + 3 + 4, "t_cohere": 0.1},
     )
-    net = QuantumNetwork(topo, classic_topo=ClassicTopology.Follow)
-    net.build_route()
-    ch = net.get_qchannel("n1", "n2")
-    ch.assign_memory_qubits(capacity=1 + 2 + 3 + 4)
-
     simulator = Simulator(0.0, 10.0, install_to=(log, net))
 
-    ll1, ll2 = (node.get_app(LinkLayer) for node in net.nodes)
-    nl1, nl2 = (node.get_app(NetworkLayer) for node in net.nodes)
-
-    def alloc_activate_path(src: NetworkLayer, dst: NetworkLayer, path_id: int, n: int) -> None:
-        src.memory.allocate(ch, path_id, PathDirection.R, n=n)
-        dst.memory.allocate(ch, path_id, PathDirection.L, n=n)
-        activate_path(0.1, 9.9, src, dst, path_id)
-
-    alloc_activate_path(nl1, nl2, 1, 1)
-    alloc_activate_path(nl1, nl2, 2, 2)
-    alloc_activate_path(nl1, nl2, 3, 3)
-    alloc_activate_path(nl2, nl1, 4, 4)
+    activate_path(0.1, 9.9, nl1, nl2, path_id=1, n=1)
+    activate_path(0.1, 9.9, nl1, nl2, path_id=2, n=2)
+    activate_path(0.1, 9.9, nl1, nl2, path_id=3, n=3)
+    activate_path(0.1, 9.9, nl2, nl1, path_id=4, n=4)
     # Path 4 is requesting n2-n1 direction, but the channel is already activated in n1-n2 direction
     # so that path 4 would retain the existing n1-n2 direction.
 
@@ -263,34 +295,17 @@ def test_path_delete(
     """
     Verify PATH_DELETE cleanup when deletion occurs in various steps.
     """
-    topo = LinearTopology(
-        nodes_number=2,
-        nodes_apps=[NetworkLayer(), LinkLayer()],
+    net, ch, ll1, ll2, nl1, nl2 = make_2nodes(
         qchannel_args={"delay": 0.3, "link_arch": LinkArchSr()},
-        cchannel_args={"delay": 0.3},
         memory_args={"t_cohere": 2.0},
     )
-    net = QuantumNetwork(topo, classic_topo=ClassicTopology.Follow)
-    net.build_route()
-    ch = net.get_qchannel("n1", "n2")
-    ch.assign_memory_qubits(capacity=1, path_id=7)
-
     simulator = Simulator(0.0, 100.0, install_to=(log, net))
 
-    ll1, ll2 = (node.get_app(LinkLayer) for node in net.nodes)
-    nl1, nl2 = (node.get_app(NetworkLayer) for node in net.nodes)
     nl1.check_epr_creation_prior = 0.3
     nl2.check_epr_creation_prior = 0.6
-    activate_path(0.1, t_delete, nl1, nl2, 7)
+    activate_path(0.1, t_delete, nl1, nl2, path_id=7)
+    check_link_arch_delays(0.1, ch, attempt_interval=0.6, d_notify_pri=0.3, d_notify_2nd=0.6)
     force_attempts(monkeypatch, ll1, n2=[1, 4, 1, 10000])
-
-    def assert_la_delays() -> None:
-        la = ch.link_arch
-        assert la.attempt_interval == simulator.time(sec=0.6)
-        assert la.d_notify_pri == simulator.time(sec=0.3)
-        assert la.d_notify_2nd == simulator.time(sec=0.6)
-
-    simulator.sched(func_to_event(simulator.time(sec=0.2), assert_la_delays))
 
     def check_states(t: float, expected1: QubitState | None, expected2: QubitState | None) -> None:
         if t > t_delete:
@@ -379,23 +394,113 @@ def test_path_delete(
     assert nl2.entangle == pytest.approx(expect_t_entangle2[:n_entangle], abs=1e-6)
 
 
+@pytest.mark.parametrize(
+    ("t_delete", "nl_release", "t_insert", "path_id", "t_entangle1", "t_entangle2"),
+    [
+        # Stable timeline without path changes.
+        #
+        # ---------------- first entanglement, k=2 ----------------
+        # t=0.1, initial path is inserted
+        # t=0.1, n1 requests reservation
+        # t=0.4, n2 accepts reservation
+        # t=0.7, first attempt begins
+        # t=1.3, second attempt begins
+        # t=1.6, n1 is notified
+        # t=1.9, n2 is notified
+        # t=3.3, qubits decohere
+        #
+        # ---------------- second entanglement, k=2 ----------------
+        # t=3.3, n1 requests reservation
+        # t=3.6, n2 accepts reservation
+        # t=3.9, first attempt begins
+        # t=4.5, second attempt begins
+        # t=4.8, n1 is notified
+        # t=5.1, n2 is notified
+        # t=6.5, qubits decohere
+        pytest.param(None, [], None, 0, [1.6, 4.8], [1.9, 5.1], id="stable"),
+        # Delete and reinsert when RESERVE_REQ is in-flight.
+        # Rest of timeline is same as stable case delayed by 0.1s.
+        pytest.param(0.2, [], 0.3, 7, [1.8, 5.0], [2.1, 5.3], id="RESERVE_REQ"),
+        # Delete and reinsert when RESERVE_RES is in-flight.
+        #
+        # t=0.1, initial path is inserted
+        # t=0.1, n1 requests reservation
+        # t=0.4, n2 accepts reservation
+        # t=0.5, initial path is deleted, n1 cancels reservation
+        # t=0.6, replacement path is inserted, n1 requests reservation
+        # t=0.8, n2 processes cancellation
+        # t=0.9, n2 accepts reservation
+        # Rest of timeline is same as stable case delayed by 0.5s.
+        pytest.param(0.5, [], 0.6, 7, [2.1, 5.3], [2.4, 5.6], id="RESERVE_RES"),
+        # Delete and reinsert during the first (failing) attempt.
+        # The first entanglement can no longer happen.
+        # The second entanglement starts its reservation at reinsertion time.
+        # ---------------- second entanglement, k=2 ----------------
+        # t=0.9, n1 requests reservation
+        # t=1.2, n2 accepts reservation
+        # t=1.5, first attempt begins
+        # t=2.1, second attempt begins
+        # t=2.4, n1 is notified
+        # t=2.7, n2 is notified
+        # t=4.1, qubits decohere
+        pytest.param(0.8, [], 0.9, 7, [2.4], [2.7], id="attempt1"),
+        # Delete and reinsert during the second (successful) attempt.
+        # The first entanglement is delivered per normal timeline.
+        # The second entanglement starts its reservation after qubits release.
+        # ---------------- second entanglement, k=2 ----------------
+        # t=1.7, n1 releases qubit, requests reservation
+        # t=2.0, n2 releases qubit, accepts reservation
+        # t=2.3, first attempt begins
+        # t=2.9, second attempt begins
+        # t=3.2, n1 is notified
+        # t=3.5, n2 is notified
+        # t=4.0, qubits decohere
+        pytest.param(1.4, [0.1], 1.5, 7, [1.6, 3.2], [1.9, 3.5], id="attempt2"),
+    ],
+)
+def test_path_reinsert(
+    monkeypatch: pytest.MonkeyPatch,
+    t_delete: float | None,
+    nl_release: list[float],
+    t_insert: float | None,
+    path_id: int,  # negative means reverse direction
+    t_entangle1: list[float],
+    t_entangle2: list[float],
+):
+    """
+    Test PATH_DELETE followed by PATH_INSERT.
+    """
+    path_id, reversed = abs(path_id), path_id < 0
+    same_path = path_id == 7
+    net, ch, ll1, ll2, nl1, nl2 = make_2nodes(
+        qchannel_args={"delay": 0.3, "link_arch": LinkArchSr()},
+        memory_args={"capacity": 1 if same_path else 2, "t_cohere": 2.0},
+    )
+    simulator = Simulator(0.0, 6.0, install_to=(log, net))
+
+    activate_path(0.1, t_delete, nl1, nl2, path_id=7)
+    activate_path(t_insert, None, *((nl2, nl1) if reversed else (nl1, nl2)), path_id=path_id, n=0 if same_path else 1)
+    check_link_arch_delays(0.1, ch, attempt_interval=0.6, d_notify_pri=0.3, d_notify_2nd=0.6)
+    force_attempts(monkeypatch, ll1, n2=[2, 2, 10000])
+    force_attempts(monkeypatch, ll2, n1=[2, 2, 10000])
+
+    nl1.release_after += nl_release
+    nl2.release_after += nl_release
+
+    simulator.run()
+
+    assert nl1.entangle == pytest.approx(t_entangle1, abs=1e-6)
+    assert nl2.entangle == pytest.approx(t_entangle2, abs=1e-6)
+
+
 def test_skip_ahead():
-    topo = LinearTopology(
-        nodes_number=2,
-        nodes_apps=[NetworkLayer(), LinkLayer()],
+    net, _, ll1, ll2, nl1, nl2 = make_2nodes(
         qchannel_args={"length": 100},
-        cchannel_args={"length": 100},
         memory_args={"t_cohere": 1.0},
     )
-    net = QuantumNetwork(topo, classic_topo=ClassicTopology.Follow)
-    net.build_route()
-    net.get_qchannel("n1", "n2").assign_memory_qubits(capacity=1)
-
     simulator = Simulator(0.0, 10.0, install_to=(log, net))
 
-    ll1, ll2 = (node.get_app(LinkLayer) for node in net.nodes)
-    nl1, nl2 = (node.get_app(NetworkLayer) for node in net.nodes)
-    activate_path(0.5, None, nl1, nl2, None)
+    activate_path(0.5, None, nl1, nl2, path_id=None)
 
     simulator.run()
 
@@ -411,52 +516,39 @@ def test_skip_ahead():
     assert 0 <= ll_cnt_agg.decoh_ratio <= 1
 
 
-def test_timing_mode_sync():
-    topo = CustomTopology(
-        {
-            "qnodes": [
-                {"name": "n0"},
-                {"name": "n1"},
-                {"name": "n2"},
-                {"name": "n3"},
-            ],
-            "qchannels": [
-                {"node1": "n0", "node2": "n1", "parameters": {"delay": 0.2, "link_arch": LinkArchAlways(LinkArchDimBk())}},
-                {"node1": "n2", "node2": "n3", "parameters": {"delay": 0.1, "link_arch": LinkArchAlways(LinkArchDimBk())}},
-            ],
-        },
-        nodes_apps=[NetworkLayer(), LinkLayer()],
-        memory_args={"t_cohere": 10.0},
-    )
-    net = QuantumNetwork(topo, classic_topo=ClassicTopology.Follow, timing=TimingModeSync(t_ext=0.6, t_int=0.4))
-    net.build_route()
-
-    simulator = Simulator(0.0, 6.1, install_to=(log, net))
-
-    nl0, nl1, nl2, nl3 = (node.get_app(NetworkLayer) for node in net.nodes)
-    activate_path(0.1, None, nl0, nl1, None)
-    activate_path(0.1, 5.9, nl2, nl3, None)  # insertion_count=1
-    activate_path(1.1, 4.1, nl2, nl3, None)  # insertion_count=2
-
-    simulator.run()
-
-    for nl in nl0, nl1:
-        print(nl.node.name, nl.entangle, nl.decohere)
+@pytest.mark.parametrize(
+    ("qchannel_delay", "t_entangle"),
+    [
         # τ=0.2 for the channel between n0 and n1.
         # Entanglement (including reservation) requires 4τ i.e. 0.8 seconds but the EXTERNAL phase
         # has only 0.6 seconds, so that no entanglement could complete on this channel.
-        assert len(nl.entangle) == 0
-        assert len(nl.decohere) == 0
-
-    for nl in nl2, nl3:
-        print(nl.node.name, nl.entangle, nl.decohere)
+        (0.2, []),
         # τ=0.1 for the channel between n2 and n3.
         # Entanglement (including reservation) requires 4τ i.e. 0.4 seconds.
         # No entanglement occurs in the first EXTERNAL phase window, because reservations are only initiated
         # at the start of each EXTERNAL phase window, not when PathActivateEvent arrives.
         # The PathDeactivateEvent takes effect for the EXTERNAL phase window starting at t=6.0.
-        assert nl.entangle == pytest.approx([1.4, 2.4, 3.4, 4.4, 5.4], abs=1e-6)
+        (0.1, [1.4, 2.4, 3.4, 4.4, 5.4]),
+    ],
+)
+def test_timing_mode_sync(qchannel_delay: float, t_entangle: list[float]):
+    net, _, _, _, nl1, nl2 = make_2nodes(
+        qchannel_args={"delay": qchannel_delay, "link_arch": LinkArchAlways(LinkArchDimBk())},
+        memory_args={"t_cohere": 10.0},
+        timing=TimingModeSync(t_ext=0.6, t_int=0.4),
+    )
+    simulator = Simulator(0.0, 6.1, install_to=(log, net))
+
+    activate_path(0.1, 5.9, nl1, nl2, path_id=None)  # insertion_count=1
+    activate_path(1.1, 4.1, nl1, nl2, path_id=None, n=0)  # insertion_count=2
+
+    simulator.run()
+
+    for nl in nl1, nl2:
+        print(nl.node.name, nl.entangle, nl.decohere)
+        assert nl.entangle == pytest.approx(t_entangle, abs=1e-6)
         # All qubits are cleared at the start of each EXTERNAL phase, before memory decoherence occurs.
         # Decoherence events are not emitted for cleared qubits.
         assert len(nl.decohere) == 0
-    QuantumMemory.check_leaks([nl2.node, nl3.node])
+
+    QuantumMemory.check_leaks(net.nodes)

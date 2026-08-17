@@ -17,7 +17,7 @@
 
 from collections import deque
 from collections.abc import Iterable
-from typing import Final, Literal, TypedDict, final, override
+from typing import Final, Literal, NamedTuple, TypedDict, final, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
 from mqns.entity.memory import MemoryQubit, QubitState
@@ -40,19 +40,34 @@ class ReserveMsg(TypedDict):
     Message between LinkLayers to request and accept qubit reservation for entanglement generation.
     """
 
-    cmd: Literal["RESERVE_REQ", "RESERVE_RES"]
+    cmd: Literal["RESERVE_REQ", "RESERVE_ABORT", "RESERVE_RES"]
     """
-    RESERVE_REQ is sent from primary node to secondary node to request entanglement generation.
-    RESERVE_RES is sent from secondary node to primary node to accept entanglement generation.
-    """
-    key: str
-    """
-    Reservation key that uniquely identifies this reservation and the resulting entanglement.
+    RESERVE_REQ: pri-to-2nd, request entanglement generation.
+    RESERVE_ABORT: pri-to-2nd, cancel the reservation and abort entanglement generation.
+    RESERVE_RES: 2nd-to-pri, accept entanglement generation.
     """
     path_id: int | None
     """
     The path identifier assigned to the generated entanglement.
     """
+    key: str
+    """
+    Reservation key that uniquely identifies this reservation and the resulting entanglement.
+    """
+
+
+class _ReserveParsedMsg(NamedTuple):
+    cmd: str
+    src: str
+    path_id: int | None
+    key: str
+
+    @staticmethod
+    def new(pkt: ClassicPacket, msg: ReserveMsg) -> "_ReserveParsedMsg":
+        return _ReserveParsedMsg(cmd=msg["cmd"], src=pkt.src.name, path_id=msg["path_id"], key=msg["key"])
+
+    def __repr__(self) -> str:
+        return f"{self.cmd}({self.src}:{self.path_id}, {self.key})"
 
 
 class _ActiveChannel:
@@ -317,7 +332,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         """
 
     @override
-    def install(self, node):
+    def install(self, node) -> None:
         self._application_install(node, QNode)
         self.memory = self.node.memory
         """Quantum memory of the node."""
@@ -379,9 +394,6 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             ap = _ActivePath(path_id, ac.is_primary)
             ac.paths[path_id] = ap
 
-            addrs = list(q.addr for q, _ in self.memory.find(lambda *_: True, qchannel=ch))
-            self.log_debug("PATH_ACTIVATE_%s %s.%s has-addrs=%s", PathActivateEvent.ROLE_STR[ac.is_primary], ac, ap, addrs)
-
         # Increment the insertion count.
         ap.insertion_count += 1
         if ap.insertion_count > 1:
@@ -390,6 +402,8 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         # If the path is new, mark it as live.
         ac.live_paths.add(path_id)
         ap.delete_event.cancel()
+        addrs = list(q.addr for q, _ in self.memory.find(lambda *_: True, qchannel=ch))
+        self.log_debug("PATH_ACTIVATE_%s %s.%s has-addrs=%s", PathActivateEvent.ROLE_STR[ac.is_primary], ac, ap, addrs)
 
         # Start the reservations if the network is in ASYNC timing mode.
         if ac.is_primary and self.node.timing.is_async():
@@ -463,7 +477,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         ap.delete_event.set(delete_event)
 
         if not ac.is_primary:
-            # On the secondary node, no more requests would be accepted.
+            # On the secondary node, no more reservations would be accepted.
             ap.ireq_queue.clear()
             self.log_debug("PATH_DEACTIVATE_2nd %s.%s t_delete=%s", ac, ap, t_delete)
             return
@@ -472,8 +486,8 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         # Since the skip-ahead sampling method only cares about the successful attempt,
         # this logic allows the entanglement to continue if the successful attempt has started
         # or is starting in the current time slot, otherwise it is aborted.
-        tasks_uncancelable: list[str] = []
         tasks_aborted: list[str] = []
+        tasks_uncancelable: list[str] = []
         for key, task in ap.oreq_table.items():
             if task.k == -1:  # reservation has not completed
                 tasks_aborted.append(key)
@@ -486,15 +500,18 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             unwrap_cast(task.notify_2nd_event).cancel()
 
         for key in tasks_aborted:
-            del ap.oreq_table[key]
+            task = ap.oreq_table.pop(key)
+            task.mq.state = QubitState.RAW
+            msg = ReserveMsg(cmd="RESERVE_ABORT", key=key, path_id=path_id)
+            self.node.send_cpacket(ac.partner, ClassicPacket(msg, src=self.node, dest=ac.partner))
 
         self.log_debug(
-            "PATH_DEACTIVATE_pri %s.%s t_delete=%s tasks-uncancelable=%s tasks-aborted=%s",
+            "PATH_DEACTIVATE_pri %s.%s t_delete=%s abort-tasks=%s uncancelable-tasks=%s",
             ac,
             ap,
             t_delete,
-            tasks_uncancelable,
             tasks_aborted,
+            tasks_uncancelable,
         )
 
     def _deactivate_delete(self, ac: _ActiveChannel, ap: _ActivePath) -> None:
@@ -514,23 +531,47 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         else:
             assert len(ap.ireq_queue) == 0, f"{self}: {ac}.{ap}.ireq_queue = {ap.ireq_queue}"
 
-        # Reset qubits owned by LinkLayer.
-        resets: list[tuple[int, str | None]] = []
-        for mq, _ in self.memory.find(
-            lambda q, _: q.state in (QubitState.ACTIVE, QubitState.RESERVED) and q.path_id == path_id, qchannel=ch
-        ):
-            resets.append((mq.addr, mq.key))
-            mq.state = QubitState.RAW
+        # There should be no qubits owned by LinkLayer.
+        locked_qubits = list(
+            self.memory.find(
+                lambda q, _: q.state in (QubitState.ACTIVE, QubitState.RESERVED) and q.path_id == path_id, qchannel=ch
+            )
+        )
+        assert not locked_qubits, f"{self}: {ac}.{ap} has locked qubits: {locked_qubits}"
 
         # Delete the path from the channel.
         del ac.paths[path_id]
-        self.log_debug("PATH_DEACTIVATE_%s %s.%s reset-qubits=%s", PathActivateEvent.ROLE_STR[ac.is_primary], ac, ap, resets)
+        self.log_debug("PATH_DEACTIVATE_%s %s.%s deleted", PathActivateEvent.ROLE_STR[ac.is_primary], ac, ap)
         if len(ac.paths) > 0:
             return
 
         # If the channel has no more active paths, delete the channel.
         del self.channels[partner.name]
         self.log_debug("CHANNEL_DEACTIVATE_%s %s partner=%s", PathActivateEvent.ROLE_STR[ac.is_primary], ch.name, partner.name)
+
+    @classic_cmd_handler("RESERVE_ABORT")
+    def handle_reserve_abort(self, pkt: ClassicPacket, msg: ReserveMsg) -> None:
+        """
+        Handle ``RESERVE_ABORT`` message from the primary node.
+        """
+        req = _ReserveParsedMsg.new(pkt, msg)
+        if not self.node.timing.is_external():
+            self.log_debug("%s ignored reason=not-external-phase", req)
+            return None
+
+        # Reset the memory, if present.
+        if (mq_tuple := self.memory.read(req.key)) is None:
+            self.log_debug("%s ignored reason=qubit-not-found", req)
+            return
+        mq, qm = mq_tuple
+
+        self.log_debug("%s canceling addr=%s", req, mq.addr)
+        assert qm is None
+        assert mq.state in (QubitState.ACTIVE, QubitState.RESERVED)
+        mq.state = QubitState.RAW
+
+        # It's unnecessary to delete the key from ireq_queue here,
+        # because the path deletion logic on the secondary node would clear ireq_queue.
 
     def run_channel(self, ac: _ActiveChannel, ap: _ActivePath | None = None) -> None:
         """
@@ -551,7 +592,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             assert v is None
             self.start_reservation(ac, None, q)
 
-    def start_reservation(self, ac: _ActiveChannel, ap: _ActivePath | None, mq: MemoryQubit):
+    def start_reservation(self, ac: _ActiveChannel, ap: _ActivePath | None, mq: MemoryQubit) -> None:
         """
         Start entanglement generation on a qubit assigned to a channel.
 
@@ -576,36 +617,41 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         )
 
         # Transmit RESERVE_REQ message to the secondary node.
-        msg = ReserveMsg(cmd="RESERVE_REQ", key=mq.key, path_id=mq.path_id)
+        msg = ReserveMsg(cmd="RESERVE_REQ", path_id=mq.path_id, key=mq.key)
         self.node.send_cpacket(ac.partner, ClassicPacket(msg, src=self.node, dest=ac.partner))
 
+    def _find_active_channel_path(self, req: _ReserveParsedMsg) -> tuple[_ActiveChannel, _ActivePath] | None:
+        if not self.node.timing.is_external():
+            self.log_debug("%s ignored reason=not-external-phase", req)
+            return None
+
+        ac = self.channels.get(req.src)
+        if ac is None:
+            self.log_debug("%s ignored reason=no-active-channel", req)
+            return None
+
+        ap = ac.paths.get(req.path_id)
+        if ap is None or ap.insertion_count == 0:
+            self.log_debug("%s ignored reason=no-active-path", req)
+            return None
+
+        return ac, ap
+
     @classic_cmd_handler("RESERVE_REQ")
-    def handle_reserve_req(self, pkt: ClassicPacket, msg: ReserveMsg):
+    def handle_reserve_req(self, pkt: ClassicPacket, msg: ReserveMsg) -> None:
         """
         Handle ``RESERVE_REQ`` message from the primary node.
         """
-        key = msg["key"]
-        path_id = msg["path_id"]
-
-        if not self.node.timing.is_external():
-            self.log_debug("RESERVE_REQ(%s:%s, %s) ignored reason=not-external-phase", pkt.src.name, path_id, key)
+        req = _ReserveParsedMsg.new(pkt, msg)
+        if (ac_ap := self._find_active_channel_path(req)) is None:
             return
-
-        ac = self.channels.get(pkt.src.name)
-        if ac is None:
-            self.log_debug("RESERVE_REQ(%s:%s, %s) ignored reason=no-active-channel", pkt.src.name, path_id, key)
-            return
+        ac, ap = ac_ap
         assert not ac.is_primary
 
-        ap = ac.paths.get(path_id)
-        if ap is None or ap.insertion_count == 0:
-            self.log_debug("RESERVE_REQ(%s:%s, %s) ignored reason=no-active-path", pkt.src.name, path_id, key)
-            return
-
-        if len(ap.ireq_queue) > 0 or not self.try_accept_reservation(ac, ap, key):
+        if len(ap.ireq_queue) > 0 or not self.try_accept_reservation(ac, ap, req.key):
             # If the queue is non-empty, try_accept_reservation() would not have succeeded.
             # If try_accept_reservation() was unsuccessful, enqueue the request.
-            ap.ireq_queue.append(key)
+            ap.ireq_queue.append(req.key)
 
     def try_accept_reservation(self, ac: _ActiveChannel, ap: _ActivePath, key: str, *, hint: MemoryQubit | None = None) -> bool:
         """
@@ -649,41 +695,30 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         self.log_debug("RESERVE_REQ(%s:%s, %s) accepted addr=%s", ac.partner.name, ap.path_id, key, mq.addr)
         mq.state = QubitState.RESERVED
         mq.key = key
-        msg = ReserveMsg(cmd="RESERVE_RES", key=key, path_id=ap.path_id)
+        msg = ReserveMsg(cmd="RESERVE_RES", path_id=ap.path_id, key=key)
         self.node.send_cpacket(ac.partner, ClassicPacket(msg, src=self.node, dest=ac.partner))
         return True
 
     @classic_cmd_handler("RESERVE_RES")
-    def handle_reserve_res(self, pkt: ClassicPacket, msg: ReserveMsg):
+    def handle_reserve_res(self, pkt: ClassicPacket, msg: ReserveMsg) -> None:
         """
         Handle ``RESERVE_RES`` message from the secondary node.
         """
-        key = msg["key"]
-        path_id = msg["path_id"]
-
-        if not self.node.timing.is_external():
-            self.log_debug("RESERVE_RES(%s:%s, %s) ignored reason=not-external-phase", pkt.src.name, path_id, key)
+        req = _ReserveParsedMsg.new(pkt, msg)
+        if (ac_ap := self._find_active_channel_path(req)) is None:
             return
+        ac, ap = ac_ap
+        assert ac.is_primary
 
-        ac = self.channels.get(pkt.src.name)
-        if ac is None:
-            self.log_debug("RESERVE_RES(%s:%s, %s) ignored reason=no-active-channel", pkt.src.name, path_id, key)
-            return
-
-        ap = ac.paths.get(path_id)
-        if ap is None or ap.insertion_count == 0:
-            self.log_debug("RESERVE_RES(%s:%s, %s) ignored reason=no-active-path", pkt.src.name, path_id, key)
-            return
-
-        task = ap.oreq_table.get(key, None)
+        task = ap.oreq_table.get(req.key, None)
         if task is None:
-            self.log_debug("RESERVE_RES(%s:%s, %s) ignored reason=no-active-task", pkt.src.name, path_id, key)
+            self.log_debug("%s ignored reason=no-active-task", req)
             return
 
         mq = task.mq
-        assert mq.key == key
+        assert mq.key == req.key
         mq.state = QubitState.RESERVED
-        self.log_debug("RESERVE_RES(%s:%s, %s) processed addr=%s", pkt.src.name, path_id, key, mq.addr)
+        self.log_debug("%s processed addr=%s", req, mq.addr)
         self.generate_entanglement(ac, ap, task)
 
     def generate_entanglement(self, ac: _ActiveChannel, ap: _ActivePath, task: _EntangleTask) -> None:
