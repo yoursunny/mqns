@@ -1,12 +1,13 @@
 from typing import override
 
 from mqns.entity.base_channel import calc_transmission_prob
-from mqns.entity.qchannel.link_arch import LinkArchBase
+from mqns.entity.qchannel.link_arch import LinkArchBase, assert_is_link_arch
 from mqns.models.epr import Entanglement
 from mqns.models.error import ErrorModel, TimeDecayFunc
 from mqns.simulator import Time
 
 
+@assert_is_link_arch
 class LinkArchDimBk(LinkArchBase):
     """
     Detection-in-Midpoint link architecture with single-rail encoding using Barrett-Kok protocol.
@@ -85,6 +86,7 @@ class LinkArchDimBk(LinkArchBase):
         return e2
 
 
+@assert_is_link_arch
 class LinkArchDimBkSeq(LinkArchDimBk):
     """
     Detection-in-Midpoint link architecture with single-rail encoding using Barrett-Kok protocol,

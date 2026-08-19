@@ -1,7 +1,7 @@
 import copy
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
-from typing import NotRequired, Protocol, TypedDict, Unpack, override
+from typing import Final, NotRequired, Protocol, TypedDict, Unpack
 
 from mqns.entity.node import QNode
 from mqns.models.core.bell_diagonal import make_bell_diagonal_probv
@@ -10,7 +10,7 @@ from mqns.models.epr import Entanglement, EntanglementInitKwargs, MixedStateEnta
 from mqns.models.error import ErrorModel, TimeDecayFunc, time_decay_nop
 from mqns.simulator import Time
 
-type MakeEprFunc = Callable[[EntanglementInitKwargs], Entanglement]
+type _MakeEprFunc = Callable[[EntanglementInitKwargs], Entanglement]
 
 
 class ChannelParameters(Protocol):
@@ -43,6 +43,8 @@ class ChannelParameters(Protocol):
 
 
 class LinkArchParameters(TypedDict):
+    time_accuracy: int
+    """Time accuracy."""
     ch: ChannelParameters
     """QuantumChannel to gather parameters from."""
     eta_s: float
@@ -55,11 +57,6 @@ class LinkArchParameters(TypedDict):
     """Local operation delay in seconds."""
     epr_type: type[Entanglement]
     """EPR type, either ``WernerStateEntanglement`` or ``MixedStateEntanglement``."""
-    t0: NotRequired[Time]
-    """
-    Time reference for mini simulation; only the accuracy is used.
-    This is required if ``init_fidelity`` is omitted.
-    """
     store_decays: NotRequired[tuple[TimeDecayFunc, TimeDecayFunc]]
     """
     Memory time-based decay functions at src and dst, defaults to perfect.
@@ -77,73 +74,77 @@ class LinkArch(Protocol):
 
     Together with quantum channel and node hardware parameters, it supplies information to
     the skip-ahead sampling implementation in ``LinkLayer`` application.
+
+    All properties and methods, other than ``name``, are only available after ``set()``.
     """
 
-    name: str
-    """Link architecture name."""
-
-    success_prob: float
-    """
-    Success probability of a single attempt.
-
-    This is available after ``set()``.
-    """
+    @property
+    def name(self) -> str:
+        """Link architecture name."""
+        ...
 
     def set(self, **kwargs: Unpack[LinkArchParameters]) -> None:
+        """Save parameters about quantum channel and node hardware."""
+
+    @property
+    def success_prob(self) -> float:
+        """Success probability of a single attempt."""
+        ...
+
+    @property
+    def attempt_interval(self) -> Time:
         """
-        Save parameters about quantum channel and node hardware.
-        """
+        How often can the LinkLayer make a new attempt.
 
-    def delays(self, k: int) -> tuple[float, float, float]:
-        """
-        Compute protocol delays for k-th attempt.
-        This is available after ``set()``.
-
-        Args:
-            k: number of attempts, minimum is 1.
-
-        Returns:
-            Each value is a duration in seconds.
-
-            * [0]: EPR creation time, since RESERVE_QUBIT_OK arrives at primary node.
-            * [1]: notification time to primary node, since EPR creation.
-            * [2]: notification time to secondary node, since EPR creation.
+        The k-th attempt shall begin at ``(k-1) * attempt_interval``.
         """
         ...
 
-    def make_epr(self, k: int, now: Time, *, src: QNode, dst: QNode, key: str | None) -> tuple[Entanglement, Time, Time]:
+    @property
+    def d_notify_pri(self) -> Time:
+        """How soon is the primary node notified for entanglement since a successful attempt began."""
+        ...
+
+    @property
+    def d_notify_2nd(self) -> Time:
+        """How soon is the secondary node notified for entanglement since a successful attempt began."""
+        ...
+
+    def make_epr(self, t_epr_creation: Time, src: QNode, dst: QNode, *, key: str | None) -> Entanglement:
         """
-        Create an elementary entanglement for k-th attempt.
-        This is available after ``set()``.
+        Create an elementary entanglement.
 
         Args:
-            k: number of attempts, minimum is 1.
-            now: current time point, which is when RESERVE_QUBIT_OK arrives at primary node.
-            src: primary node.
-            dst: secondary node.
-            key: memory qubit reservation key.
+            t_epr_creation: EPR creation time, i.e. the start time of the successful attempt.
+            src: Primary node.
+            dst: Secondary node.
+            key: Memory qubit reservation key.
 
         Returns:
-            Each value is a duration in seconds.
-
-            * [0]: EPR object with fidelity assigned.
-                   Its ``fidelity_time`` may be different from "EPR creation time" returned by ``delays()``.
-            * [1]: notification time point to primary node.
-            * [2]: notification time point to secondary node.
+            EPR object with fidelity assigned.
+            Its ``fidelity_time`` may be different from EPR creation time.
         """
         ...
 
 
-class LinkArchBase(ABC, LinkArch):
+def assert_is_link_arch[T: LinkArch](typ: type[T]) -> type[T]:
+    """Ensure a type properly implements ``LinkArch`` protocol."""
+    return typ
+
+
+class LinkArchBase(ABC):
+    name: Final[str]
+    success_prob = 0.0
+    attempt_interval = Time.SENTINEL
+    d_notify_pri = Time.SENTINEL
+    d_notify_2nd = Time.SENTINEL
+    _make_epr: _MakeEprFunc
+
     def __init__(self, name: str):
         self.name = name
-        self.success_prob = 0.0
-        self.attempt_interval = 0.0
-        self.d_notify_a = 0.0
-        self.d_notify_b = 0.0
 
-    @override
     def set(self, **kwargs: Unpack[LinkArchParameters]) -> None:
+        accuracy = kwargs["time_accuracy"]
         ch = kwargs["ch"]
         tau_l = ch.delay.calculate()
         for _ in range(16):
@@ -156,14 +157,17 @@ class LinkArchBase(ABC, LinkArch):
             eta_d=kwargs["eta_d"],
         )
 
-        self.attempt_interval, self.d_notify_a, self.d_notify_b = self._compute_delays(
+        attempt_interval, d_notify_pri, d_notify_2nd = self._compute_delays(
             reset_time=kwargs["reset_time"],
             tau_l=tau_l,
             tau_0=kwargs["tau_0"],
         )
+        self.attempt_interval = Time.from_sec(attempt_interval, accuracy=accuracy)
+        self.d_notify_pri = Time.from_sec(d_notify_pri, accuracy=accuracy)
+        self.d_notify_2nd = Time.from_sec(d_notify_2nd, accuracy=accuracy)
 
         if (init_fidelity := ch.init_fidelity) is None:
-            self._make_epr: MakeEprFunc = self._prepare_make_epr(kwargs, ch, tau_l)
+            self._make_epr = self._prepare_make_epr(kwargs, ch, tau_l)
         elif isinstance(init_fidelity, Sequence):
             assert kwargs["epr_type"] is MixedStateEntanglement
             assert len(init_fidelity) == 4
@@ -198,15 +202,10 @@ class LinkArchBase(ABC, LinkArch):
         """
         Compute attempt interval and notification delays, for protocol delay computation.
         Subclass implementation may precompute or save other parameters if necessary.
-        Override ``delays()`` method for unusual situations.
         """
 
-    @override
-    def delays(self, k: int) -> tuple[float, float, float]:
-        return (k - 1) * self.attempt_interval, self.d_notify_a, self.d_notify_b
-
-    def _prepare_make_epr(self, d: LinkArchParameters, ch: ChannelParameters, tau_l: float) -> MakeEprFunc:
-        accuracy = d.get("t0", Time.SENTINEL).accuracy
+    def _prepare_make_epr(self, d: LinkArchParameters, ch: ChannelParameters, tau_l: float) -> _MakeEprFunc:
+        accuracy = d["time_accuracy"]
         t0 = Time.from_sec(1, accuracy=accuracy)
         epr_type = d["epr_type"]
         se0, se1 = d.get("store_decays", (time_decay_nop, time_decay_nop))
@@ -229,7 +228,7 @@ class LinkArchBase(ABC, LinkArch):
 
         # The final state could reflect any time point between EPR creation time and the earlier heralding time.
         t_diff = epr.fidelity_time - t0
-        assert Time(0, accuracy=accuracy) <= t_diff <= Time.from_sec(min(self.d_notify_a, self.d_notify_b), accuracy=accuracy)
+        assert Time(0, accuracy=accuracy) <= t_diff <= min(self.d_notify_pri, self.d_notify_2nd)
 
         # Capture the final state.
         update = {}
@@ -285,15 +284,9 @@ class LinkArchBase(ABC, LinkArch):
         Returns: the final entanglement.
         """
 
-    @override
-    def make_epr(self, k: int, now: Time, *, src: QNode, dst: QNode, key: str | None) -> tuple[Entanglement, Time, Time]:
-        d_epr_creation, d_notify_a, d_notify_b = self.delays(k)
-        t_epr_creation = now + d_epr_creation
-        t_notify_a = now + (d_epr_creation + d_notify_a)
-        t_notify_b = now + (d_epr_creation + d_notify_b)
-
+    def make_epr(self, t_epr_creation: Time, src: QNode, dst: QNode, *, key: str | None) -> Entanglement:
         mem_a, mem_b = src.memory, dst.memory
-        epr = self._make_epr(
+        return self._make_epr(
             EntanglementInitKwargs(
                 decohere_time=t_epr_creation + min(mem_a.t_cohere, mem_b.t_cohere),
                 fidelity_time=t_epr_creation,
@@ -304,10 +297,9 @@ class LinkArchBase(ABC, LinkArch):
             )
         )
 
-        return epr, t_notify_a, t_notify_b
 
-
-class LinkArchAlways(LinkArch):
+@assert_is_link_arch
+class LinkArchAlways:
     """
     Link architecture wrapper that always succeeds, primarily for unit testing.
     """
@@ -315,18 +307,21 @@ class LinkArchAlways(LinkArch):
     def __init__(self, inner: LinkArch):
         self.name = f"{inner.name}-always"
         self.inner = inner
+        self.set = inner.set
+        self.make_epr = inner.make_epr
 
-    @override
-    def set(self, **kwargs: Unpack[LinkArchParameters]) -> None:
-        self.inner.set(**kwargs)
-        self.success_prob = 1.0
+    @property
+    def success_prob(self):
+        return 1.0
 
-    @override
-    def delays(self, k: int) -> tuple[float, float, float]:
-        assert k == 1
-        return self.inner.delays(k)
+    @property
+    def attempt_interval(self):
+        return self.inner.attempt_interval
 
-    @override
-    def make_epr(self, k: int, *args, **kwargs):
-        assert k == 1
-        return self.inner.make_epr(k, *args, **kwargs)
+    @property
+    def d_notify_pri(self):
+        return self.inner.d_notify_pri
+
+    @property
+    def d_notify_2nd(self):
+        return self.inner.d_notify_2nd

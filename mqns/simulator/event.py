@@ -39,8 +39,8 @@ class Event(ABC):
 
     def __lt__(self, other: "Event") -> bool:
         """Compare event ordering in Simulator heap."""
-        if self.t.time_slot != other.t.time_slot:
-            return self.t.time_slot < other.t.time_slot
+        if self.t.slot != other.t.slot:
+            return self.t.slot < other.t.slot
         return self.priority < other.priority
 
     def __repr__(self) -> str:
@@ -56,6 +56,7 @@ class _WrapperEvent(Event):
 
     @override
     def invoke(self) -> None:
+        __tracebackhide__ = True
         self.fn(*self.args, **self.kwargs)
 
     @override
@@ -65,7 +66,7 @@ class _WrapperEvent(Event):
         return super().__repr__()
 
 
-def func_to_event(t: Time, fn: Callable, *args, **kwargs):
+def func_to_event[**P, R](t: Time, fn: Callable[P, R], *args: P.args, **kwargs: P.kwargs):
     """
     Convert a function to an event, the function ``fn`` will be called at ``t``.
 
@@ -78,8 +79,33 @@ def func_to_event(t: Time, fn: Callable, *args, **kwargs):
     return _WrapperEvent(t, fn, args, kwargs)
 
 
+class EventHandleSlot[T: Event]:
+    """Event handle with automatic cancellation."""
+
+    __slots__ = ("_event",)
+
+    def __init__(self):
+        self._event: T | None = None
+
+    def get(self) -> T | None:
+        """Retrieve event handle."""
+        return self._event
+
+    def set(self, evt: T | None) -> None:
+        """Store new event handle, cancel old event."""
+        if self._event:
+            self._event.cancel()
+        self._event = evt
+
+    def cancel(self) -> None:
+        """Cancel existing event."""
+        self.set(None)
+
+
 class EventHandleSet:
     """Type distinguished set of event handles with automatic cancellation."""
+
+    __slots__ = ("_events",)
 
     def __init__(self):
         self._events: dict[type, Event] = {}

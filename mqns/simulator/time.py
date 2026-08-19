@@ -32,7 +32,7 @@ class Time:
     Timestamp or duration used in the simulator.
     """
 
-    __slots__ = ("time_slot", "accuracy")
+    __slots__ = ("slot", "accuracy")
 
     SENTINEL: ClassVar["Time"]
     """Invalid Time instance as placeholder."""
@@ -41,19 +41,19 @@ class Time:
     MAX: ClassVar["Time"]
     """Maximum value, compares greater than all other instances."""
 
-    def __init__(self, time_slot: int, *, accuracy: int):
+    def __init__(self, slot: int, *, accuracy: int):
         """
         Construct from time slot.
 
         Args:
-            time_slot: Integer time slot.
+            slot: Integer time slot.
             accuracy: How many time slots per second.
         """
-        self.time_slot: Final[int] = time_slot
+        self.slot: Final[int] = slot
         self.accuracy: Final[int] = accuracy
 
     @staticmethod
-    def sec_to_time_slot(sec: float, accuracy: int) -> int:
+    def sec_to_slot(sec: float, accuracy: int) -> int:
         """
         Convert seconds to time slots at given accuracy.
         """
@@ -68,7 +68,7 @@ class Time:
             sec: Seconds.
             accuracy: How many time slots per second.
         """
-        return Time(Time.sec_to_time_slot(sec, accuracy), accuracy=accuracy)
+        return Time(Time.sec_to_slot(sec, accuracy), accuracy=accuracy)
 
     @staticmethod
     def from_time_or_sec(sec: "Time|float", *, accuracy: int) -> "Time":
@@ -82,7 +82,7 @@ class Time:
         """
         Retrieve timestamp/duration in seconds.
         """
-        return self.time_slot / self.accuracy
+        return self.slot / self.accuracy
 
     def __eq__(self, other: object) -> bool:
         """
@@ -94,7 +94,7 @@ class Time:
         * They have the same accuracy.
         * They have the same time slot.
         """
-        return type(other) is Time and self.accuracy == other.accuracy and self.time_slot == other.time_slot
+        return type(other) is Time and self.accuracy == other.accuracy and self.slot == other.slot
 
     def __lt__(self, other: "Time") -> bool:
         """
@@ -104,46 +104,52 @@ class Time:
         unless either instance is ``Time.MIN`` and ``Time.MAX``.
         """
         if self.accuracy == other.accuracy:
-            return self.time_slot < other.time_slot
+            return self.slot < other.slot
         if self.accuracy == 0:
-            return self.time_slot < 0
+            return self.slot < 0
         if other.accuracy == 0:
-            return other.time_slot > 0
+            return other.slot > 0
         raise ValueError("cannot compare Time with different accuracy")
 
     def __hash__(self) -> int:
-        return hash(self.time_slot)
+        return hash(self.slot)
 
     def __add__(self, ts: "Time|float") -> "Time":
         """
-        Add a duration and returns a new Time object.
+        Add a duration and return a new Time instance.
 
         Args:
             ts: Either a Time object with same accuracy, or a duration number in seconds.
         """
         if type(ts) is Time:
             assert ts.accuracy == self.accuracy
-            time_slot = ts.time_slot
+            slot = ts.slot
         else:
-            time_slot = Time.sec_to_time_slot(ts, self.accuracy)
-        return Time(time_slot=self.time_slot + time_slot, accuracy=self.accuracy)
+            slot = Time.sec_to_slot(ts, self.accuracy)
+        return Time(self.slot + slot, accuracy=self.accuracy)
 
     def __sub__(self, ts: "Time|float") -> "Time":
         """
-        Subtract a duration and returns a new Time object.
+        Subtract a duration and return a new Time instance.
 
         Args:
             ts: Either a Time object with same accuracy, or a duration number in seconds.
         """
         if type(ts) is Time:
             assert ts.accuracy == self.accuracy
-            time_slot = ts.time_slot
+            slot = ts.slot
         else:
-            time_slot = Time.sec_to_time_slot(ts, self.accuracy)
-        return Time(time_slot=self.time_slot - time_slot, accuracy=self.accuracy)
+            slot = Time.sec_to_slot(ts, self.accuracy)
+        return Time(self.slot - slot, accuracy=self.accuracy)
+
+    def __mul__(self, multiplier: int) -> "Time":
+        """
+        Multiply this duration and return a new Time instance.
+        """
+        return Time(self.slot * multiplier, accuracy=self.accuracy)
 
     def __repr__(self) -> str:
-        return _ACCURACY0_STRS[self.time_slot] if self.accuracy == 0 else str(self.sec)
+        return _ACCURACY0_STRS[self.slot] if self.accuracy == 0 else str(self.sec)
 
 
 Time.SENTINEL = Time(0, accuracy=0)

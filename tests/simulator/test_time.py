@@ -3,7 +3,7 @@ import pytest
 from mqns.simulator import Time
 
 
-def test_time_compare():
+def test_compare():
     t1 = Time(1, accuracy=1000000)
     t2 = Time.from_sec(1.1, accuracy=1000000)
     t3 = Time(0, accuracy=1000000)
@@ -31,7 +31,7 @@ def test_time_compare():
     assert Time.MIN < Time.MAX
 
 
-def test_time_accuracy():
+def test_accuracy():
     t0 = Time.from_sec(1.0, accuracy=1000000)
     t1 = Time.from_sec(1.0, accuracy=2000)
     t2 = Time.from_sec(1.0, accuracy=3000)
@@ -50,23 +50,26 @@ def test_time_accuracy():
     assert t4.accuracy == 4000
 
 
-def test_time_add_sub():
+def test_arithmetic():
     t5 = Time.from_sec(5, accuracy=1000)
 
     t6a = t5 + 1
     t6b = t5 + 1.0
     t6c = t5 + Time.from_sec(1.0, accuracy=1000)
-    assert t6a.sec == pytest.approx(6.0)
-    assert t6b.sec == pytest.approx(6.0)
-    assert t6c.sec == pytest.approx(6.0)
+    assert t6a.sec == pytest.approx(6, abs=1e-6)
+    assert t6b.sec == pytest.approx(6, abs=1e-6)
+    assert t6c.sec == pytest.approx(6, abs=1e-6)
 
     assert pytest.raises(AssertionError, lambda: t5 + Time.from_sec(1.0, accuracy=2000))
 
     t3a = t5 - 2
     t3b = t5 - 2.0
     t3c = t5 - Time.from_sec(2.0, accuracy=1000)
-    assert t3a.sec == pytest.approx(3.0)
-    assert t3b.sec == pytest.approx(3.0)
-    assert t3c.sec == pytest.approx(3.0)
+    assert t3a.sec == pytest.approx(3, abs=1e-6)
+    assert t3b.sec == pytest.approx(3, abs=1e-6)
+    assert t3c.sec == pytest.approx(3, abs=1e-6)
 
     assert pytest.raises(AssertionError, lambda: t5 - Time.from_sec(2.0, accuracy=2000))
+
+    t25 = t5 * 5
+    assert t25.sec == pytest.approx(25, abs=1e-6)

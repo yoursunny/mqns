@@ -181,7 +181,7 @@ class CutoffSchemeWaitTime(CutoffScheme):
             wait_budget,
             deadline,
         )
-        self.simulator.add_event(event := CutoffDiscardEvent(self, mq, fp, round=-1, eligible_t=now, t=deadline))
+        self.simulator.sched(event := CutoffDiscardEvent(self, mq, fp, round=-1, eligible_t=now, t=deadline))
         mq.events.add(event)
 
     @override
@@ -191,4 +191,4 @@ class CutoffSchemeWaitTime(CutoffScheme):
 
         event = mq1.events.discard(CutoffDiscardEvent)
         if event and self.cnt.wait_values is not None:
-            self.cnt.wait_values.append((self.simulator.tc - event.eligible_t).time_slot)
+            self.cnt.wait_values.append((self.simulator.tc - event.eligible_t).slot)

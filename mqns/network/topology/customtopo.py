@@ -20,7 +20,7 @@ import copy
 from collections.abc import Iterable
 from typing import NotRequired, TypedDict, cast, override
 
-from mqns.entity.cchannel import ClassicChannel, ClassicChannelInitKwargs
+from mqns.entity.cchannel import ClassicChannel, ClassicChannelInitKwargs, extract_cchannel_args
 from mqns.entity.memory import QuantumMemory, QuantumMemoryInitKwargs
 from mqns.entity.node import Application, Controller, Node, QNode
 from mqns.entity.qchannel import QuantumChannel, QuantumChannelInitKwargs
@@ -92,11 +92,6 @@ class Topo(TypedDict):
     """
 
 
-def _qchannel_to_cchannel(qc: TopoQChannel) -> TopoCChannel:
-    parameters = dict(((k, v) for k, v in qc["parameters"].items() if k in ClassicChannelInitKwargs.__annotations__))
-    return {"node1": qc["node1"], "node2": qc["node2"], "parameters": cast(ClassicChannelInitKwargs, parameters)}
-
-
 class CustomTopology(Topology):
     """
     CustomTopology builds a topology from a JSON-like dict structure.
@@ -163,7 +158,10 @@ class CustomTopology(Topology):
     def add_cchannels(self, *, classic_topo: ClassicTopology = ClassicTopology.Empty, **_):
         if classic_topo is ClassicTopology.Follow:
             assert "cchannels" not in self.topo
-            return self._add_cchannels_from(_qchannel_to_cchannel(qc) for qc in self.topo["qchannels"])
+            return self._add_cchannels_from(
+                {"node1": qc["node1"], "node2": qc["node2"], "parameters": extract_cchannel_args(qc["parameters"])}
+                for qc in self.topo["qchannels"]
+            )
         else:
             assert classic_topo is ClassicTopology.Empty
             assert "cchannels" in self.topo

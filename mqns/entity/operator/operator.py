@@ -59,7 +59,7 @@ class QuantumOperator(Entity):
 
             t = self.simulator.tc + self.delay.calculate()
             response = OperateResponseEvent(node=unwrap(self.node), result=result, request=event, t=t)
-            self.simulator.add_event(response)
+            self.simulator.sched(response)
 
     def set_own(self, node: QNode):
         """Set the owner of this quantum operator"""

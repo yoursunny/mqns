@@ -16,7 +16,8 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import copy
-from typing import Callable, Literal, TypedDict, Unpack, override
+from collections.abc import Callable
+from typing import Literal, TypedDict, Unpack, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin
 from mqns.entity.memory import MemoryDecohereEvent, MemoryQubit, PathDirection, QubitState
@@ -403,7 +404,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
             self.request_reached_epr_count(fr)
 
         qubit.state = QubitState.CONSUME
-        self.simulator.add_event(QubitConsumeEvent(self.node, qubit, epr, t=self.simulator.tc, req_id=fr.req_id))
+        self.simulator.sched(QubitConsumeEvent(self.node, qubit, epr, t=self.simulator.tc, req_id=fr.req_id))
         return True
 
     def request_reached_epr_count(self, fr: FibRequest) -> None:
@@ -437,4 +438,4 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         event = QubitReleasedEvent(self.node, qubit, is_decoh=is_decoh, t=self.simulator.tc)
         # Set higher priority to prevent duplicate releases from decohere/cut-off and swap failure.
         event.priority = -1000
-        self.simulator.add_event(event)
+        self.simulator.sched(event)

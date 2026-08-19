@@ -185,4 +185,4 @@ class Consumer(Application[QNode]):
 
         self.memory.read(qubit.addr, remove=True)
         qubit.state = QubitState.RELEASE
-        self.simulator.add_event(QubitReleasedEvent(self.node, qubit, t=self.simulator.tc))
+        self.simulator.sched(QubitReleasedEvent(self.node, qubit, t=self.simulator.tc))

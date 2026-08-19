@@ -347,7 +347,7 @@ class Fib:
         """
         fr = self.get_req(req_id)
         fr.active_until = self.simulator.tc
-        self.simulator.add_event(func_to_event(fr.active_until + delay, self._delete_req, req_id))
+        self.simulator.sched(func_to_event(fr.active_until + delay, self._delete_req, req_id))
         return fr
 
     def _delete_req(self, req_id: int) -> None:

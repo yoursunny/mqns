@@ -1,12 +1,13 @@
 from typing import override
 
 from mqns.entity.base_channel import calc_transmission_prob
-from mqns.entity.qchannel.link_arch import LinkArchBase
+from mqns.entity.qchannel.link_arch import LinkArchBase, assert_is_link_arch
 from mqns.models.epr import Entanglement
 from mqns.models.error import ErrorModel, TimeDecayFunc
 from mqns.simulator import Time
 
 
+@assert_is_link_arch
 class LinkArchSim(LinkArchBase):
     """
     Source-in-Midpoint link architecture with dual-rail polarization encoding.

@@ -188,7 +188,7 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         event.cancel()
         result = self.read(event.key)
         t = self.simulator.tc + self.delay.calculate()
-        self.simulator.add_event(MemoryReadResponseEvent(self.node, result, request=event, t=t))
+        self.simulator.sched(MemoryReadResponseEvent(self.node, result, request=event, t=t))
 
     @event_handler
     def async_write(self, event: MemoryWriteRequestEvent) -> None:
@@ -197,7 +197,7 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         assert qubit is not None, "memory is full"
         result = self.write(qubit[0].addr, event.qubit)
         t = self.simulator.tc + self.delay.calculate()
-        self.simulator.add_event(MemoryWriteResponseEvent(self.node, result, request=event, t=t))
+        self.simulator.sched(MemoryWriteResponseEvent(self.node, result, request=event, t=t))
 
     @property
     def count(self) -> int:
@@ -347,7 +347,7 @@ class QuantumMemory(EventDispatcherMixin, Entity):
             Qubit and associated data (possibly empty), or None if qubit is not found by EPR name.
 
         Raises:
-            LookupError: Qubit address out of range.
+            LookupError: Qubit not found.
         """
 
     @overload
@@ -368,7 +368,6 @@ class QuantumMemory(EventDispatcherMixin, Entity):
 
         Raises:
             LookupError: Qubit not found.
-            ValueError: No quantum information is stored.
         """
 
     @overload
@@ -464,7 +463,7 @@ class QuantumMemory(EventDispatcherMixin, Entity):
 
         if isinstance(data, Entanglement):
             assert data.decohere_time >= self.simulator.tc
-            self.simulator.add_event(event := MemoryDecohereEvent(self, qubit, data, t=data.decohere_time))
+            self.simulator.sched(event := MemoryDecohereEvent(self, qubit, data, t=data.decohere_time))
             qubit.events.add(event)
         elif old is not None:
             qubit.events.discard(MemoryDecohereEvent)

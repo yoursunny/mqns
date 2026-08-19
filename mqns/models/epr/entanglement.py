@@ -176,7 +176,7 @@ class Entanglement(QuantumModel):
         """
         t = now - self.fidelity_time
         assert self.consumed_sides == 0b00
-        if t.time_slot == 0:
+        if t.slot == 0:
             return
         for se in self.store_decays:
             se(self, t)
@@ -238,7 +238,7 @@ class Entanglement(QuantumModel):
             else:
                 orig_eprs.append(epr)
 
-        orig_names = "-".join((e.name for e in orig_eprs))
+        orig_names = "-".join(e.name for e in orig_eprs)
         name = hashlib.sha256(orig_names.encode()).hexdigest()[:32]  # same length as default name
         ne = cast(
             E,

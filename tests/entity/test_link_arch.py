@@ -11,6 +11,9 @@ from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEnt
 from mqns.models.error import DepolarErrorModel, ErrorModel, parse_time_decay, time_decay_nop
 from mqns.simulator import Simulator, Time
 
+ACCURACY = 100_000_000
+EPR_TIME = Time(10, accuracy=ACCURACY)
+
 
 class FakeQuantumChannel:
     length: float
@@ -49,16 +52,12 @@ class FakeQuantumChannel:
     ],
 )
 def test_delays(LA: type[LinkArch], multipliers: tuple[float, float, float, float, float, float]):
-    # attempt_duration = tml*tau_l + tm0*tau_0
-    # notify_a = aml*tau_l + am0*tau_0
-    # notify_b = bml*tau_l + bm0*tau_0
-    rml, rm0, aml, am0, bml, bm0 = multipliers
-
     tau_l, tau_0 = 0.000471, 0.000031
 
     ch = FakeQuantumChannel(0, delay=tau_l, transfer_error_rate=0)
-    link_arch = LA()
-    link_arch.set(
+    la = LA()
+    la.set(
+        time_accuracy=ACCURACY,
         ch=ch,
         eta_s=1,
         eta_d=1,
@@ -67,17 +66,10 @@ def test_delays(LA: type[LinkArch], multipliers: tuple[float, float, float, floa
         epr_type=WernerStateEntanglement,
     )
 
-    d1_epr_creation, d1_notify_a, d1_notify_b = link_arch.delays(1)
-    assert d1_epr_creation == pytest.approx(0.0, abs=1e-6)
-    assert d1_notify_a == pytest.approx(tau_l * aml + tau_0 * am0, abs=1e-6)
-    assert d1_notify_b == pytest.approx(tau_l * bml + tau_0 * bm0, abs=1e-6)
-
-    d6_epr_creation, _, _ = link_arch.delays(6)
-    assert d6_epr_creation - d1_epr_creation == pytest.approx((tau_l * rml + tau_0 * rm0) * 5, abs=1e-6)
-
-
-ACCURACY = 10_000_000
-EPR_TIME = Time(10, accuracy=ACCURACY)
+    rml, rm0, aml, am0, bml, bm0 = multipliers
+    assert la.attempt_interval.sec == pytest.approx(tau_l * rml + tau_0 * rm0, abs=1e-6)
+    assert la.d_notify_pri.sec == pytest.approx(tau_l * aml + tau_0 * am0, abs=1e-6)
+    assert la.d_notify_2nd.sec == pytest.approx(tau_l * bml + tau_0 * bm0, abs=1e-6)
 
 
 def make_epr(link_arch: LinkArch, t_cohere: Time):
@@ -87,10 +79,10 @@ def make_epr(link_arch: LinkArch, t_cohere: Time):
 
     _ = Simulator(0, 10, accuracy=ACCURACY, install_to=(src, dst))
 
-    epr, d_notify_a, d_notify_b = link_arch.make_epr(1, EPR_TIME, src=src, dst=dst, key=None)
+    epr = link_arch.make_epr(EPR_TIME, src, dst, key=None)
     assert epr.src is src
     assert epr.dst is dst
-    return epr, d_notify_a, d_notify_b
+    return epr
 
 
 @pytest.mark.parametrize(
@@ -104,10 +96,18 @@ def make_epr(link_arch: LinkArch, t_cohere: Time):
 def test_init_fidelity(E: type[Entanglement], use_probv: bool):
     ch = FakeQuantumChannel(0, init_fidelity=(70, 20, 5, 5) if use_probv else 0.7)
     t_cohere = Time.from_sec(1, accuracy=ACCURACY)
-    link_arch = LinkArchDimDual()
-    link_arch.set(ch=ch, eta_s=1, eta_d=1, reset_time=0, tau_0=0, epr_type=E)
+    la = LinkArchDimDual()
+    la.set(
+        time_accuracy=ACCURACY,
+        ch=ch,
+        eta_s=1,
+        eta_d=1,
+        reset_time=0,
+        tau_0=0,
+        epr_type=E,
+    )
 
-    epr, _, _ = make_epr(link_arch, t_cohere)
+    epr = make_epr(la, t_cohere)
     assert epr.fidelity_time == EPR_TIME
     assert epr.fidelity == pytest.approx(0.7, abs=1e-6)
     if type(epr) is MixedStateEntanglement:
@@ -122,19 +122,19 @@ def test_init_fidelity(E: type[Entanglement], use_probv: bool):
 def test_perfect_error(LA: type[LinkArch], E: type[Entanglement]):
     ch = FakeQuantumChannel(0)
     t_cohere = Time.from_sec(1, accuracy=ACCURACY)
-    link_arch = LA()
-    link_arch.set(
+    la = LA()
+    la.set(
+        time_accuracy=ACCURACY,
         ch=ch,
         eta_s=1,
         eta_d=1,
         reset_time=0,
         tau_0=0,
         epr_type=E,
-        t0=t_cohere,
         store_decays=(time_decay_nop, time_decay_nop),
     )
 
-    epr, _, _ = make_epr(link_arch, t_cohere)
+    epr = make_epr(la, t_cohere)
     assert type(epr) is E
     assert epr.fidelity_time == EPR_TIME
     assert epr.fidelity == pytest.approx(1.0, abs=1e-9)
@@ -163,21 +163,21 @@ def test_realistic_error(LA: type[LinkArch], w_or_probv: float | tuple[float, fl
     )
     t_cohere = Time.from_sec(0.100, accuracy=ACCURACY)  # coherence of an NV-center or Ion-Trap
     store_decay = parse_time_decay(None, t_cohere)
-    link_arch = LA()
-    link_arch.set(
+    la = LA()
+    la.set(
+        time_accuracy=ACCURACY,
         ch=ch,
         eta_s=1,
         eta_d=1,
         reset_time=0,
         tau_0=0.000001,  # 1~10us
         epr_type=MixedStateEntanglement if isinstance(w_or_probv, tuple) else WernerStateEntanglement,
-        t0=Time(0, accuracy=t_cohere.accuracy),
         store_decays=(store_decay, store_decay),
     )
 
-    epr, d_notify_a, d_notify_b = make_epr(link_arch, t_cohere)
-    assert EPR_TIME <= epr.fidelity_time <= min(d_notify_a, d_notify_b)
-    epr.apply_store_decays(now=max(d_notify_a, d_notify_b))
+    epr = make_epr(la, t_cohere)
+    assert EPR_TIME <= epr.fidelity_time <= EPR_TIME + min(la.d_notify_pri, la.d_notify_2nd)
+    epr.apply_store_decays(now=EPR_TIME + max(la.d_notify_pri, la.d_notify_2nd))
     print(epr)
     if type(epr) is WernerStateEntanglement:
         assert epr.w == pytest.approx(w_or_probv, abs=1e-6)

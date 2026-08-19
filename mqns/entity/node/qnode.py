@@ -36,11 +36,11 @@ class QNode(Node):
             apps: applications on the node.
         """
         super().__init__(name, apps=apps)
-        self.qchannels: list["QuantumChannel"] = []
+        self.qchannels: list[QuantumChannel] = []
         """Quantum channels connected to this node."""
-        self._qchannel_by_dst = dict[Node, "QuantumChannel"]()
-        self._memory: "QuantumMemory|None" = None
-        self.operators: list["QuantumOperator"] = []
+        self._qchannel_by_dst: dict[Node, QuantumChannel] = {}
+        self._memory: QuantumMemory | None = None
+        self.operators: list[QuantumOperator] = []
 
     @override
     def _node_install(self) -> None:

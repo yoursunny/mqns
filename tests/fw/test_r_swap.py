@@ -65,7 +65,7 @@ def test_tree2_one():
 
     for slot in 0.000, 0.010:
         t0 = slot
-        simulator.add_event(func_to_event(simulator.time(sec=t0 + 0.0065), do_routing))
+        simulator.sched(func_to_event(simulator.time(sec=t0 + 0.0065), do_routing))
         provide_entanglements(
             (0.0011, fwD, fwB),
             (0.0012, fwB, fwA),
@@ -114,7 +114,7 @@ def test_tree2_two():
 
     for slot in 0.000, 0.010:
         t0 = slot
-        simulator.add_event(func_to_event(simulator.time(sec=t0 + 0.0065), do_routing))
+        simulator.sched(func_to_event(simulator.time(sec=t0 + 0.0065), do_routing))
         provide_entanglements(
             (0.0011, fwD, fwB),
             (0.0012, fwB, fwA),

@@ -105,13 +105,13 @@ class BB84SendApp(Application[QNode]):
 
         t = self.simulator.ts
         event = func_to_event(t, self.send_qubit)
-        self.simulator.add_event(event)
+        self.simulator.sched(event)
         # while t <= simulator.te:
         #     time_list.append(t)
         #     t = t + simulator.time(sec = 1 / self.send_rate)
 
         #     event = func_to_event(t, self.send_qubit)
-        #     self._simulator.add_event(event)
+        #     self._simulator.sched(event)
 
     @event_handler
     def handleClassicPacket(self, event: RecvClassicPacket) -> None:
@@ -177,7 +177,7 @@ class BB84SendApp(Application[QNode]):
 
         t = self.simulator.tc + 1 / self.send_rate
         event = func_to_event(t, self.send_qubit)
-        self.simulator.add_event(event)
+        self.simulator.sched(event)
 
     def recv_error_estimate_packet(self, event: RecvClassicPacket):
         """BB84SendApp recv error estimate packet,and send error_estimate_reply packet.

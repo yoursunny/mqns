@@ -1,6 +1,5 @@
 import copy
 import itertools
-import os
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping
 from typing import Literal, TypedDict, Unpack
@@ -30,27 +29,6 @@ from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm, YenRouteA
 from mqns.network.topology import ClassicTopology, GridTopology, LinearTopology, Topology, TopologyInitKwargs, TreeTopology
 from mqns.simulator import Simulator, Time, event_handler, func_to_event
 from mqns.utils import AutoIncrementIdentifier, log, rng
-
-next_seed: list[int] = []
-"""
-If this contains an integer, ``build_*_network`` functions adopt the specified random seed.
-This enables detecting seed-specific test failures.
-
-The first seed is set with MQNS_TESTFW_SEED environment variable.
-Subsequent seeds are auto-incremented.
-The actual seed value is printed during test setup.
-
-To run a test case repeatedly with increasing seeds:
-
-    MQNS_TESTFW_SEED=0 pytest test_file.py::test_case --count=100 -x
-
-To run a test case with a specific seed:
-
-    MQNS_TESTFW_SEED=47 pytest test_file.py::test_case
-"""
-if _next_seed_env := os.getenv("MQNS_TESTFW_SEED"):
-    next_seed.append(int(_next_seed_env))
-del _next_seed_env
 
 
 class QubitReleaseReset(Application[QNode]):
@@ -143,10 +121,7 @@ def _build_network_finish(
     *,
     route: RouteAlgorithm | None = None,
 ):
-    if next_seed:
-        rng.reseed(next_seed[0])
-        print(f"MQNS_TESTFW_SEED={next_seed[0]}")
-        next_seed[0] += 1
+    rng.reseed("env")
 
     ForwarderSwapProc.table_leak_tol = d.get("swap_table_leak_tol", 0)
 
@@ -335,8 +310,10 @@ def provide_entanglements(
         simulator = src.simulator
         t_creation = simulator.tc
         ch = src.node.get_qchannel(dst.node)
+        la = ch.link_arch
 
-        ch.link_arch.set(
+        la.set(
+            time_accuracy=simulator.accuracy,
             ch=ch,
             eta_s=1,
             eta_d=1,
@@ -344,7 +321,6 @@ def provide_entanglements(
             tau_0=0,
             epr_type=src.network.epr_type,
         )
-        _, d_notify_a, d_notify_b = ch.link_arch.delays(1)
 
         ll_key = _provide_entanglements_autoid()
         epr = src.network.epr_type(
@@ -357,19 +333,19 @@ def provide_entanglements(
         )
         epr.fidelity = fidelity
 
-        for node, neighbor, d_notify in (src, dst, d_notify_a), (dst, src, d_notify_b):
+        for node, neighbor, d_notify in (src, dst, la.d_notify_pri), (dst, src, la.d_notify_2nd):
             q, _ = next(node.memory.find(lambda _, v: v is None, qchannel=ch), (None, None))
             assert q is not None, f"insufficient qubits assigned to {ch}"
             q._state = QubitState.ENTANGLED0
             q.key = ll_key
             node.memory.write(q.addr, epr)
-            simulator.add_event(QubitEntangledEvent(node.node, neighbor.node, q, t=t_creation + d_notify))
+            simulator.sched(QubitEntangledEvent(node.node, neighbor.node, q, t=t_creation + d_notify))
 
     def sched_entangle(t: float, src: Forwarder, dst: Forwarder):
         if t < 0:
             return
         simulator = src.simulator
-        simulator.add_event(func_to_event(simulator.time(sec=transform_t(t)), make_entangle, src, dst))
+        simulator.sched(func_to_event(simulator.time(sec=transform_t(t)), make_entangle, src, dst))
 
     for etg in etgs:
         if len(etg) == 3:

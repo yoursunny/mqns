@@ -44,7 +44,7 @@ class PathInstructions(TypedDict):
 
     This list shall have two elements per intermediate node, i.e. `2*(len(route)-2)`.
     The (2i)-th and (2i+1)-th element corresponds to left and right qchannel of the i-th intermediate node.
-    Each element is a duration in time_slot unit (see ``Time`` class); ``-1`` means no restriction.
+    Each element is a duration in time slots (see ``Time`` class); ``-1`` means no restriction.
 
     The semantics of "age" depend on the CutoffScheme passed to Forwarder.
     If swapping has been disabled, this list has no effect.

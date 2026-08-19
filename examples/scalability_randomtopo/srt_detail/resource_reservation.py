@@ -1,4 +1,6 @@
-from typing import Any, Dict, List
+# ruff: noqa: UP031
+
+from typing import Any
 
 from sequence.entanglement_management.entanglement_protocol import EntanglementProtocol
 from sequence.entanglement_management.generation import EntanglementGenerationA
@@ -10,7 +12,7 @@ from sequence.resource_management.rule_manager import Arguments, Rule
 from sequence.topology.node import QuantumRouter
 
 
-def eg_rule_condition(memory_info: "MemoryInfo", manager: "MemoryManager", args: Arguments) -> List["MemoryInfo"]:
+def eg_rule_condition(memory_info: "MemoryInfo", manager: "MemoryManager", args: Arguments) -> list["MemoryInfo"]:
     """Condition function used by entanglement generation protocol on nodes"""
     memory_indices = args["memory_indices"]
     if memory_info.state == "RAW" and memory_info.index in memory_indices:
@@ -19,7 +21,7 @@ def eg_rule_condition(memory_info: "MemoryInfo", manager: "MemoryManager", args:
         return []
 
 
-def eg_rule_action1(memories_info: List["MemoryInfo"], args: Dict[str, Any]):
+def eg_rule_action1(memories_info: list["MemoryInfo"], args: dict[str, Any]):
     """Action function used by entanglement generation protocol on nodes except
     the initiator
 
@@ -33,7 +35,7 @@ def eg_rule_action1(memories_info: List["MemoryInfo"], args: Dict[str, Any]):
     return protocol, [None], [None], [None]
 
 
-def eg_req_func(protocols: List["EntanglementProtocol"], args: Arguments) -> "EntanglementGenerationA":
+def eg_req_func(protocols: list["EntanglementProtocol"], args: Arguments) -> "EntanglementGenerationA":
     """Function used by `eg_rule_action2` function for selecting generation
     protocols on the remote node
 
@@ -49,7 +51,7 @@ def eg_req_func(protocols: List["EntanglementProtocol"], args: Arguments) -> "En
             return protocol
 
 
-def eg_rule_action2(memories_info: List["MemoryInfo"], args: Arguments):
+def eg_rule_action2(memories_info: list["MemoryInfo"], args: Arguments):
     """Action function used by entanglement generation protocol on nodes except
     the responder
 
@@ -114,7 +116,7 @@ def ep_req_func1(protocols, args: Arguments) -> "BBPSSW":
     return _protocols[0]
 
 
-def ep_rule_action1(memories_info: List["MemoryInfo"], args: Arguments):
+def ep_rule_action1(memories_info: list["MemoryInfo"], args: Arguments):
     """Action function used by BBPSSW protocol on nodes except the
     responder node
 
@@ -130,7 +132,7 @@ def ep_rule_action1(memories_info: List["MemoryInfo"], args: Arguments):
     return protocol, dsts, req_funcs, req_args
 
 
-def ep_rule_condition2(memory_info: "MemoryInfo", manager: "MemoryManager", args: Arguments) -> List["MemoryInfo"]:
+def ep_rule_condition2(memory_info: "MemoryInfo", manager: "MemoryManager", args: Arguments) -> list["MemoryInfo"]:
     """Condition function used by BBPSSW protocol on nodes except the responder"""
     memory_indices = args["memory_indices"]
     fidelity = args["fidelity"]
@@ -140,7 +142,7 @@ def ep_rule_condition2(memory_info: "MemoryInfo", manager: "MemoryManager", args
     return []
 
 
-def ep_rule_action2(memories_info: List["MemoryInfo"], args: Arguments):
+def ep_rule_action2(memories_info: list["MemoryInfo"], args: Arguments):
     """Action function used by BBPSSW protocol on nodes except the responder"""
     memories = [info.memory for info in memories_info]
     name = "EP.%s" % memories[0].name
@@ -148,14 +150,14 @@ def ep_rule_action2(memories_info: List["MemoryInfo"], args: Arguments):
     return protocol, [None], [None], [None]
 
 
-def es_rule_actionB(memories_info: List["MemoryInfo"], args):
+def es_rule_actionB(memories_info: list["MemoryInfo"], args):
     memories = [info.memory for info in memories_info]
     memory = memories[0]
     protocol = EntanglementSwappingB(None, "ESB." + memory.name, memory)
     return [protocol, [None], [None], [None]]
 
 
-def es_rule_ASAPactionB(memories_info: List["MemoryInfo"], args: Arguments):
+def es_rule_ASAPactionB(memories_info: list["MemoryInfo"], args: Arguments):
     """Action function used by EntanglementSwappingB protocol"""
     memories = [info.memory for info in memories_info]
     memory = memories[0]
@@ -330,7 +332,7 @@ def es_rule_ASAP_conditionA(memory_info: "MemoryInfo", manager: "MemoryManager",
     return []
 
 
-def es_req_func(protocols: List["EntanglementProtocol"], args: Arguments) -> "EntanglementSwappingB":
+def es_req_func(protocols: list["EntanglementProtocol"], args: Arguments) -> "EntanglementSwappingB":
     """Function used by `es_rule_actionA` for selecting swapping protocols on the remote node"""
     target_memo = args["target_memo"]
     for protocol in protocols:
@@ -342,7 +344,7 @@ def es_req_func(protocols: List["EntanglementProtocol"], args: Arguments) -> "En
             return protocol
 
 
-def es_rule_actionA(memories_info: List["MemoryInfo"], args: Arguments):
+def es_rule_actionA(memories_info: list["MemoryInfo"], args: Arguments):
     """Action function used by EntanglementSwappingA protocol on nodes"""
     es_succ_prob = args["es_succ_prob"]
     es_degradation = args["es_degradation"]
@@ -361,7 +363,7 @@ def es_rule_actionA(memories_info: List["MemoryInfo"], args: Arguments):
     return protocol, dsts, req_funcs, req_args
 
 
-def es_rule_conditionB2(memory_info: "MemoryInfo", manager: "MemoryManager", args: Arguments) -> List["MemoryInfo"]:
+def es_rule_conditionB2(memory_info: "MemoryInfo", manager: "MemoryManager", args: Arguments) -> list["MemoryInfo"]:
     """Condition function used by EntanglementSwappingB protocol on intermediate nodes of path"""
     memory_indices = args["memory_indices"]
     left = args["left"]
@@ -378,7 +380,7 @@ def es_rule_conditionB2(memory_info: "MemoryInfo", manager: "MemoryManager", arg
         return []
 
 
-def es_rule_ASAP_conditionB2(memory_info: "MemoryInfo", manager: "MemoryManager", args: Arguments) -> List["MemoryInfo"]:
+def es_rule_ASAP_conditionB2(memory_info: "MemoryInfo", manager: "MemoryManager", args: Arguments) -> list["MemoryInfo"]:
     """Condition function used by EntanglementSwappingB protocol on intermediate nodes of path"""
     memory_indices = args["memory_indices"]
     fidelity = args["fidelity"]
@@ -390,7 +392,7 @@ def es_rule_ASAP_conditionB2(memory_info: "MemoryInfo", manager: "MemoryManager"
         return []
 
 
-def create_rules(self, path: List[str], reservation: "Reservation") -> List["Rule"]:
+def create_rules(self, path: list[str], reservation: "Reservation") -> list["Rule"]:
     """Method to create rules for a successful request.
 
     Rules are used to direct the flow of information/entanglement in the resource manager.

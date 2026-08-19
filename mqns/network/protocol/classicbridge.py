@@ -7,7 +7,7 @@ from typing import Protocol, override
 
 from mqns.entity.cchannel import ClassicPacket, RecvClassicPacket
 from mqns.entity.node import Application, Node
-from mqns.simulator import Event, Simulator, event_handler, func_to_event
+from mqns.simulator import EventHandleSlot, Simulator, event_handler, func_to_event
 from mqns.utils import log
 
 try:
@@ -103,7 +103,7 @@ class ClassicConnector:
             )
 
         self.simulator = simulator
-        self.bridges: dict[str, "ClassicBridge"] = {}
+        self.bridges: dict[str, ClassicBridge] = {}
         self.nats_servers = os.getenv("NATS_URL", "nats://127.0.0.1:4222").split(",")
         self.nats_prefix = nats_prefix
 
@@ -111,7 +111,7 @@ class ClassicConnector:
         simulator.set_gate_reached_handler(lambda t: self.queue.put(GateReached(t)))
 
         self._last_t = 0
-        self._last_gate_event: Event | None = None
+        self._last_gate_event = EventHandleSlot()
 
         self.queue = queue.Queue[TransmittableItem](maxsize=4096)
         self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
@@ -196,18 +196,16 @@ class ClassicConnector:
         self._last_t = t
 
         if dst == "_":
-            t = self.simulator.time(time_slot=t)
+            t = self.simulator.time(slot=t)
             match src:
                 case "gate":
-                    if self._last_gate_event:
-                        self._last_gate_event.cancel()
-                    self._last_gate_event = self.simulator.update_gate(t)
+                    self._last_gate_event.set(self.simulator.update_gate(t))
                 case "stop":
                     event = func_to_event(t, self.simulator.stop)
                     event.name = "ClassicConnector.stop"
                     event.priority = 0xFFFFFFFF
-                    self.simulator.add_event(event)
-                    self.simulator.update_gate(t)
+                    self.simulator.sched(event)
+                    self._last_gate_event.set(self.simulator.update_gate(t))
                 case _:
                     log.error("ClassicConnector received unexpected special subject ._.%s", src)
             return
@@ -222,7 +220,7 @@ class ClassicConnector:
             payload=payload,
             is_json=headers.get("fmt") == "json",
         )
-        self.simulator.add_event(func_to_event(self.simulator.time(time_slot=cbp.t), bridge.inject, cbp))
+        self.simulator.sched(func_to_event(self.simulator.time(slot=cbp.t), bridge.inject, cbp))
 
 
 class ClassicBridge(Application[Node]):
@@ -262,7 +260,7 @@ class ClassicBridge(Application[Node]):
         event.cancel()
 
         cbp = ClassicBridgePacket(
-            t=event.t.time_slot,
+            t=event.t.slot,
             src=pkt.src.name,
             dst=self.node.name,
             payload=pkt.encode(),

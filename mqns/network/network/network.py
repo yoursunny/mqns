@@ -46,7 +46,7 @@ def _save_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], ch: C
     l.append(ch)
     if len(ch.node_list) != 2:
         return
-    a, b = sorted((node.name for node in cast(list[Node], ch.node_list)))
+    a, b = sorted(node.name for node in cast(list[Node], ch.node_list))
     d[(a, b)] = ch
 
 
@@ -300,8 +300,8 @@ class QuantumNetwork:
             return
 
         t_enter = self.simulator.tc if req.active_since is Time.MIN else req.active_since
-        self.simulator.add_event(RequestActiveEvent(self.controller, req, t=t_enter))
+        self.simulator.sched(RequestActiveEvent(self.controller, req, t=t_enter))
 
         if req.active_until is not Time.MAX:
-            req.inactive_event = RequestInactiveEvent(self.controller, req, t=req.active_until)
-            self.simulator.add_event(req.inactive_event)
+            self.simulator.sched(event := RequestInactiveEvent(self.controller, req, t=req.active_until))
+            req.inactive_event.set(event)

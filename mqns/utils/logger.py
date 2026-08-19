@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 class CustomAdapter(LoggerAdapter):
     def __init__(self, logger: Logger):
         super().__init__(logger)
-        self._simulator: "Simulator|None" = None
+        self._simulator: Simulator | None = None
 
     @override
     def process(self, msg, kwargs):

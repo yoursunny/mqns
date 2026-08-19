@@ -6,7 +6,7 @@ from typing import override
 
 import pytest
 
-from mqns.simulator import Event, EventHandleSet, Simulator, Time
+from mqns.simulator import Event, EventHandleSet, EventHandleSlot, Simulator, Time
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +39,7 @@ class RescheduleEvent(SimpleEvent):
         for name, prio in self.new_events:
             event = SimpleEvent(self.t, name)
             event.priority = prio
-            self.simulator.add_event(event)
+            self.simulator.sched(event)
 
 
 class StopEvent(SimpleEvent):
@@ -67,7 +67,7 @@ def test_run():
     assert s.total_events == 0
 
     e = SimpleEvent(s.time(sec=1), name="t0")
-    s.add_event(e)
+    s.sched(e)
     assert e.is_canceled is False
     e.cancel()
     assert e.is_canceled is True
@@ -76,14 +76,14 @@ def test_run():
 
     t = 0
     while t <= 12:
-        s.add_event(SimpleEvent(s.time(sec=t), name="t1"))
+        s.sched(SimpleEvent(s.time(sec=t), name="t1"))
         t += 0.5
     # 25 instances of t1 scheduled at 0.0, 0.5, 1.0, .., 11.5, 12.0
     assert s.total_events == 1 + 25
 
     t = 5
     while t <= 20:
-        s.add_event(SimpleEvent(s.time(sec=t), name="t2"))
+        s.sched(SimpleEvent(s.time(sec=t), name="t2"))
         t += 1
     # 11 instances of t2 scheduled at 5, 6, .., 14, 15
     assert s.total_events == 1 + 25 + 11
@@ -105,17 +105,17 @@ def test_ordering():
 
     p19 = SimpleEvent(t1, "p19")
     p19.priority = 9
-    s.add_event(p19)
+    s.sched(p19)
     p11 = SimpleEvent(t1, "p11")
     p11.priority = 1
-    s.add_event(p11)
+    s.sched(p11)
     p15 = SimpleEvent(t1, "p15")
     p15.priority = 5
-    s.add_event(p15)
+    s.sched(p15)
 
     p25 = RescheduleEvent(t2, "p25", s, ("p21", 1), ("p29", 9))
     p25.priority = 5
-    s.add_event(p25)
+    s.sched(p25)
 
     s.run()
 
@@ -141,14 +141,14 @@ def test_stop(*, te: float):
     s.update_gate(s.time(sec=60), direct=True)
 
     e = StopEvent(s.time(sec=9.5), name="s0", simulator=s)
-    s.add_event(e)
+    s.sched(e)
     # 1 instance of s0 scheduled at 9.5
     assert s.total_events == 1
 
     t = 1
     while t <= 60:
         e = SimpleEvent(s.time(sec=t), name="t1")
-        s.add_event(e)
+        s.sched(e)
         t += 1
     # up to 60 instances of t1 scheduled at 1, 2, .., MIN(60, te)
     assert s.total_events == 1 + min(60, te)
@@ -163,13 +163,13 @@ def test_stop(*, te: float):
 def test_gate():
     s = Simulator(0.1, math.inf, accuracy=1000)
     assert s.tc == s.ts == s.time(sec=0.1)
-    s.add_event(SimpleEvent(s.time(sec=0), "z0"))  # before s.ts, dropped
+    s.sched(SimpleEvent(s.time(sec=0), "z0"))  # before s.ts, dropped
 
     # set initial gate to 5s, schedule events
     s.update_gate(s.time(sec=5), direct=True)
-    s.add_event(SimpleEvent(s.time(sec=2), "b2"))
-    s.add_event(SimpleEvent(s.time(sec=5), "b5"))
-    s.add_event(SimpleEvent(s.time(sec=8), "a8"))
+    s.sched(SimpleEvent(s.time(sec=2), "b2"))
+    s.sched(SimpleEvent(s.time(sec=5), "b5"))
+    s.sched(SimpleEvent(s.time(sec=8), "a8"))
 
     # run Simulator in a background thread
     th = threading.Thread(target=s.run, daemon=True)
@@ -184,8 +184,8 @@ def test_gate():
     assert th.is_alive()
 
     # schedule another event at initial gate and release the gate to 10s
-    s.add_event(SimpleEvent(s.time(sec=4), "z4"))  # before s.tc, dropped
-    s.add_event(SimpleEvent(s.time(sec=5), "a5"))
+    s.sched(SimpleEvent(s.time(sec=4), "z4"))  # before s.tc, dropped
+    s.sched(SimpleEvent(s.time(sec=5), "a5"))
 
     # let the Simulator run again, verify a5,a8 invoked
     update_gate_event = s.update_gate(s.time(sec=10))
@@ -208,6 +208,28 @@ def test_gate():
     assert not th.is_alive()
 
 
+def test_handle_slot():
+    s = Simulator(0, 1, accuracy=1000)
+
+    hsA = EventHandleSlot[SimpleEvent]()
+    hsB = EventHandleSlot[SimpleEvent]()
+
+    s.sched(event := SimpleEvent(s.ts, "A0"))
+    hsA.set(event)
+    s.sched(event := SimpleEvent(s.ts, "A1"))
+    hsA.set(event)
+
+    s.sched(event := SimpleEvent(s.ts, "B0"))
+    hsB.set(event)
+    hsB.cancel()
+
+    s.run()
+
+    assert len(SimpleEvent.invokes["A0"]) == 0
+    assert len(SimpleEvent.invokes["A1"]) == 1
+    assert len(SimpleEvent.invokes["B0"]) == 0
+
+
 def test_handle_set_add():
     class EventA(SimpleEvent):
         pass
@@ -222,16 +244,16 @@ def test_handle_set_add():
 
     hs = EventHandleSet()
 
-    s.add_event(event := EventA(s.ts, "A0"))
+    s.sched(event := EventA(s.ts, "A0"))
     hs.add(event)
-    s.add_event(event := EventA(s.ts, "A1"))
+    s.sched(event := EventA(s.ts, "A1"))
     hs.add(event)
 
-    s.add_event(event := EventB(s.ts, "B0"))
+    s.sched(event := EventB(s.ts, "B0"))
     hs.add(event)
     hs.discard(EventB)
 
-    s.add_event(event := EventC(s.ts, "C0"))
+    s.sched(event := EventC(s.ts, "C0"))
     hs.add(event)
 
     s.run()
@@ -253,10 +275,10 @@ def test_handle_set_pop():
 
     hs = EventHandleSet()
 
-    s.add_event(event := EventA(s.ts, "A0"))
+    s.sched(event := EventA(s.ts, "A0"))
     hs.add(event)
 
-    s.add_event(event := EventB(s.ts, "B0"))
+    s.sched(event := EventB(s.ts, "B0"))
     hs.add(event)
     hs.pop(EventB)
 

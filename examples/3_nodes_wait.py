@@ -325,7 +325,7 @@ if __name__ == "__main__":
     args = Args().parse_args()
 
     if args.plt_from_json:
-        with open(args.plt_from_json, "r") as file:
+        with open(args.plt_from_json) as file:
             rows: Rows = json.load(file)
     else:
         rows = main(args)

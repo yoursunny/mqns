@@ -11,7 +11,7 @@ from sequence.topology.node import QuantumRouter
 from sequence.topology.router_net_topo import RouterNetTopo
 
 from mqns.network.network import QuantumNetwork, Request
-from mqns.utils import WallClockTimeout
+from mqns.utils import WallClockTimeout, unwrap
 
 from srt_detail.defs import RequestStats, RunArgs, RunResult
 from srt_detail.defs import build_network as mqns_build_network
@@ -140,8 +140,8 @@ def convert_request(routers: list[QuantumRouter], request: Request) -> RequestAp
     """
     Convert MQNS src-dst request into a pair of applications in SeQUeNCe.
     """
-    src_node = next((r for r in routers if r.name == request.src))
-    dst_node = next((r for r in routers if r.name == request.dst))
+    src_node = unwrap(next((r for r in routers if r.name == request.src), None))
+    dst_node = unwrap(next((r for r in routers if r.name == request.dst), None))
     return (
         EntanglementRequestApp(src_node, dst_node.name),
         ResetApp(dst_node, src_node.name),

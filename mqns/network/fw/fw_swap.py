@@ -389,7 +389,7 @@ class ForwarderSwapProc(ForwarderModule):
         if not self.simulator.is_continuous:
             event = func_to_event(self.simulator.te, self.check_table_leak)
             event.priority = 0x1FFFFFFF
-            self.simulator.add_event(event)
+            self.simulator.sched(event)
 
     def check_table_leak(self) -> None:
         """
@@ -483,7 +483,7 @@ class ForwarderSwapProc(ForwarderModule):
         else:
             finish_time = now
         error_time = finish_time if self.error_at_finish else now
-        self.simulator.add_event(func_to_event(finish_time, self._s_finish, arms, fp, error_time, task))
+        self.simulator.sched(func_to_event(finish_time, self._s_finish, arms, fp, error_time, task))
 
         self.log_debug("SWAP_START %s retrieved-from=%s saved-at=%s finish-time=%s", task, task_from, task_saved, finish_time)
 
@@ -530,7 +530,7 @@ class ForwarderSwapProc(ForwarderModule):
                 continue
             alive_arms.append(arm)
             _, epr = self.memory.read(arm.mq.addr, has=self.epr_type, remove=True)
-            local_expiry.append(epr.decohere_time.time_slot)
+            local_expiry.append(epr.decohere_time.slot)
             phy = self.remote_swapped.pop(arm.o_key, epr)
             phy_eprs.append(phy)
 
@@ -688,7 +688,7 @@ class ForwarderSwapProc(ForwarderModule):
         new_phy = self.remote_swapped.pop(su.o_key, None)
 
         # If the lower-ranked swap failed, had conflict path, or the new EPR has decohered, release the qubit.
-        if not su.q_paths or su.expiry <= self.simulator.tc.time_slot:
+        if not su.q_paths or su.expiry <= self.simulator.tc.slot:
             if qubit:
                 if su.expiry == 0:
                     self.fw_cnt.n_su_lower[3] += 1
@@ -701,7 +701,7 @@ class ForwarderSwapProc(ForwarderModule):
                     self.log_debug(
                         "releasing qubit %s reason=lower-expiry expiry=%s key=%s | %s",
                         qubit.addr,
-                        self.simulator.time(time_slot=su.expiry),
+                        self.simulator.time(slot=su.expiry),
                         su.o_key,
                         new_phy,
                     )
@@ -795,9 +795,9 @@ class ForwarderSwapProc(ForwarderModule):
         if task.has_expire_event:
             return
         task.has_expire_event = True
-        t = self.simulator.tc if not task.expiry else self.simulator.time(time_slot=task.expiry)
+        t = self.simulator.tc if not task.expiry else self.simulator.time(slot=task.expiry)
         t += self.memory.t_cohere  # delay deletion so that incoming messages can be replied to
-        self.simulator.add_event(_SwapTaskExpireEvent(task, t=t))
+        self.simulator.sched(_SwapTaskExpireEvent(task, t=t))
 
     def _expire_task(self, event: _SwapTaskExpireEvent):
         task = event.task
