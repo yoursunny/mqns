@@ -36,7 +36,7 @@ from tap import Tap
 from mqns.network.builder import CTRL_DELAY, LINK_ARCH_MAP, LinkArchLiteral, NetworkBuilder
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, seed_seq_env
 
 from examples_common.plotting import Axes1D, plt, plt_save
 
@@ -57,9 +57,6 @@ class Args(Tap):
     @override
     def configure(self) -> None:
         self.add_argument("--link_arch", type=str, nargs="+", choices=LINK_ARCH_MAP.keys())
-
-
-SEED_BASE = 100
 
 
 class ChannelResult(TypedDict):
@@ -117,11 +114,7 @@ def run_row(args: Args, M: int, link_arch: LinkArchLiteral) -> list[list[Channel
     Run N simulations.
     Return details from single simulations.
     """
-    row: list[list[ChannelResult]] = []
-    for i in range(args.runs):
-        res = run_simulation(SEED_BASE + i, args.sim_duration, args.L, M, link_arch)
-        row.append(res)
-    return row
+    return [run_simulation(seed, args.sim_duration, args.L, M, link_arch) for seed in seed_seq_env(args.runs, 100)]
 
 
 def gather_channel_stats(row: list[list[ChannelResult]], i: int) -> dict:

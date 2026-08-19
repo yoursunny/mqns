@@ -57,7 +57,7 @@ from mqns.network.proactive import compute_vora_swap_sequence
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayerCounters
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, seed_seq_env
 
 from examples_common.plotting import Axes2D, plt, plt_save
 
@@ -88,7 +88,6 @@ For each distance proportion, function to generate relative weights of qchannel 
 
 class ParameterSet:
     def __init__(self):
-        self.seed_base = 100
         self.n_runs = 10
 
         self.sim_duration = 5.0
@@ -185,7 +184,7 @@ def vora_regen_row(p: ParameterSet, num_routers: int, dist_prop: str, indir: str
     )
 
 
-def run_simulation(p: ParameterSet, seed: int) -> tuple[float, float]:
+def run_simulation(seed: int, p: ParameterSet) -> tuple[float, float]:
     rng.reseed(seed)
 
     net = p.build_network()
@@ -207,10 +206,9 @@ def run_row(p: ParameterSet, num_routers: int, dist_prop: str, swap_conf: str) -
 
     entanglements: list[float] = []
     expired: list[float] = []
-    for i in range(p.n_runs):
-        print(f"Simulation: {num_routers} routers | {dist_prop} distances | {swap_conf} | run #{i + 1}")
-        seed = p.seed_base + i
-        e2e_count, expired_count = run_simulation(p, seed)
+    for seed in seed_seq_env(args.runs, 100):
+        print(f"Simulation: {num_routers} routers | {dist_prop} distances | {swap_conf} | seed {seed}")
+        e2e_count, expired_count = run_simulation(seed, p)
         entanglements.append(e2e_count)
         expired.append(expired_count)
 

@@ -23,7 +23,7 @@ from mqns.entity.qchannel import LinkArch, LinkArchDimBk, LinkArchSim, LinkArchS
 from mqns.network.builder import CTRL_DELAY, ChannelParam, NetworkBuilder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
-from mqns.utils import log, rng, unwrap
+from mqns.utils import log, rng, seed_seq_env, unwrap
 
 from examples_common.plotting import Axes2D, mpl, plt, plt_save
 
@@ -31,7 +31,6 @@ log.set_default_level("CRITICAL")
 
 # Constants
 sim_duration = 0.5
-SEED_BASE = 42
 ch_lengths: list[float] = [30, 30]
 
 # Experiment parameters
@@ -45,12 +44,7 @@ channel_configs: dict[str, list[LinkArch]] = {
 }
 
 
-def run_simulation(
-    ch_capacities: list[tuple[int, int]],
-    link_architectures: list[LinkArch],
-    t_cohere: float,
-    seed: int,
-):
+def run_simulation(seed: int, ch_capacities: list[tuple[int, int]], link_architectures: list[LinkArch], t_cohere: float):
     rng.reseed(seed)
 
     net = (
@@ -85,14 +79,9 @@ def run_row(
 
     rates: list[float] = []
     fids: list[float] = []
-    for i in range(n_runs):
-        print(f"{arch_label}, T_cohere={t_cohere:.3f}, Mem alloc={[left, right]}, run {i + 1}")
-        rate, fidelity = run_simulation(
-            ch_capacities=[(total_qubits, left), (right, total_qubits)],
-            link_architectures=link_archs,
-            t_cohere=t_cohere,
-            seed=SEED_BASE + i,
-        )
+    for seed in seed_seq_env(n_runs, 42):
+        print(f"{arch_label}, T_cohere={t_cohere:.3f}, Mem alloc={[left, right]}, seed={seed}")
+        rate, fidelity = run_simulation(seed, [(total_qubits, left), (right, total_qubits)], link_archs, t_cohere)
         rates.append(rate)
         fids.append(fidelity)
     return t_cohere, arch_label, rates, fids

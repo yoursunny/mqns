@@ -26,7 +26,7 @@ from mqns.network.fw import SwapSequenceInput
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayerCounters
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, seed_env, seed_seq_env
 
 from examples_common.plotting import plt, plt_save
 
@@ -45,8 +45,8 @@ log.set_default_level("CRITICAL")
 # USER CONFIG: Experiment defaults
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Reproducibility
-SEED_BASE = 100  # each run uses SEED_BASE + run_index
+# Reproducibility: each run uses SEED_BASE + run_index
+DEFAULT_SEED_BASE = 100  # Can be changed via MQNS_SEED environment variable
 
 # Simulation controls
 SIM_DURATION = 3.0  # Duration of one simulation run in seconds
@@ -139,8 +139,8 @@ MEASURES: list[MetricName] = ["throughput", "mean_fidelity", "expired_ratio"]
 # Core simulation runner
 # ──────────────────────────────────────────────────────────────────────────────
 def run_simulation(
-    *,
     seed: int,
+    *,
     t_cohere: float,
     swap: SwapSequenceInput,
     channel_capacity: int,
@@ -213,12 +213,11 @@ def run_row(
     """
     metrics_per_run: list[dict[str, float]] = []
 
-    for i in range(n_runs):
-        seed = SEED_BASE + i
+    for i, seed in enumerate(seed_seq_env(n_runs, DEFAULT_SEED_BASE)):
         print(f"t_cohere={t_cohere:.6f}, swap={swap}, cap={channel_capacity}, run {i + 1}/{n_runs}")
 
         m = run_simulation(
-            seed=seed,
+            seed,
             t_cohere=t_cohere,
             swap=swap,
             channel_capacity=channel_capacity,
@@ -342,7 +341,7 @@ if __name__ == "__main__":
     if not SWEEP:
         # Single scenario run
         metrics = run_simulation(
-            seed=SEED_BASE,
+            seed_env(DEFAULT_SEED_BASE),
             t_cohere=T_COHERE,
             swap=SWAP,
             channel_capacity=CHANNEL_CAPACITY,

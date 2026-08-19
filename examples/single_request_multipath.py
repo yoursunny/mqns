@@ -21,7 +21,7 @@ from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayerCounters
 from mqns.network.route import YenRouteAlgorithm
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, seed_env
 
 log.set_default_level("DEBUG")
 
@@ -29,8 +29,6 @@ log.set_default_level("DEBUG")
 class Args(Tap):
     sim_duration: float = 3  # simulation duration in seconds
 
-
-SEED_BASE = 100
 
 # Quantum channel lengths
 ch_S_R1 = 10
@@ -79,6 +77,6 @@ def run_simulation(seed: int, args: Args):
 if __name__ == "__main__":
     args = Args().parse_args()
 
-    e2e_rate, decoh_ratio = run_simulation(SEED_BASE, args)
+    e2e_rate, decoh_ratio = run_simulation(seed_env(100), args)
     print(f"E2E etg rate: {e2e_rate}")
     print(f"Expired memories: {decoh_ratio}")

@@ -18,7 +18,7 @@
 from mqns.utils.autoid import AutoIncrementIdentifier
 from mqns.utils.json import json_default, json_encodable
 from mqns.utils.logger import LogSelfMixin, log
-from mqns.utils.random import rng
+from mqns.utils.random import rng, seed_env, seed_seq_env
 from mqns.utils.timeout import WallClockTimeout
 from mqns.utils.types import DecoratorDispatchBuilder, unwrap, unwrap_cast
 
@@ -30,6 +30,8 @@ __all__ = [
     "log",
     "LogSelfMixin",
     "rng",
+    "seed_env",
+    "seed_seq_env",
     "unwrap_cast",
     "unwrap",
     "WallClockTimeout",

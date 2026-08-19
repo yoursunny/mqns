@@ -46,7 +46,7 @@ from mqns.network.network import QuantumNetwork
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Simulator
-from mqns.utils import log, rng, unwrap
+from mqns.utils import log, rng, seed_seq_env, unwrap
 
 from examples_common.plotting import plt, plt_save
 
@@ -76,7 +76,6 @@ class Args(Tap):
 
 
 SIMULATOR_ACCURACY = 1000000
-SEED_BASE = 100
 
 
 @dataclass
@@ -280,8 +279,8 @@ def run_row(args: Args, ri: RowInput, lam_mean: list[float]) -> Row:
     rate_mdl, fid_mdl = run_model(lam_mean, ri.w)
 
     runs: list[Stats] = []
-    for i in range(args.runs):
-        runs += run_evaluation(SEED_BASE + i, args, ri)
+    for seed in seed_seq_env(args.runs, 100):
+        runs += run_evaluation(seed, args, ri)
 
     rates = np.fromiter((s["rate"] for s in runs), dtype=float)
     fids = np.fromiter((s["fid_mean"] if s["rate"] > 0 else np.nan for s in runs), dtype=float)
@@ -303,7 +302,7 @@ def run_row(args: Args, ri: RowInput, lam_mean: list[float]) -> Row:
 def main(args: Args) -> Report:
     # Run calibration step to determine LinkLayer arrival rates of each channel.
     with Pool(processes=args.workers) as pool:
-        lam_runs = pool.starmap(run_calibration, itertools.product(range(SEED_BASE, SEED_BASE + args.runs), [args]))
+        lam_runs = pool.starmap(run_calibration, itertools.product(seed_seq_env(args.runs, 100), [args]))
     lam_mean: list[float] = []
     lam_std: list[float] = []
     # Collect mean LinkLayer arrival rates of each channel.

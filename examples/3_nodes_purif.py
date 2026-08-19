@@ -5,7 +5,7 @@ from tap import Tap
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, seed_seq_env
 
 
 # Command line arguments
@@ -18,13 +18,11 @@ args = Args().parse_args()
 
 log.set_default_level("DEBUG")
 
-SEED_BASE = 100
-
 # parameters
 sim_duration = 5
 
 
-def run_simulation(t_cohere: float, seed: int):
+def run_simulation(seed: int, t_cohere: float):
     rng.reseed(seed)
 
     net = (
@@ -58,10 +56,9 @@ t_cohere_values = [1]
 for t_cohere in t_cohere_values:
     rates = []
     fids = []
-    for i in range(args.runs):
-        print(f"T_cohere={t_cohere:.4f}, run {i + 1}")
-        seed = SEED_BASE + i
-        rate, f = run_simulation(t_cohere, seed)
+    for seed in seed_seq_env(args.runs, 100):
+        print(f"T_cohere={t_cohere:.4f}, seed={seed}")
+        rate, f = run_simulation(seed, t_cohere)
         rates.append(rate)
         fids.append(f)
 

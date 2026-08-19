@@ -9,7 +9,7 @@ from mqns.network.fw import Forwarder, ForwarderCounters
 from mqns.network.protocol.classicbridge import ClassicBridge
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, seed_env
 
 log.set_default_level("INFO")
 
@@ -17,7 +17,6 @@ log.set_default_level("INFO")
 class Args(Tap):
     nats_prefix: str = ClassicBridge.DEFAULT_NATS_PREFIX  # prefix of NATS subjects
     sim_accuracy: int = 1_000_000  # simulation accuracy in time slots per second
-    seed: int | None = None  # random seed
     mode: Literal["PCA", "RCS"] = "PCA"
     sync_timing: list[float]
     L: tuple[float, float] = (50, 10)  # qchannel lengths (km)
@@ -49,7 +48,7 @@ class Stats(NamedTuple):
 
 
 def run_simulation(args: Args) -> Stats:
-    rng.reseed(args.seed)
+    rng.reseed(seed_env())
 
     b = NetworkBuilder(
         epr_type=args.epr_type,

@@ -52,7 +52,7 @@ from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, seed_seq_env
 
 from examples_common.plotting import mpl, plt, plt_save
 
@@ -68,7 +68,6 @@ class Args(Tap):
     plt_buff: str = ""  # save Buffer-Space plot as image file
 
 
-SEED_BASE = 100
 TX_QUBITS = 50
 RX_QUBITS = 32
 
@@ -253,9 +252,9 @@ def run_row(args: Args, strategy: str, scenario: Scenario) -> list[FlowStats]:
     flow_rates = [[] for _ in range(N_FLOWS)]
     flow_fids = [[] for _ in range(N_FLOWS)]
 
-    for i in range(args.runs):
-        flow_stats, total_decoh, total_swap_conflict = run_simulation(SEED_BASE + i, args, mux, flows)
-        print(f"{strategy}, {label}, run #{i}, decoh={total_decoh}, swap-conflict={total_swap_conflict}")
+    for seed in seed_seq_env(args.runs, 100):
+        flow_stats, total_decoh, total_swap_conflict = run_simulation(seed, args, mux, flows)
+        print(f"{strategy}, {label}, seed={seed}, decoh={total_decoh}, swap-conflict={total_swap_conflict}")
         for idx, (rate, fid) in enumerate(flow_stats):
             flow_rates[idx].append(rate)
             flow_fids[idx].append(fid)

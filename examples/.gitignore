@@ -1,0 +1,9 @@
+!mqns_ref.pdf
+!vora_evaluation.voraswap.json
+!scalability_randomtopo/params-full.toml
+!scalability_randomtopo/params-short.toml
+*.csv
+*.json
+*.pdf
+*.png
+*.toml
