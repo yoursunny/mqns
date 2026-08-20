@@ -118,7 +118,7 @@ class Monitor(Entity):
             m.add_attribution("count", lambda s,network,e: network.nodes[-1].name)
 
         """
-        self.ensure_not_installed()
+        Simulator.ensure_not_installed_to(self)
         self.attributions.append((name, calculate_func))
         self.records[name] = []
 
@@ -126,7 +126,7 @@ class Monitor(Entity):
         """
         Watch the initial status before the simulation starts.
         """
-        self.ensure_not_installed()
+        Simulator.ensure_not_installed_to(self)
         self.watch_at_start = True
 
     def at_finish(self) -> None:
@@ -135,7 +135,7 @@ class Monitor(Entity):
 
         This does not work in a continuous simulation or if the simulation is stopped with ``Simulator.stop()``.
         """
-        self.ensure_not_installed()
+        Simulator.ensure_not_installed_to(self)
         self.watch_at_finish = True
 
     def at_period(self, period_time: float) -> None:
@@ -150,7 +150,7 @@ class Monitor(Entity):
             m.at_period(3)
 
         """
-        self.ensure_not_installed()
+        Simulator.ensure_not_installed_to(self)
         assert period_time > 0
         self.watch_period.append(period_time)
 
@@ -166,5 +166,5 @@ class Monitor(Entity):
             m.at_event(RecvQubitPacket)
 
         """
-        self.ensure_not_installed()
+        Simulator.ensure_not_installed_to(self)
         self.watch_event.append(event_type)

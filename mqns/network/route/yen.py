@@ -16,6 +16,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from collections.abc import Collection, Sequence
 from typing import override
 
 import numpy as np
@@ -48,7 +49,7 @@ class YenRouteAlgorithm[N: Node, C: BaseChannel](RouteAlgorithm[N, C]):
         self.route_table: dict[N, dict[N, list[tuple[float, list[N]]]]] = {}
 
     @override
-    def build(self, nodes: list[N], channels: list[C]):
+    def build(self, nodes: Sequence[N], channels: Collection[C]):
         # build adjacency matrix
         csr_adj = make_csr(nodes, channels, self.metric_func)
 

@@ -25,7 +25,8 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import TYPE_CHECKING, cast, overload
+from collections.abc import Collection, Iterable, MutableMapping
+from typing import TYPE_CHECKING, Final, cast
 
 from mqns.entity.base_channel import BaseChannel
 from mqns.entity.cchannel import ClassicChannel
@@ -42,34 +43,31 @@ if TYPE_CHECKING:
     from mqns.network.fw.routing import RoutingPath
 
 
-def _save_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], ch: C) -> None:
-    l.append(ch)
+def _save_channel[C: BaseChannel](d: MutableMapping[tuple[str, str], C], ch: C) -> None:
     if len(ch.node_list) != 2:
         return
     a, b = sorted(node.name for node in cast(list[Node], ch.node_list))
-    d[(a, b)] = ch
+    d[a, b] = ch
 
 
-def _get_channel[C: BaseChannel](l: list[C], d: dict[tuple[str, str], C], q: tuple[str, ...]) -> C:
-    if len(q) == 1:
-        name = q[0]
-        for ch in l:
-            if ch.name == name:
-                return ch
-        raise LookupError(f"channel {name} does not exist") from None
-
-    a, b = q
+def _get_channel[C: BaseChannel](d: dict[tuple[str, str], C], a: str, b: str) -> C:
     if a > b:
         a, b = b, a
 
     try:
-        return d[(a, b)]
+        return d[a, b]
     except KeyError:
         raise LookupError(f"channel between {a} and {b} does not exist") from None
 
 
 class QuantumNetwork:
     """QuantumNetwork includes quantum nodes, quantum and classical channels, arranged in a given topology"""
+
+    timing: Final[TimingMode]
+    """Network-wide application timing mode."""
+
+    epr_type: Final[type[Entanglement]]
+    """Network-wide entanglement type."""
 
     def __init__(
         self,
@@ -91,21 +89,11 @@ class QuantumNetwork:
         assert getattr(epr_type, "__final__", False) is True, f"entanglement type {epr_type} must be marked @final"
 
         self.timing = timing
-        """Network-wide application timing mode."""
         self.epr_type = epr_type
-        """Network-wide entanglement type."""
-
-        self.controller: Controller | None = None
-        """Controller node."""
-        self.nodes: list[QNode] = []
-        """List of quantum nodes."""
-        self._node_by_name: dict[str, QNode] = {}
-        self.qchannels: list[QuantumChannel] = []
-        """List of quantum channels."""
-        self._qchannel_by_ends: dict[tuple[str, str], QuantumChannel] = {}
-        self.cchannels: list[ClassicChannel] = []
-        """List of classic channels."""
-        self._cchannel_by_ends: dict[tuple[str, str], ClassicChannel] = {}
+        self._controller: Controller | None = None
+        self._nodes: dict[str, QNode] = {}
+        self._qchannels: dict[tuple[str, str], QuantumChannel] = {}
+        self._cchannels: dict[tuple[str, str], ClassicChannel] = {}
 
         if topo is not None:
             self._populate_from_topo(topo, classic_topo)
@@ -133,12 +121,6 @@ class QuantumNetwork:
         if topo.controller:
             self.set_controller(topo.controller)
 
-    def _ensure_not_installed(self) -> None:
-        """
-        Assert that this entity has not been installed into a simulator.
-        """
-        assert not hasattr(self, "simulator"), "function only available prior to self.install()"
-
     def install(self, simulator: Simulator) -> None:
         """
         Install all nodes (including channels, memories and applications) in this network.
@@ -149,12 +131,6 @@ class QuantumNetwork:
         self.simulator = simulator
         """Simulator instance."""
 
-        self.all_nodes: list[Node] = []
-        """A collection of quantum nodes and the controller (if present)."""
-        self.all_nodes += self.nodes
-        if self.controller:
-            self.all_nodes.append(self.controller)
-
         self.timing.install(self)
 
         for node in self.all_nodes:
@@ -163,106 +139,96 @@ class QuantumNetwork:
         for req in self.requests:
             self._install_request(req)
 
-    def add_node(self, node: QNode) -> None:
-        """
-        Add a QNode into this network.
-        """
-        self._ensure_not_installed()
-        assert node.name not in self._node_by_name, f"duplicate node name {node.name}"
-        self.nodes.append(node)
-        self._node_by_name[node.name] = node
-        node.add_network(self)
+    @property
+    def controller(self) -> Controller | None:
+        """Retrieve the controller node, if present."""
+        return self._controller
+
+    def set_controller(self, controller: Controller) -> None:
+        """Set the controller node."""
+        Simulator.ensure_not_installed_to(self)
+        assert self._controller is None, "controller exists"
+        self._controller = controller
+        controller.add_network(self)
+
+    @property
+    def nodes(self) -> Collection[QNode]:
+        """Retrieve a collection of quantum nodes."""
+        return self._nodes.values()
 
     def get_node(self, name: str) -> QNode:
         """
-        Get QNode by name.
+        Retrieve a quantum node by name.
 
         Raises:
             LookupError: Node does not exist.
         """
         try:
-            return self._node_by_name[name]
+            return self._nodes[name]
         except KeyError:
             raise LookupError(f"node {name} does not exist") from None
 
-    def set_controller(self, controller: Controller) -> None:
+    def add_node(self, node: QNode) -> None:
         """
-        Set the controller of this network.
+        Add a QNode into this network.
         """
-        self._ensure_not_installed()
-        self.controller = controller
-        controller.add_network(self)
+        Simulator.ensure_not_installed_to(self)
+        assert node.name not in self._nodes, f"duplicate node name {node.name}"
+        self._nodes[node.name] = node
+        node.add_network(self)
 
-    def get_controller(self) -> Controller:
+    @property
+    def all_nodes(self) -> Iterable[Node]:
+        """Iterate over all quantum nodes and the controller."""
+        yield from self.nodes
+        if self._controller is not None:
+            yield self._controller
+
+    @property
+    def qchannels(self) -> Collection[QuantumChannel]:
+        """Retrieve a collection of quantum channels."""
+        return self._qchannels.values()
+
+    def get_qchannel(self, a: str, b: str) -> QuantumChannel:
         """
-        Get the Controller of this network.
+        Retrieve a quantum channel by node names.
 
         Raises:
-            LookupError: Controller does not exist.
+            LookupError: channel does not exist.
         """
-        if self.controller is None:
-            raise LookupError("network does not have a controller")
-        return self.controller
+        return _get_channel(self._qchannels, a, b)
 
     def add_qchannel(self, qchannel: QuantumChannel) -> None:
         """
-        Add a QuantumChannel into this network.
+        Add a quantum channel into this network.
         """
-        self._ensure_not_installed()
-        _save_channel(self.qchannels, self._qchannel_by_ends, qchannel)
+        Simulator.ensure_not_installed_to(self)
+        _save_channel(self._qchannels, qchannel)
 
-    @overload
-    def get_qchannel(self, name: str, /) -> QuantumChannel:
-        """
-        Retrieve QuantumChannel by name.
+    @property
+    def cchannels(self) -> Collection[ClassicChannel]:
+        """Retrieve a collection of classic channels."""
+        return self._cchannels.values()
 
-        Raises:
-            LookupError: channel does not exist.
+    def get_cchannel(self, a: str, b: str) -> ClassicChannel:
         """
-
-    @overload
-    def get_qchannel(self, a: str, b: str, /) -> QuantumChannel:
-        """
-        Retrieve QuantumChannel by node names.
+        Retrieve a classic channel by node names.
 
         Raises:
             LookupError: channel does not exist.
         """
-
-    def get_qchannel(self, *q: str) -> QuantumChannel:
-        return _get_channel(self.qchannels, self._qchannel_by_ends, q)
+        return _get_channel(self._cchannels, a, b)
 
     def add_cchannel(self, cchannel: ClassicChannel) -> None:
         """
-        Add a ClassicChannel into this network.
+        Add a classic channel into this network.
         """
-        self._ensure_not_installed()
-        _save_channel(self.cchannels, self._cchannel_by_ends, cchannel)
-
-    @overload
-    def get_cchannel(self, name: str, /) -> ClassicChannel:
-        """
-        Retrieve ClassicalChannel by name.
-
-        Raises:
-            LookupError: channel does not exist.
-        """
-
-    @overload
-    def get_cchannel(self, a: str, b: str, /) -> ClassicChannel:
-        """
-        Retrieve ClassicalChannel by node names.
-
-        Raises:
-            LookupError: channel does not exist.
-        """
-
-    def get_cchannel(self, *q: str) -> ClassicChannel:
-        return _get_channel(self.cchannels, self._cchannel_by_ends, q)
+        Simulator.ensure_not_installed_to(self)
+        _save_channel(self._cchannels, cchannel)
 
     def build_route(self) -> None:
         """Build static route tables."""
-        self.route.build(self.nodes, self.qchannels)
+        self.route.build(list(self.nodes), self.qchannels)
 
     def query_route(self, src: str, dst: str, /, error_on_empty=True) -> list[RouteQueryResult[QNode]]:
         """
@@ -276,7 +242,7 @@ class QuantumNetwork:
         Returns:
             List of route paths, sorted by priority.
         """
-        routes = self.route.query(self.get_node(src), self.get_node(dst))
+        routes = self.route.query(self._nodes[src], self._nodes[dst])
         if error_on_empty and not routes:
             raise RuntimeError(f"no route from {src} to {dst}")
         return routes

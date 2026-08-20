@@ -16,7 +16,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Sequence
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -29,8 +29,8 @@ type MetricFunc[C: BaseChannel] = Callable[[C], float]
 
 
 def make_csr[N: Node, C: BaseChannel](
-    nodes: list[N],
-    channels: list[C],
+    nodes: Sequence[N],
+    channels: Collection[C],
     metric_func: MetricFunc[C],
 ) -> csr_matrix:
     """
@@ -92,13 +92,13 @@ class RouteAlgorithm[N: Node, C: BaseChannel](ABC):
             self.unweighted = False
 
     @abstractmethod
-    def build(self, nodes: list[N], channels: list[C]) -> None:
+    def build(self, nodes: Sequence[N], channels: Collection[C]) -> None:
         """
         Build static route tables.
 
         Args:
-            nodes: a list of quantum nodes or classic nodes.
-            channels: a list of quantum channels or classic channels.
+            nodes: List of nodes.
+            channels: List of channels.
         """
 
     @abstractmethod

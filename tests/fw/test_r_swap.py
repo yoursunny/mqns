@@ -14,6 +14,7 @@ from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.reactive import ReactiveForwarder, ReactiveRoutingController
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
 from mqns.simulator import func_to_event
+from mqns.utils import unwrap
 
 from .fw_common import (
     build_linear_network,
@@ -169,7 +170,7 @@ def test_3_minimal(
         end_time=0.020,
         timing=TimingModeSync(t_ext=0.006, t_rtg=0.001, t_int=0.003),
     )
-    ctrl = net.get_controller().get_app(ReactiveRoutingController)
+    ctrl = unwrap(net.controller).get_app(ReactiveRoutingController)
     fwA, fwB, fwC = (node.get_app(ReactiveForwarder) for node in net.nodes)
 
     net.add_request(Request("A-C", active_period=req_active).path(req_id=1))

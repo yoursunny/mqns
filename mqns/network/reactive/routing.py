@@ -31,7 +31,7 @@ class TopoLinkState:
         n0 = entry["node"]
         n1 = entry["neighbor"]
         if n0 < n1:
-            self.d[(n0, n1)].append(entry["qubit"])
+            self.d[n0, n1].append(entry["qubit"])
 
     def try_consume(self, route: list[str]) -> list[str] | None:
         """

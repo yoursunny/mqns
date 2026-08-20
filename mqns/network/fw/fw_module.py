@@ -8,7 +8,7 @@ from mqns.models.epr import Entanglement
 from mqns.network.fw.fib import Fib, FibPath
 from mqns.network.network import QuantumNetwork
 from mqns.simulator import Simulator
-from mqns.utils import LogSelfMixin
+from mqns.utils import LogSelfMixin, unwrap
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder, ForwarderCounters
@@ -100,7 +100,7 @@ class ForwarderModule(LogSelfMixin, ClassicCommandModule):
         """
         Send a control message to the network controller.
         """
-        ctrl = self.network.get_controller()
+        ctrl = unwrap(self.network.controller)
         self.log_debug("SEND_%s to=%s | %s", msg["cmd"], ctrl.name, msg)
         self.node.send_cpacket(ctrl, ClassicPacket(msg, src=self.node, dest=ctrl))
 

@@ -66,13 +66,13 @@ class WaxmanTopology(Topology):
             tmp_l = np.sqrt(
                 (location_table[n1][0] - location_table[n2][0]) ** 2 + (location_table[n1][1] - location_table[n2][1]) ** 2
             )
-            distance_table[(n1, n2)] = tmp_l
+            distance_table[n1, n2] = tmp_l
             L = max(L, tmp_l)
 
         for n1, n2 in cb:
             if n1 == n2:
                 continue
-            d = distance_table[(n1, n2)]
+            d = distance_table[n1, n2]
             p = self.alpha * np.exp(-d / (self.beta * L))
             if rng.random() < p:
                 qchannel_args = copy.deepcopy(self.qchannel_args)

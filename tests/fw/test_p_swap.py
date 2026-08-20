@@ -573,13 +573,9 @@ def test_5_decohere(
     )
     simulator.run()
     print_node_counters(net)
-    # check_fw_counters(
-    #     net,
-    #     n_su_lower=(1, 0, 0, 0, 1),
-    # )
     assert RequestCounters.of(net, rp).n_consumed == n_consumed
     QuantumMemory.check_leaks(net.nodes)
-    assert list(node.get_app(QubitReleaseReset).last_t for node in net.nodes[: len(t_release)]) == [
+    assert [node.get_app(QubitReleaseReset).last_t for node in itertools.islice(net.nodes, len(t_release))] == [
         simulator.time(sec=t) for t in t_release
     ]
 

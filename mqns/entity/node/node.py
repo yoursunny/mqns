@@ -99,7 +99,7 @@ class Node(Entity):
                  The caller is responsible for ``deepcopy`` if needed, so that each node has a separate instance.
 
         """
-        self.ensure_not_installed()
+        Simulator.ensure_not_installed_to(self)
         if isinstance(app, Application):
             self.apps.append(app)
         else:
@@ -126,7 +126,7 @@ class Node(Entity):
             LookupError: Application does not exist, or there are multiple instances.
         """
         if self._app_by_type is None:  # this is called before self.install() populates _app_by_type
-            self.ensure_not_installed()
+            Simulator.ensure_not_installed_to(self)
             return self._get_app_from_apps(app_type)
 
         try:
@@ -142,7 +142,7 @@ class Node(Entity):
         return apps[0]
 
     def _add_channel[C: "BaseChannel"](self, channel: C, channels: list[C]) -> None:
-        self.ensure_not_installed()
+        Simulator.ensure_not_installed_to(self)
         channel.node_list.append(self)
         channels.append(channel)
 
@@ -162,7 +162,7 @@ class Node(Entity):
         Add a classic channel in this Node.
         This function is available prior to calling .install().
         """
-        self.ensure_not_installed()
+        Simulator.ensure_not_installed_to(self)
         self._add_channel(cchannel, self.cchannels)
 
     def get_cchannel(self, dst: "Node") -> "ClassicChannel":
