@@ -35,7 +35,7 @@ from mqns.network.builder import CTRL_DELAY, ChannelParam, EprTypeLiteral, LinkA
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayerCounters
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, seed_seq_env
 
 from examples_common.plotting import plt, plt_save
 
@@ -95,9 +95,6 @@ class Args(Tap):
         )
 
 
-SEED_BASE = 100
-
-
 class Stats(TypedDict):
     t_cohere: float
     throughput_eps: float
@@ -146,12 +143,7 @@ def run_simulation(seed: int, args: Args, t_cohere: float) -> Stats:
 
 
 def run_row(args: Args, t_cohere: float) -> list[Stats]:
-    results: list[Stats] = []
-    for i in range(args.runs):
-        print(f"T_cohere={t_cohere:.4f}, run {i + 1}")
-        stats = run_simulation(SEED_BASE + i, args, t_cohere)
-        results.append(stats)
-    return results
+    return [run_simulation(seed, args, t_cohere) for seed in seed_seq_env(args.runs, 100)]
 
 
 def plot(df: pd.DataFrame, *, save_plt: str):

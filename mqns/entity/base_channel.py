@@ -101,9 +101,9 @@ class BaseChannel[N: Node](Entity):
         """
         if len(self.node_list) != 2:
             raise ValueError(f"{self} does not have exactly 2 nodes")
-        if self.node_list[0] == own:
+        if self.node_list[0] is own:
             return self.node_list[1]
-        if self.node_list[1] == own:
+        if self.node_list[1] is own:
             return self.node_list[0]
         raise ValueError(f"{self} does not connect to {own}")
 

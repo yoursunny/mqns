@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Final, Self, TypedDict, Unpack, cast, final, o
 
 from mqns.entity.node import Controller, NodePair, split_node_pair
 from mqns.simulator import Event, EventHandleSlot, Time
+from mqns.utils import log
 
 if TYPE_CHECKING:
     from mqns.network.fw.routing import RoutingPath, RoutingPathInitArgs
@@ -170,36 +171,39 @@ class Request:
         return self.rp.req_id if self.rp else self.rp_args.get("req_id", -1)
 
     def __repr__(self) -> str:
-        return (
-            f"Request({self.src}-{self.dst}, "
-            f"active_period={self.active_since}-{self.active_until}), "
-            f"epr_count={self.epr_count})"
-        )
+        tokens = [f"{self.src}-{self.dst}", f"active_period={self.active_since}-{self.active_until}"]
+        if self.epr_count > 0:
+            tokens.append(f"epr_count={self.epr_count}")
+        return f"Request({', '.join(tokens)})"
 
 
 @final
 class RequestActiveEvent(Event):
     """Event when a request becomes active."""
 
-    def __init__(self, node: Controller, req: Request, *, t: Time):
+    def __init__(self, node: Controller | None, req: Request, *, t: Time):
         super().__init__(t, f"{req}")
         self.node = node
         self.req = req
 
     @override
     def invoke(self) -> None:
-        self.node.handle(self)
+        log.info("NETWORK: REQ_ACTIVE %s", self.req)
+        if self.node:
+            self.node.handle(self)
 
 
 @final
 class RequestInactiveEvent(Event):
     """Event when a request becomes inactive."""
 
-    def __init__(self, node: Controller, req: Request, *, t: Time):
+    def __init__(self, node: Controller | None, req: Request, *, t: Time):
         super().__init__(t, f"{req}")
         self.node = node
         self.req = req
 
     @override
     def invoke(self) -> None:
-        self.node.handle(self)
+        log.info("NETWORK: REQ_INACTIVE %s", self.req)
+        if self.node:
+            self.node.handle(self)

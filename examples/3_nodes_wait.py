@@ -51,7 +51,7 @@ from mqns.network.fw import CutoffSchemeWaitTime
 from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
-from mqns.utils import json_default, log, rng, unwrap
+from mqns.utils import json_default, log, rng, seed_seq_env, unwrap
 
 from examples_common.plotting import Axes, Axes1D, SubFigure, SubFigure1D, plt, plt_save
 
@@ -84,7 +84,6 @@ class Args(Tap):
 
 
 SIMULATOR_ACCURACY = 1000000
-SEED_BASE = 100
 
 
 def run_simulation(seed: int, args: Args, t_cohere: float, t_wait: float):
@@ -163,9 +162,9 @@ class Details(TypedDict):
 
 def run_row(args: Args, t_cohere: float, t_wait: float) -> tuple[Stats, Details]:
     columns: list[list[float]] = [[] for _ in range(4)]
-    for i in range(args.runs):
-        print(f"T_cohere={t_cohere:.4f}, T_wait={t_wait:.4f}, run {i + 1}")
-        results = run_simulation(SEED_BASE + i, args, t_cohere, t_wait)
+    for seed in seed_seq_env(args.runs, 100):
+        print(f"T_cohere={t_cohere:.4f}, T_wait={t_wait:.4f}, seed={seed}")
+        results = run_simulation(seed, args, t_cohere, t_wait)
         for col, res in zip(columns, results, strict=True):
             col.extend(res)
 

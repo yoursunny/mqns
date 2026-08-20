@@ -63,7 +63,7 @@ from mqns.network.network.timing import TimingModeSync
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.route import DijkstraRouteAlgorithm, YenRouteAlgorithm
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, seed_seq_env
 
 _ = TimingModeSync
 
@@ -82,7 +82,7 @@ log.set_default_level("CRITICAL")
 # =============================================================================
 # Fixed simulation parameters (users can edit these)
 # =============================================================================
-SEED_BASE = 100
+DEFAULT_SEED_BASE = 100  # Can be changed via MQNS_SEED environment variable
 SIM_DURATION = 3.0
 
 FIBER_ALPHA_DB_PER_KM = 0.2
@@ -288,7 +288,7 @@ def build_network(route_algo: Any, t_cohere: float) -> QuantumNetwork:
 # =============================================================================
 # One run + metric extraction
 # =============================================================================
-def run_one(t_cohere: float, seed: int) -> dict[str, tuple[float, float]]:
+def run_one(seed: int, t_cohere: float) -> dict[str, tuple[float, float]]:
     rng.reseed(seed)
 
     net = build_network(SC.route_algorithm, t_cohere)
@@ -319,7 +319,7 @@ def run_sweep():
 
     for t in T_COHERE_SWEEP:
         # runs: list of {label: (rate,fid)}
-        runs = [run_one(t, SEED_BASE + i) for i in range(args.runs)]
+        runs = [run_one(seed, t) for seed in seed_seq_env(args.runs, DEFAULT_SEED_BASE)]
 
         for lab in labels:
             rates = [tr[lab][0] for tr in runs]

@@ -75,7 +75,7 @@ class MatrixTrafficGenerator:
         self._duration = kwargs.get("duration", 1.0)
         self._epr_count = kwargs.get("epr_count", 1)
 
-    def _convert_tm_map(self, tm: TrafficMatrixMapping):
+    def _convert_tm_map(self, tm: TrafficMatrixMapping) -> TrafficMatrixInput:
         n = len(self.node_names)
         array = np.zeros((n, n), dtype=np.float64)
         for pair, prob in tm.items():

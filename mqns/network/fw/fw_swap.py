@@ -364,7 +364,7 @@ class ForwarderSwapProc(ForwarderModule):
         SwapUpdates received prior to QubitEntangledEvent.
 
         * Key: MemoryQubit reservation key.
-        * Value: SwapUpdateMsg and FibEntry.
+        * Value: SWAP_UPDATE message and related fields.
         """
 
         self.remote_swapped: dict[str, Entanglement] = {}

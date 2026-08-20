@@ -7,7 +7,7 @@ from mqns.entity.memory import QubitState
 from mqns.entity.node import Application, NodePair, QNode, split_node_pair
 from mqns.network.network import QuantumNetwork
 from mqns.network.protocol.event import QubitConsumeEvent, QubitReleasedEvent
-from mqns.simulator import event_handler
+from mqns.simulator import Time, event_handler
 from mqns.utils import json_encodable
 
 
@@ -39,6 +39,14 @@ class RequestCounters:
     consumed_fidelity_values: list[float] | None = None
     """
     Fidelity values of consumed entanglements, None disables collection.
+    """
+    t_first = Time.MAX
+    """
+    Timestamp of first consumption.
+    """
+    t_last = Time.MIN
+    """
+    Timestamp of last consumption.
     """
 
     @staticmethod
@@ -85,6 +93,8 @@ class RequestCounters:
         g.consumed_sum_fidelity = a.consumed_sum_fidelity + b.consumed_sum_fidelity
         if a.consumed_fidelity_values is b.consumed_fidelity_values:
             g.consumed_fidelity_values = a.consumed_fidelity_values
+        g.t_first = min(a.t_first, b.t_first)
+        g.t_last = max(a.t_last, b.t_last)
         return g
 
     @staticmethod
@@ -120,7 +130,10 @@ class RequestCounters:
         assert b.consumed_fidelity_values is None
         a.consumed_fidelity_values = b.consumed_fidelity_values = []
 
-    def increment_n_consumed(self, fidelity: float) -> None:
+    def save(self, t: Time, fidelity: float) -> None:
+        if self.n_consumed == 0:
+            self.t_first = t
+        self.t_last = t
         self.n_consumed += 1
         self.consumed_sum_fidelity += fidelity
         if self.consumed_fidelity_values is not None:
@@ -143,6 +156,19 @@ class RequestCounters:
         Returns: Entanglement rate in entanglements per second.
         """
         return self.n_consumed / duration
+
+    def get_latency(self, active_since: Time) -> tuple[float, float]:
+        """
+        Calculate satisfaction latency.
+
+        Args:
+            active_since: When did the request become active.
+
+        Returns: Latency of first and last EPR; nan if ``n_consumed`` is zero.
+        """
+        if self.n_consumed == 0:
+            return np.nan, np.nan
+        return (self.t_first - active_since).sec, (self.t_last - active_since).sec
 
     def get_per_consumed(self, x: float) -> float:
         """
@@ -172,17 +198,18 @@ class Consumer(Application[QNode]):
         """Quantum memory of the node."""
 
     @event_handler
-    def handle_ready(self, event: QubitConsumeEvent) -> None:
+    def handle_consume(self, event: QubitConsumeEvent) -> None:
+        now = event.t
         qubit = event.qubit
         epr = event.epr
         req_id = event.req_id
 
         role_str = "first"
-        if epr.consume_with_store_decay_side(self.simulator.tc, side=0 if epr.src is self.node else 1):
+        if epr.consume_with_store_decay_side(now, side=0 if epr.src is self.node else 1):
             role_str = "second"
-            self.cnt[req_id].increment_n_consumed(epr.fidelity)
+            self.cnt[req_id].save(now, epr.fidelity)
         self.log_debug("consume EPR %s for request %s: %s", role_str, req_id, epr)
 
         self.memory.read(qubit.addr, remove=True)
         qubit.state = QubitState.RELEASE
-        self.simulator.sched(QubitReleasedEvent(self.node, qubit, t=self.simulator.tc))
+        self.simulator.sched(QubitReleasedEvent(self.node, qubit, t=now))

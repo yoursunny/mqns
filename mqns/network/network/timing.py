@@ -1,4 +1,3 @@
-import functools
 import itertools
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
@@ -255,10 +254,9 @@ def sync_phase_handler(phase: TimingPhase, enter: bool):
     """
 
     def decorator(f: Callable[[Any], None]):
-        @functools.wraps(f)
-        def wrapper(self: Any, _: Event) -> None:
+        def sync_phase_handler_wrapper(self: Any, _: Event) -> None:
             f(self)
 
-        return event_handler(_PHASE_EVENTS[phase, enter])(wrapper)
+        return event_handler(_PHASE_EVENTS[phase, enter])(sync_phase_handler_wrapper)
 
     return decorator

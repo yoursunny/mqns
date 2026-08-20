@@ -459,6 +459,8 @@ class NetworkBuilder:
 
     def proactive_centralized(
         self,
+        *,
+        mv_auto: MultiplexingVectorInput | None = None,
         **kwargs: Unpack[AppsForwarderArgs],
     ) -> Self:
         """
@@ -472,11 +474,12 @@ class NetworkBuilder:
         kwargs.setdefault("p_swap", 0.5)
 
         mux = kwargs.get("mux")
-        mv_auto: MultiplexingVectorInput = "none"
-        if mux is None or isinstance(mux, MuxSchemeBufferSpace):
-            mv_auto = "max"
-        elif isinstance(self.route, YenRouteAlgorithm):
-            raise TypeError("YenRouteAlgorithm is only compatible with MuxSchemeBufferSpace")
+        if mv_auto is None:
+            mv_auto = "none"
+            if mux is None or isinstance(mux, MuxSchemeBufferSpace):
+                mv_auto = "max"
+            elif isinstance(self.route, YenRouteAlgorithm):
+                raise TypeError("YenRouteAlgorithm is only compatible with MuxSchemeBufferSpace")
 
         self._add_link_layer()
         self.qnode_apps.append(

@@ -1,4 +1,3 @@
-import functools
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any
 
@@ -9,7 +8,7 @@ from mqns.models.epr import Entanglement
 from mqns.network.fw.fib import Fib, FibPath
 from mqns.network.network import QuantumNetwork
 from mqns.simulator import Simulator
-from mqns.utils import LogSelfMixin, log
+from mqns.utils import LogSelfMixin
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder, ForwarderCounters
@@ -23,12 +22,11 @@ def fw_control_cmd_handler(cmd: str):
     """
 
     def decorator(f: Callable[[Any, Any], Any]):
-        @functools.wraps(f)
-        def wrapper(self: "Forwarder|ForwarderModule", pkt: ClassicPacket, msg: dict):
-            self.log_debug("received control message from %s | %s", pkt.src.name, msg)
+        def fw_control_cmd_handler_wrapper(self: "Forwarder|ForwarderModule", pkt: ClassicPacket, msg: Mapping):
+            self.log_debug("RECV_%s from=%s | %s", cmd, pkt.src.name, msg)
             f(self, msg)
 
-        return classic_cmd_handler(cmd)(wrapper)
+        return classic_cmd_handler(cmd)(fw_control_cmd_handler_wrapper)
 
     return decorator
 
@@ -41,25 +39,34 @@ def fw_signaling_cmd_handler(cmd: str):
     """
 
     def decorator(f: Callable[[Any, Any, FibPath], Any]):
-        @functools.wraps(f)
-        def wrapper(self: "ForwarderModule", pkt: ClassicPacket, msg: dict):
+        def fw_signaling_cmd_handler_wrapper(self: "Forwarder|ForwarderModule", pkt: ClassicPacket, msg: Mapping):
             path_id: int = msg["path_id"]
+            src_name = pkt.src.name
+            dest_name = pkt.dest.name
             try:
                 fp = self.fib.get_path(path_id)
             except LookupError:
-                self.log_debug("dropping signaling message from %s, reason=no-fib-entry | %s", pkt.src.name, msg)
+                self.log_debug("DROP_%s from=%s reason=no-fib-path | %s", cmd, src_name, msg)
                 return
 
-            if pkt.dest != self.node:
-                self.send_msg(pkt.dest, msg, fp, forward_from=pkt.src)
-                return
+            if pkt.dest is self.node:
+                self.log_debug("RECV_%s from=%s | %s", cmd, src_name, msg)
+                f(self, msg, fp)
+            else:
+                next_hop, via_str = _find_next_hop(self.network, fp, dest_name)
+                self.log_debug("FORW_%s from=%s %sto=%s path=%s | %s", cmd, src_name, via_str, dest_name, path_id, msg)
+                self.node.send_cpacket(next_hop, pkt)
 
-            self.log_debug("received signaling message from %s | %s", pkt.src.name, msg)
-            f(self, msg, fp)
-
-        return classic_cmd_handler(cmd)(wrapper)
+        return classic_cmd_handler(cmd)(fw_signaling_cmd_handler_wrapper)
 
     return decorator
+
+
+def _find_next_hop(net: QuantumNetwork, fp: FibPath, dest_name: str) -> tuple[Node, str]:
+    dest_idx = fp.route.index(dest_name)
+    nh_idx = fp.own_idx + 1 if dest_idx > fp.own_idx else fp.own_idx - 1
+    nh_name = fp.route[nh_idx]
+    return net.get_node(nh_name), "" if nh_idx == dest_idx else f"via={nh_name} "
 
 
 class ForwarderModule(LogSelfMixin, ClassicCommandModule):
@@ -89,27 +96,21 @@ class ForwarderModule(LogSelfMixin, ClassicCommandModule):
     def __repr__(self):
         return Application.__repr__(self)
 
-    def send_ctrl(self, msg: Mapping):
+    def send_ctrl(self, msg: Mapping) -> None:
+        """
+        Send a control message to the network controller.
+        """
         ctrl = self.network.get_controller()
-        log.debug("%s: sending control message to controller | %s", self, msg)
+        self.log_debug("SEND_%s to=%s | %s", msg["cmd"], ctrl.name, msg)
         self.node.send_cpacket(ctrl, ClassicPacket(msg, src=self.node, dest=ctrl))
 
-    def send_msg(self, dest: Node, msg: Mapping, fp: FibPath, *, forward_from: Node | None = None):
+    def send_msg(self, dest: Node, msg: Mapping, fp: FibPath) -> None:
         """
-        Send/forward a signaling message along the path specified in FIB path entry.
+        Send a signaling message along the path specified in FIB path entry.
         """
-        dest_idx = fp.route.index(dest.name)
-        nh_idx = fp.own_idx + 1 if dest_idx > fp.own_idx else fp.own_idx - 1
-        next_hop = self.network.get_node(fp.route[nh_idx])
+        dest_name = dest.name
+        next_hop, via_str = _find_next_hop(self.network, fp, dest_name)
+        self.log_debug("SEND_%s %sto=%s path=%s | %s", msg["cmd"], via_str, dest_name, fp.path_id, msg)
 
-        pkt = ClassicPacket(msg, src=forward_from or self.node, dest=dest)
-        log.debug(
-            "%s: %s signaling message from %s to %s%s | %s",
-            self,
-            "forwarding" if forward_from else "sending",
-            pkt.src.name,
-            pkt.dest.name,
-            "" if nh_idx == dest_idx else f" via {next_hop.name}",
-            msg,
-        )
+        pkt = ClassicPacket(msg, src=self.node, dest=dest)
         self.node.send_cpacket(next_hop, pkt)

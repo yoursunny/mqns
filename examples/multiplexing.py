@@ -48,13 +48,15 @@ from tap import Tap
 
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
 from mqns.network.fw import MultiplexingVector, MuxScheme, MuxSchemeBufferSpace, MuxSchemeStatistical, RoutingPathStatic
+from mqns.network.network import QuantumNetwork
 from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, seed_seq_env
 
 from examples_common.plotting import mpl, plt, plt_save
+from examples_common.topo_multiplexing import RX_QUBITS, TX_QUBITS, define_topo
 
 log.set_default_level("CRITICAL")
 
@@ -66,11 +68,6 @@ class Args(Tap):
     json: str = ""  # save results as JSON file
     plt_stat: str = ""  # save Statistical plot as image file
     plt_buff: str = ""  # save Buffer-Space plot as image file
-
-
-SEED_BASE = 100
-TX_QUBITS = 50
-RX_QUBITS = 32
 
 
 class FlowDef:
@@ -112,14 +109,14 @@ STRATEGIES: dict[str, MuxScheme] = {
 }
 
 
-def _mv_for_flow(flow: str, route: list[str], active_flows: set[str]):
+def _mv_for_flow(flow: str, route: list[str], active_flows: set[str]) -> MultiplexingVector:
     """
     Build a MultiplexingVector for one flow under Buffer-Space multiplexing,
     applying the per-link qubit allocations.
     For Statistical mux, this is ignored.
     """
     mv: MultiplexingVector = []
-    for u, v in zip(route[:-1], route[1:]):
+    for u, v in itertools.pairwise(route):
         pair = f"{u}{v}"
         # Default: full TX/RX on uncontested links
         tx_rx = (RX_QUBITS, TX_QUBITS) if pair == "GF" else (TX_QUBITS, RX_QUBITS)
@@ -169,32 +166,9 @@ def _mv_for_flow(flow: str, route: list[str], active_flows: set[str]):
     return mv
 
 
-def build_network(mux: MuxScheme, active_flows: Sequence[FlowDef], active_flows_set: set[str]):
+def build_network(mux: MuxScheme, active_flows: Sequence[FlowDef], active_flows_set: set[str]) -> QuantumNetwork:
     b = NetworkBuilder()
-    b.topo(
-        channels=[
-            # left spokes -> E
-            (("A", "E"), 30, (TX_QUBITS, RX_QUBITS)),
-            (("B", "E"), 30, (TX_QUBITS, RX_QUBITS)),
-            (("C", "E"), 30, (TX_QUBITS, RX_QUBITS)),
-            (("D", "E"), 30, (TX_QUBITS, RX_QUBITS)),
-            # middle trunks
-            (("E", "F"), 30, (RX_QUBITS, TX_QUBITS)),
-            (("F", "J"), 30, (TX_QUBITS, RX_QUBITS)),
-            # right spokes from J
-            (("J", "K"), 30, (TX_QUBITS, RX_QUBITS)),
-            (("J", "L"), 30, (TX_QUBITS, RX_QUBITS)),
-            (("J", "M"), 30, (TX_QUBITS, RX_QUBITS)),
-            # bottom spokes from F
-            (("G", "F"), 30, (RX_QUBITS, TX_QUBITS)),
-            (("F", "H"), 30, (TX_QUBITS, RX_QUBITS)),
-            (("F", "I"), 30, (TX_QUBITS, RX_QUBITS)),
-        ],
-        fiber_alpha=0.17,
-        eta_d=0.5,
-        eta_s=0.8,
-        t_cohere=0.1,
-    )
+    define_topo(b)
 
     b.proactive_centralized(mux=mux)
 
@@ -253,9 +227,9 @@ def run_row(args: Args, strategy: str, scenario: Scenario) -> list[FlowStats]:
     flow_rates = [[] for _ in range(N_FLOWS)]
     flow_fids = [[] for _ in range(N_FLOWS)]
 
-    for i in range(args.runs):
-        flow_stats, total_decoh, total_swap_conflict = run_simulation(SEED_BASE + i, args, mux, flows)
-        print(f"{strategy}, {label}, run #{i}, decoh={total_decoh}, swap-conflict={total_swap_conflict}")
+    for seed in seed_seq_env(args.runs, 100):
+        flow_stats, total_decoh, total_swap_conflict = run_simulation(seed, args, mux, flows)
+        print(f"{strategy}, {label}, seed={seed}, decoh={total_decoh}, swap-conflict={total_swap_conflict}")
         for idx, (rate, fid) in enumerate(flow_stats):
             flow_rates[idx].append(rate)
             flow_fids[idx].append(fid)

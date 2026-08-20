@@ -32,14 +32,13 @@ from mqns.network.builder import CTRL_DELAY, NetworkBuilder
 from mqns.network.fw import SwapPolicy
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, seed_seq_env
 
 from examples_common.plotting import Axes1D, mpl, plt, plt_save
 
 log.set_default_level("CRITICAL")
 
 
-SEED_BASE = 100
 N_NODES = 6
 TOTAL_QUBITS = 6
 CHANNEL_LENGTHS: list[float] = [32, 18, 35, 16, 24]
@@ -161,8 +160,7 @@ if __name__ == "__main__":
             print(f"\n>>> Testing order: {order}, Channel Mem allocation: {mem_label}")
             for t_cohere in t_cohere_values:
                 run_rates = []
-                for i in range(args.runs):
-                    seed = SEED_BASE + i
+                for seed in seed_seq_env(args.runs, 100):
                     swapping_config = order
 
                     ch_capacities = mem_allocs

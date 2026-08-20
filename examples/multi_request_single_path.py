@@ -30,7 +30,7 @@ from mqns.network.builder import CTRL_DELAY, NetworkBuilder
 from mqns.network.fw import MuxScheme, MuxSchemeDynamicEpr, MuxSchemeStatistical
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
-from mqns.utils import log, rng
+from mqns.utils import log, rng, seed_seq_env
 
 from examples_common.plotting import Axes2D, mpl, plt, plt_save
 
@@ -45,7 +45,6 @@ class Args(Tap):
     plt: str = ""  # save plot as image file
 
 
-SEED_BASE = 100
 PATH_TITLES = ("S1-D1", "S2-D2")
 N_PATHS = len(PATH_TITLES)
 
@@ -98,9 +97,9 @@ def run_row(args: Args, strategy: str, t_cohere: float) -> list[PathStats]:
     path_rates: list[list[float]] = [[] for _ in range(N_PATHS)]
     path_fids: list[list[float]] = [[] for _ in range(N_PATHS)]
 
-    for i in range(args.runs):
-        print(f"{strategy}, T_cohere={t_cohere:.3f}, run #{i}")
-        res = run_simulation(SEED_BASE + i, args, mux, t_cohere)
+    for seed in seed_seq_env(args.runs, 100):
+        print(f"{strategy}, T_cohere={t_cohere:.3f}, seed={seed}")
+        res = run_simulation(seed, args, mux, t_cohere)
         for path, (rate, fid) in enumerate(res):
             path_rates[path].append(rate)
             path_fids[path].append(fid)

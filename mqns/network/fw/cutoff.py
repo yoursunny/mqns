@@ -36,8 +36,6 @@ class CutoffScheme(ForwarderModule, ABC):
         Args:
             round: -1 for swap_cutoff; nonnegative number for purif round.
         """
-        fw = self.fw
-
         o_key = unwrap_cast(qubit.key)
 
         # Find EPR partner.
@@ -49,11 +47,11 @@ class CutoffScheme(ForwarderModule, ABC):
 
         # Inform SwapProc.
         if round == -1:
-            fw.swap.handle_decohere(o_key)
+            self.fw.swap.handle_decohere(o_key)
 
         # Discard primary qubit.
-        fw.cnt.increment_n_cutoff(round, True)
-        fw.release_qubit(qubit, need_remove=True)
+        self.fw_cnt.increment_n_cutoff(round, True)
+        self.fw.release_qubit(qubit, need_remove=True)
 
         # Ask partner to discard secondary qubit.
         msg: CutoffDiscardMsg = {
@@ -72,16 +70,15 @@ class CutoffScheme(ForwarderModule, ABC):
         This is called by ProactiveForwarder upon receiving a CUTOFF_DISCARD message.
         """
         _ = fp
-        fw = self.fw
         o_key = msg["key"]
         round = msg["round"]
 
         # Inform SwapProc.
         if round == -1:
-            fw.swap.handle_decohere(o_key)
+            self.fw.swap.handle_decohere(o_key)
 
         # Find qubit.
-        qm_tuple = fw.memory.read(o_key, remove=True)
+        qm_tuple = self.memory.read(o_key, remove=True)
         if qm_tuple is None:
             self.log_debug("remote cutoff discard key=%s not exist", o_key)
             return
@@ -89,8 +86,8 @@ class CutoffScheme(ForwarderModule, ABC):
         self.log_debug("remote cutoff discard key=%s addr=%s round=%s", o_key, qubit.addr, round)
 
         # Discard secondary qubit.
-        fw.cnt.increment_n_cutoff(round, False)
-        fw.release_qubit(qubit)
+        self.fw_cnt.increment_n_cutoff(round, False)
+        self.fw.release_qubit(qubit)
 
     @abstractmethod
     def before_store_eligible(self, mq: MemoryQubit, dir: PathDirection, fp: FibPath | None) -> None:

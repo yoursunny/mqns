@@ -296,9 +296,6 @@ class QuantumNetwork:
         req.active_since = Time.from_time_or_sec(req.active_since, accuracy=self.simulator.accuracy)
         req.active_until = Time.from_time_or_sec(req.active_until, accuracy=self.simulator.accuracy)
 
-        if not self.controller:
-            return
-
         t_enter = self.simulator.tc if req.active_since is Time.MIN else req.active_since
         self.simulator.sched(RequestActiveEvent(self.controller, req, t=t_enter))
 

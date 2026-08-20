@@ -9,13 +9,8 @@ from mqns.models.epr import Entanglement
 from mqns.network.fw.fib import Fib, FibPath
 from mqns.network.fw.mux_buffer_space import MuxSchemeFibBase
 from mqns.network.fw.mux_statistical import MuxSchemeDynamicBase
-from mqns.network.fw.select import call_select, parse_select
+from mqns.network.fw.select import call_select, parse_select, select_random
 from mqns.utils import rng, unwrap_cast
-
-
-def _select_path_random(path_ids: list[int], epr: Entanglement, fib: Fib) -> int:
-    _ = epr, fib
-    return rng.choice(path_ids)
 
 
 def _select_path_swap_weighted(path_ids: list[int], epr: Entanglement, fib: Fib) -> FibPath:
@@ -43,10 +38,10 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
         path_ids: List of candidate path IDs for this EPR.
 
     Returns:
-        The selected path ID or FibEntry.
+        The selected path ID or FIB path entry.
     """
 
-    SelectPath_random: SelectPath = _select_path_random
+    SelectPath_random: SelectPath = select_random
     """
     Path selection strategy: random allocation.
     """

@@ -1,6 +1,7 @@
 import os
 import sys
-from typing import Any, Literal, cast
+from collections.abc import Sequence
+from typing import Any, Literal, cast, overload
 
 import numpy.random as npr
 
@@ -24,6 +25,55 @@ _FAST_METHODS = (
 Method names on ``rng`` to avoid getattr overhead.
 """
 
+_ENV_NAME = "MQNS_SEED"
+
+
+@overload
+def seed_env() -> int | None:
+    """
+    Parse random seed from MQNS_SEED environment variable.
+
+    Returns:
+        Integer random seed, or ``None`` if unset.
+    """
+
+
+@overload
+def seed_env(dflt: int) -> int:
+    """
+    Parse random seed from MQNS_SEED environment variable.
+
+    Returns:
+        Integer random seed, or ``dflt`` if unset.
+    """
+
+
+def seed_env(dflt: int | None = None):
+    env = os.getenv(_ENV_NAME)
+    if env is None:
+        return dflt
+    try:
+        return int(env)
+    except ValueError:
+        raise ValueError(f"{_ENV_NAME} environment variable is set but not an integer")
+
+
+def seed_seq_env(n_runs: int, dflt_base: int) -> Sequence[int]:
+    """
+    Generate a sequence of random seeds for consecutive experiment runs.
+    The first seed is parsed from MQNS_SEED environment variable if present.
+
+    Args:
+        n_runs: How many experiment runs.
+        dflt_base: The first seed, if MQNS_SEED environment variable is unset.
+
+    Returns:
+        An increasing sequence of integers.
+    """
+    seed_base = seed_env(dflt_base)
+    return range(seed_base, seed_base + n_runs)
+
+
 _next_seed_env: list[int] = []
 """
 This list must contain zero or one integer.
@@ -34,14 +84,13 @@ It is populated by the first ``rng.reseed("env")`` call, and incremented on subs
 def _reseed_env() -> int | None:
     if _next_seed_env:
         seed = _next_seed_env[0]
-    elif env := os.getenv("MQNS_SEED"):
-        seed = int(env)
-        _next_seed_env.append(seed)
     else:
-        return None
+        seed = seed_env()
+        if seed is None:
+            return None
 
     if "pytest" in sys.modules:
-        print(f"MQNS_SEED={seed}")
+        print(f"{_ENV_NAME}={seed}")
 
     _next_seed_env[0] = seed + 1
     return seed

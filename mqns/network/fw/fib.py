@@ -329,7 +329,7 @@ class Fib:
 
         for entry in fr.paths:
             if entry.path_id in self._paths:
-                raise ValueError(f"FibEntry({entry.path_id}) already exists")
+                raise ValueError(f"FibPath({entry.path_id}) already exists")
             self._paths[entry.path_id] = entry
 
         if opposite := self._req_opposite_end(fr):
