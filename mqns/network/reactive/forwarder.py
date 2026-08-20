@@ -21,6 +21,7 @@ from mqns.network.fw import Forwarder, ForwarderInitKwargs
 from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import PathActivateEvent
 from mqns.network.reactive.fw_nb import ReactiveForwarderNorthbound
+from mqns.network.reactive.mux_buffer_space import MuxSchemeBufferSpace
 
 
 class ReactiveForwarder(Forwarder):
@@ -36,7 +37,7 @@ class ReactiveForwarder(Forwarder):
     """Northbound interface to communicate with the ReactiveRoutingController."""
 
     def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
-        super().__init__(**kwargs)
+        super().__init__(mux=MuxSchemeBufferSpace(), **kwargs)
         self.nb = ReactiveForwarderNorthbound()
 
     @override

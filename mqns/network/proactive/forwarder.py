@@ -15,10 +15,16 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Final, Unpack, override
+from typing import Final, NotRequired, Unpack, cast, override
 
 from mqns.network.fw import FibRequest, Forwarder, ForwarderInitKwargs
 from mqns.network.proactive.fw_nb import ProactiveForwarderNorthbound
+from mqns.network.proactive.mux import MuxSchemeInput, parse_mux_scheme
+
+
+class ProactiveForwarderInitKwargs(ForwarderInitKwargs):
+    mux: NotRequired[MuxSchemeInput]
+    """Path multiplexing scheme, default is buffer-space."""
 
 
 class ProactiveForwarder(Forwarder):
@@ -31,8 +37,11 @@ class ProactiveForwarder(Forwarder):
     nb: Final[ProactiveForwarderNorthbound]
     """Northbound interface to communicate with the ProactiveRoutingController."""
 
-    def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
-        super().__init__(**kwargs)
+    def __init__(self, **kwargs: Unpack[ProactiveForwarderInitKwargs]):
+        super().__init__(
+            mux=parse_mux_scheme(kwargs.pop("mux", None)),
+            **cast(ForwarderInitKwargs, kwargs),
+        )
         self.nb = ProactiveForwarderNorthbound()
 
     @override

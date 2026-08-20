@@ -47,9 +47,9 @@ import numpy as np
 from tap import Tap
 
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
-from mqns.network.fw import MultiplexingVector, MuxScheme, MuxSchemeBufferSpace, MuxSchemeStatistical, RoutingPathStatic
+from mqns.network.fw import MultiplexingVector, RoutingPathStatic
 from mqns.network.network import QuantumNetwork
-from mqns.network.proactive import ProactiveForwarder
+from mqns.network.proactive import MuxSchemeBufferSpace, MuxSchemeInput, MuxSchemeStatistical, ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Simulator
@@ -103,7 +103,7 @@ SCENARIOS: list[Scenario] = [
     ("4) AK+BL+CI+DH+GM", [FLOW_AK, FLOW_BL, FLOW_CI, FLOW_DH, FLOW_GM]),
 ]
 
-STRATEGIES: dict[str, MuxScheme] = {
+STRATEGIES: dict[str, MuxSchemeInput] = {
     "Statistical": MuxSchemeStatistical(select_swap_qubit="random", coordinated_decisions=True),
     "Buffer-Space": MuxSchemeBufferSpace(select_swap_qubit="random"),
 }
@@ -166,7 +166,7 @@ def _mv_for_flow(flow: str, route: list[str], active_flows: set[str]) -> Multipl
     return mv
 
 
-def build_network(mux: MuxScheme, active_flows: Sequence[FlowDef], active_flows_set: set[str]) -> QuantumNetwork:
+def build_network(mux: MuxSchemeInput, active_flows: Sequence[FlowDef], active_flows_set: set[str]) -> QuantumNetwork:
     b = NetworkBuilder()
     define_topo(b)
 
@@ -186,7 +186,7 @@ def build_network(mux: MuxScheme, active_flows: Sequence[FlowDef], active_flows_
     return b.make_network()
 
 
-def run_simulation(seed: int, args: Args, mux: MuxScheme, active_flows: list[FlowDef]):
+def run_simulation(seed: int, args: Args, mux: MuxSchemeInput, active_flows: list[FlowDef]):
     rng.reseed(seed)
 
     active_flows_set = set(f.label for f in active_flows)

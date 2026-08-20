@@ -10,16 +10,13 @@ from mqns.entity.timer import Timer
 from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
 from mqns.network.fw import (
     MuxScheme,
-    MuxSchemeBufferSpace,
-    MuxSchemeDynamicEpr,
-    MuxSchemeStatistical,
     RoutingPathInitArgs,
     RoutingPathSingle,
     RoutingPathStatic,
     SwapSequenceInput,
 )
 from mqns.network.network import Request, TimingMode, TimingModeAsync, TimingModeSync
-from mqns.network.proactive import ProactiveForwarder
+from mqns.network.proactive import MuxSchemeBufferSpace, MuxSchemeDynamicEpr, MuxSchemeStatistical, ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Time
@@ -73,7 +70,8 @@ def test_tree2_bidir(mux: MuxScheme, swap: SwapSequenceInput, end_time: float, r
         t_cohere=1.0,
         ch_capacity=2,
         qchannel_args=dflt_qchannel_args | {"link_arch": LinkArchAlways(LA())},
-        fw={"p_swap": 1, "mux": mux},
+        fw={"p_swap": 1},
+        mux=mux,
         swap_table_leak_tol=256,
         end_time=end_time,
         has_link_layer=True,

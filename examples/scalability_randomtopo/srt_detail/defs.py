@@ -10,7 +10,6 @@ from typing import Any, NotRequired, TypedDict, cast, override
 from tap import Tap
 
 from mqns.entity.node import Controller
-from mqns.network.fw import MuxSchemeStatistical
 from mqns.network.network import QuantumNetwork, generate_random_requests
 from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
 from mqns.network.protocol.consumer import Consumer
@@ -111,7 +110,7 @@ def build_network(args: RunArgs) -> QuantumNetwork:
                 eta_s=eta_s,
                 frequency=frequency,
             ),
-            ProactiveForwarder(p_swap=p_swap, mux=MuxSchemeStatistical()),
+            ProactiveForwarder(p_swap=p_swap, mux="S"),
             Consumer(),
         ],
     )

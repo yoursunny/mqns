@@ -6,10 +6,10 @@ import numpy as np
 from mqns.entity.memory import MemoryQubit, QubitState
 from mqns.entity.node import QNode
 from mqns.models.epr import Entanglement
-from mqns.network.fw.fib import Fib, FibPath
-from mqns.network.fw.mux_buffer_space import MuxSchemeFibBase
-from mqns.network.fw.mux_statistical import MuxSchemeDynamicBase
+from mqns.network.fw import Fib, FibPath
 from mqns.network.fw.select import call_select, parse_select, select_random
+from mqns.network.proactive.mux_buffer_space import MuxSchemeFibBase
+from mqns.network.proactive.mux_statistical import MuxSchemeDynamicBase
 from mqns.utils import rng, unwrap_cast
 
 

@@ -31,7 +31,6 @@ from mqns.network.fw.fib import Fib, FibPath, FibRequest
 from mqns.network.fw.fw_purif import ForwarderPurifProc
 from mqns.network.fw.fw_swap import ForwarderSwapProc
 from mqns.network.fw.mux import MuxScheme
-from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
 from mqns.network.fw.select import MemoryEprTuple, call_select
 from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
@@ -50,8 +49,6 @@ class ForwarderInitKwargs(TypedDict, total=False):
     """Swapping error applied at start or finish time, default is ``s``."""
     cutoff: CutoffScheme | None
     """EPR age cut-off scheme, default is wait-time."""
-    mux: MuxScheme | None
-    """Path multiplexing scheme, default is buffer-space."""
     select_purif_qubit: Callable[[list[MemoryEprTuple], MemoryQubit, FibPath, QNode], MemoryEprTuple] | None
     """Qubit selection among purification candidates, default is picking first candidate."""
 
@@ -144,7 +141,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
     cnt: Final[ForwarderCounters]
     """Counters."""
 
-    def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
+    def __init__(self, *, mux: MuxScheme, **kwargs: Unpack[ForwarderInitKwargs]):
         """
         This constructor sets up a node's entanglement forwarding logic in a quantum network.
         It configures the swapping success probability and preparing internal
@@ -154,7 +151,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         super().__init__()
 
         self.cutoff = copy.deepcopy(kwargs.get("cutoff")) or CutoffSchemeWaitTime()
-        self.mux: MuxScheme = copy.deepcopy(kwargs.get("mux")) or MuxSchemeBufferSpace()
+        self.mux = mux
         self._select_purif_qubit = kwargs.get("select_purif_qubit")
 
         self.fib = Fib()

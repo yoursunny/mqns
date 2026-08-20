@@ -51,8 +51,6 @@ from mqns.network.builder import CTRL_DELAY, NetworkBuilder
 from mqns.network.fw import (
     MultiplexingVector,
     MuxScheme,
-    MuxSchemeBufferSpace,
-    MuxSchemeStatistical,
     RoutingPath,
     RoutingPathMulti,
     RoutingPathSingle,
@@ -60,6 +58,7 @@ from mqns.network.fw import (
 )
 from mqns.network.network import QuantumNetwork
 from mqns.network.network.timing import TimingModeSync
+from mqns.network.proactive import MuxSchemeBufferSpace, MuxSchemeStatistical
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.route import DijkstraRouteAlgorithm, YenRouteAlgorithm
 from mqns.simulator import Simulator

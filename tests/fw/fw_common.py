@@ -11,16 +11,15 @@ from mqns.entity.memory import QubitState
 from mqns.entity.node import Application, Controller, Node, QNode
 from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk, QuantumChannelInitKwargs
 from mqns.models.epr import Entanglement, WernerStateEntanglement
-from mqns.network.fw import (
-    Forwarder,
-    ForwarderInitKwargs,
-    MultiplexingVectorInput,
-    MuxSchemeBufferSpace,
-    RoutingController,
-)
+from mqns.network.fw import Forwarder, ForwarderInitKwargs, RoutingController
 from mqns.network.fw.fw_swap import ForwarderSwapProc
 from mqns.network.network import QuantumNetwork, TimingMode, TimingModeAsync, TimingPhase, sync_phase_handler
-from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
+from mqns.network.proactive import (
+    MuxSchemeInput,
+    ProactiveForwarder,
+    ProactiveRoutingController,
+    mux_scheme_is_buffer_space,
+)
 from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.event import QubitEntangledEvent, QubitReleasedEvent
 from mqns.network.protocol.link_layer import LinkLayer
@@ -78,10 +77,11 @@ class BuildNetworkArgs(TypedDict, total=False):
     cchannel_args: ClassicChannelInitKwargs
     ctrl: RoutingController  # replacing controller application
     fw: ForwarderInitKwargs  # forwarder parameters (`p_swap` defaults to 0.5)
+    mux: MuxSchemeInput  # multiplexing scheme for proactive forwarder
     swap_table_leak_tol: int  # ForwarderSwapProc memory leak tolerance
     end_time: float  # simulation end time, defaults to 10.0 seconds
     timing: TimingMode  # network timing mode, defaults to ASYNC
-    epr_type: type[Entanglement]  # entanglement type, defaults to werner state
+    epr_type: type[Entanglement]  # entanglement type, defaults to Werner state
     has_link_layer: bool  # whether to include full LinkLayer application, defaults to False
 
 
@@ -96,7 +96,7 @@ def _make_topo_args(d: BuildNetworkArgs, *, node_max_degree: int) -> TopologyIni
     fw_args.setdefault("p_swap", 0.6)
     match d.get("mode", "P"):
         case "P":
-            nodes_apps.append(ProactiveForwarder(**fw_args))
+            nodes_apps.append(ProactiveForwarder(mux=d.get("mux"), **fw_args))
         case "R":
             nodes_apps.append(ReactiveForwarder(**fw_args))
 
@@ -130,11 +130,9 @@ def _build_network_finish(
     if (ctrl := d.get("ctrl")) is None:
         match d.get("mode", "P"):
             case "P":
-                mv_auto: MultiplexingVectorInput = "none"
-                mux = d.get("fw", {}).get("mux")
-                if mux is None or isinstance(mux, MuxSchemeBufferSpace):
-                    mv_auto = "max"
-                ctrl = ProactiveRoutingController(mv_auto=mv_auto)
+                ctrl = ProactiveRoutingController(
+                    mv_auto="max" if mux_scheme_is_buffer_space(d.get("mux")) else "none",
+                )
             case "R":
                 ctrl = ReactiveRoutingController()
     topo.controller = Controller("ctrl", apps=[ctrl])

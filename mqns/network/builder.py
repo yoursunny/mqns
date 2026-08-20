@@ -21,12 +21,16 @@ from mqns.models.error.input import ErrorModelInputBasic, ErrorModelInputLength,
 from mqns.network.fw import (
     ForwarderInitKwargs,
     MultiplexingVectorInput,
-    MuxSchemeBufferSpace,
     RoutingPath,
     RoutingPathInitArgs,
 )
 from mqns.network.network import QuantumNetwork, Request, TimingMode, TimingModeAsync, TimingModeSync
-from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingController
+from mqns.network.proactive import (
+    MuxSchemeInput,
+    ProactiveForwarder,
+    ProactiveRoutingController,
+    mux_scheme_is_buffer_space,
+)
 from mqns.network.protocol.classicbridge import ClassicBridge
 from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.link_layer import LinkLayer
@@ -460,6 +464,7 @@ class NetworkBuilder:
     def proactive_centralized(
         self,
         *,
+        mux: MuxSchemeInput = None,
         mv_auto: MultiplexingVectorInput | None = None,
         **kwargs: Unpack[AppsForwarderArgs],
     ) -> Self:
@@ -473,17 +478,16 @@ class NetworkBuilder:
         self._extract_apps_common_args(kwargs)
         kwargs.setdefault("p_swap", 0.5)
 
-        mux = kwargs.get("mux")
         if mv_auto is None:
             mv_auto = "none"
-            if mux is None or isinstance(mux, MuxSchemeBufferSpace):
+            if mux_scheme_is_buffer_space(mux):
                 mv_auto = "max"
             elif isinstance(self.route, YenRouteAlgorithm):
                 raise TypeError("YenRouteAlgorithm is only compatible with MuxSchemeBufferSpace")
 
         self._add_link_layer()
         self.qnode_apps.append(
-            ProactiveForwarder(**kwargs),
+            ProactiveForwarder(mux=mux, **kwargs),
         )
         self._add_consumer()
         self.controller_apps.append(

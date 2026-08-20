@@ -6,9 +6,8 @@ from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
-from mqns.network.fw.fib import FibPath
+from mqns.network.fw import FibPath, MuxScheme
 from mqns.network.fw.message import PathInstructions, validate_path_instructions
-from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.select import (
     MemoryEprTuple,
     call_select,
