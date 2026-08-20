@@ -15,50 +15,12 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Unpack, override
+from typing import Final, Unpack, override
 
-from mqns.entity.memory import PathDirection
-from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw import FibPath, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
+from mqns.network.fw import Forwarder, ForwarderInitKwargs
 from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import PathActivateEvent
-from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
-
-
-class ReactiveForwarderNorthbound(ForwarderNorthbound):
-    @override
-    def install_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        _ = dir, ch
-        if not self.node.timing.is_routing():
-            self.log_warning(
-                "received INSTALL_PATH message for path %s outside of ROUTING phase; t_rtg is too short?", fp.path_id
-            )
-
-    @override
-    def uninstall_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        _ = fp, dir, ch
-        raise ValueError(f"{self} should not receive PATH_DELETE command")
-
-    def send_link_state(self):
-        """
-        Send link state message to controller. Assumes direct connection to controller.
-        """
-        link_states: list[LinkStateEntry] = []
-        for event in self.fw.waiting_etg:
-            assert event.qubit.key is not None
-            link_states.append({"node": event.node.name, "neighbor": event.neighbor.name, "qubit": event.qubit.key})
-
-        if len(link_states) == 0:
-            self.log_debug("no link_state to send")
-            return
-        else:
-            self.log_debug("send link_state for %s etg qubits", len(self.fw.waiting_etg))
-
-        msg: LinkStateMsg = {
-            "cmd": "LS",
-            "ls": link_states,
-        }
-        self.send_ctrl(msg)
+from mqns.network.reactive.fw_nb import ReactiveForwarderNorthbound
 
 
 class ReactiveForwarder(Forwarder):
@@ -70,7 +32,7 @@ class ReactiveForwarder(Forwarder):
     routing is done at the controller.
     """
 
-    nb: ReactiveForwarderNorthbound
+    nb: Final[ReactiveForwarderNorthbound]
     """Northbound interface to communicate with the ReactiveRoutingController."""
 
     def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):

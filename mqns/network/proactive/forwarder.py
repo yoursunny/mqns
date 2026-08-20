@@ -15,41 +15,10 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Unpack, override
+from typing import Final, Unpack, override
 
-from mqns.entity.memory import PathDirection
-from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw import FibPath, FibRequest, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
-from mqns.network.protocol.event import PathActivateEvent, PathDeactivateEvent
-
-
-class ProactiveForwarderNorthbound(ForwarderNorthbound):
-    @override
-    def install_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        self.simulator.sched(
-            PathActivateEvent(
-                self.node,
-                ch,
-                self._ll_path_id(fp),
-                t=self.simulator.tc,
-                is_primary=dir is PathDirection.R,
-            )
-        )
-
-    @override
-    def uninstall_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        _ = dir
-        self.simulator.sched(
-            PathDeactivateEvent(
-                self.node,
-                ch,
-                self._ll_path_id(fp),
-                t=self.simulator.tc,
-            )
-        )
-
-    def _ll_path_id(self, fp: FibPath) -> int | None:
-        return fp.path_id if self.mux.qubit_has_path_id() else None
+from mqns.network.fw import FibRequest, Forwarder, ForwarderInitKwargs
+from mqns.network.proactive.fw_nb import ProactiveForwarderNorthbound
 
 
 class ProactiveForwarder(Forwarder):
@@ -59,7 +28,7 @@ class ProactiveForwarder(Forwarder):
     routing is done at the controller.
     """
 
-    nb: ProactiveForwarderNorthbound
+    nb: Final[ProactiveForwarderNorthbound]
     """Northbound interface to communicate with the ProactiveRoutingController."""
 
     def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):

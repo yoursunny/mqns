@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, TypedDict, Unpack
+from typing import Any, Final, TypedDict, Unpack
 
 import pytest
 
@@ -176,7 +176,7 @@ class CommandModuleF(CommandModuleE):
 
 
 class CommandAppF(CommandAppA):
-    module_f: CommandModuleF
+    module_f: Final[CommandModuleF]
 
     def __init__(self):
         super().__init__()

@@ -17,7 +17,7 @@
 
 import copy
 from collections.abc import Callable
-from typing import Literal, TypedDict, Unpack, override
+from typing import Final, Literal, TypedDict, Unpack, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin
 from mqns.entity.memory import MemoryDecohereEvent, MemoryQubit, PathDirection, QubitState
@@ -126,20 +126,23 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
     routing is done at the controller.
     """
 
-    cutoff: CutoffScheme
+    cutoff: Final[CutoffScheme]
     """EPR age cut-off scheme."""
 
-    mux: MuxScheme
+    mux: Final[MuxScheme]
     """Multiplexing scheme."""
 
-    fib: Fib
+    fib: Final[Fib]
     """FIB data structure."""
 
-    purif: ForwarderPurifProc
+    purif: Final[ForwarderPurifProc]
     """Purification procedure module."""
 
-    swap: ForwarderSwapProc
+    swap: Final[ForwarderSwapProc]
     """Swapping procedure module."""
+
+    cnt: Final[ForwarderCounters]
+    """Counters."""
 
     def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
         """
@@ -170,9 +173,6 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         """
 
         self.cnt = ForwarderCounters()
-        """
-        Counters.
-        """
 
     @override
     def install(self, node):
