@@ -14,7 +14,7 @@ class MuxScheme(ForwarderModule, ABC):
 
     @abstractmethod
     def validate_path_instructions(self, inst: PathInstructions) -> None:
-        """Validate install_path instructions are compatible."""
+        """Validate path instructions are compatible."""
 
     @abstractmethod
     def install_path_adj(self, inst: PathInstructions, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:

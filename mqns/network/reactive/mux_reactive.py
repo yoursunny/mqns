@@ -73,7 +73,7 @@ class MuxSchemeFibBase(MuxScheme):
         return None if mt1 is None else (mt1[0], fp)
 
 
-class MuxSchemeBufferSpace(MuxSchemeFibBase):
+class MuxSchemeReactive(MuxSchemeFibBase):
     """
     Buffer-Space multiplexing scheme.
     """
@@ -91,33 +91,21 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
 
     @override
     def validate_path_instructions(self, inst: PathInstructions) -> None:
-        validate_path_instructions(inst)
-        assert "m_v" in inst
+        validate_path_instructions(inst, reactive=True)
 
     @override
     def install_path_adj(self, inst: PathInstructions, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        assert "m_v" in inst
-        mv = inst["m_v"]
-        mv_offset, ch_side = (-1, 1) if dir == PathDirection.L else (0, 0)
-        mv_index = fp.own_idx + mv_offset
-        mv_element = mv[mv_index]
+        assert "reactive_qubits" in inst
+        idx = fp.own_idx + (-1 if dir == PathDirection.L else 0)
+        key = inst["reactive_qubits"][idx]
 
-        if isinstance(mv_element, str):
-            # allocate a specific memory qubit identified with reservation key (only used in reactive forwarding)
-            qubit, _ = next(self.memory.find(lambda q, _: q.key == mv_element), (None, None))
-            if qubit is None:
-                raise ValueError(f"m_v[{mv_index}] refers to non-existent qubit {mv_element}")
-            qubit.path_id, qubit.path_direction = fp.path_id, dir
-            addrs = [qubit.addr]
-        else:
-            # allocate memory qubit(s) assigned to the channel (typically used in proactive forwarding)
-            n_qubits = mv_element[ch_side]
-            addrs = self.memory.allocate(
-                ch,
-                fp.path_id,
-                dir,
-                n="all" if n_qubits == 0 else n_qubits,
-            )
+        try:
+            qubit, _ = next(self.memory.find(lambda q, _: q.key == key))
+        except StopIteration:
+            raise ValueError(f"reactive_qubits[{idx}] refers to non-existent qubit {key}")
+
+        qubit.path_id, qubit.path_direction = fp.path_id, dir
+        addrs = [qubit.addr]
         self.fw.log_debug("allocating %s qubits: %s", dir, addrs)
 
     @override

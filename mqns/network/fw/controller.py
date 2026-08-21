@@ -2,7 +2,13 @@ from typing import override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
 from mqns.entity.node import Application, Controller
-from mqns.network.fw.message import PathDeleteMsg, PathInsertMsg, PathInstructions, PathReachEprCountMsg
+from mqns.network.fw.message import (
+    PathDeleteMsg,
+    PathInsertMsg,
+    PathInstructions,
+    PathReachEprCountMsg,
+    validate_path_instructions,
+)
 from mqns.network.fw.routing import MultiplexingVectorInput, RoutingPath
 from mqns.network.network import RequestInactiveEvent
 
@@ -19,7 +25,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
                      This should be set to ``max`` if forwarders use ``MuxSchemeBufferSpace``, otherwise ``none``.
         """
         super().__init__()
-        self.mv_auto = mv_auto
+        self.mv_auto: MultiplexingVectorInput = mv_auto
 
     @override
     def install(self, node):
@@ -49,6 +55,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         for path_id, inst in enumerate(rp.compute_paths(self.net), start=rp.path_id):
             self._next_path_id = max(self._next_path_id, path_id + 1)
             inst["path_id"] = path_id
+            validate_path_instructions(inst, bufferspace=None, reactive=None)
             insts.append(inst)
             nodes.update(inst["route"])
 

@@ -15,7 +15,7 @@ from mqns.network.fw.select import (
     select_swap_qubit_newest,
     select_swap_qubit_oldest,
 )
-from mqns.utils import unwrap_cast
+from mqns.utils import unwrap, unwrap_cast
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
@@ -90,33 +90,19 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
 
     @override
     def validate_path_instructions(self, inst: PathInstructions) -> None:
-        validate_path_instructions(inst)
-        assert "m_v" in inst
+        validate_path_instructions(inst, bufferspace=True)
 
     @override
     def install_path_adj(self, inst: PathInstructions, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        assert "m_v" in inst
-        mv = inst["m_v"]
-        mv_offset, ch_side = (-1, 1) if dir == PathDirection.L else (0, 0)
-        mv_index = fp.own_idx + mv_offset
-        mv_element = mv[mv_index]
+        assert "bufferspace_mv" in inst
+        n_qubits = inst["bufferspace_mv"][2 * fp.own_idx + (-1 if dir == PathDirection.L else 0)]
 
-        if isinstance(mv_element, str):
-            # allocate a specific memory qubit identified with reservation key (only used in reactive forwarding)
-            qubit, _ = next(self.memory.find(lambda q, _: q.key == mv_element), (None, None))
-            if qubit is None:
-                raise ValueError(f"m_v[{mv_index}] refers to non-existent qubit {mv_element}")
-            qubit.path_id, qubit.path_direction = fp.path_id, dir
-            addrs = [qubit.addr]
-        else:
-            # allocate memory qubit(s) assigned to the channel (typically used in proactive forwarding)
-            n_qubits = mv_element[ch_side]
-            addrs = self.memory.allocate(
-                ch,
-                fp.path_id,
-                dir,
-                n="all" if n_qubits == 0 else n_qubits,
-            )
+        addrs = self.memory.allocate(
+            ch,
+            fp.path_id,
+            dir,
+            n="all" if n_qubits == 0 else n_qubits,
+        )
         self.fw.log_debug("allocating %s qubits: %s", dir, addrs)
 
     @override
@@ -146,11 +132,10 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
 
     @override
     def find_swap_with(self, mq0: MemoryQubit, epr0: Entanglement, fp: FibPath | None) -> tuple[MemoryQubit, FibPath] | None:
-        assert fp
         return self.select_swap_candidate(
             mq0,
             epr0,
-            fp,
+            unwrap(fp),
             self.memory.find(
                 lambda q, _: (
                     self.qubits_swappable(mq0, q)  # basic condition met

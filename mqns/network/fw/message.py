@@ -1,11 +1,14 @@
 from collections.abc import Sequence
 from typing import Literal, NotRequired, TypedDict
 
+type MultiplexingVector = Sequence[int]
+"""Multiplexing vector -- guides memory allocation in buffer-space multiplexing scheme."""
+
+type QubitKeySequence = Sequence[str]
+"""Qubit key sequence -- identifies specific qubits in reactive forwarding."""
+
 type SwapSequence = Sequence[int]
 """Swap sequence -- nonnegative integers to control swapping order."""
-
-type MultiplexingVector = Sequence[tuple[int, int] | str]
-"""Multiplexing vector -- guides memory allocation in buffer-space multiplexing scheme."""
 
 
 class PathInstructions(TypedDict):
@@ -25,6 +28,34 @@ class PathInstructions(TypedDict):
     There must a quantum channel and a classical channel between each pair of adjacent nodes.
     """
 
+    bufferspace_mv: NotRequired[MultiplexingVector]
+    """
+    Multiplexing vector, used by ``proactive.MuxSchemeBufferSpace``.
+
+    This list shall have two integers per qchannel, i.e. ``2*(len(route)-1)`` length.
+    The (2i)-th and (2i+1)-th integer corresponds to left and right node of the i-th qchannel.
+    Each integer indicates how many qubits should the node allocate to this path on that qchannel,
+    among the memory qubits assigned to that qchannel by the node.
+    ``0`` means allocating all qubits assigned to that qchannel to this path.
+
+    Example:
+
+        route          = [S,    R,    D]
+        bufferspace_mv = [  4,2,  3,0  ]
+
+    * S should allocate 4 qubits on S-R channel.
+    * R should allocate 2 qubits on S-R channel and 3 qubits on R-D channel.
+    * D should allocate all qubits assigned to R-D channel.
+    """
+
+    reactive_qubits: NotRequired[QubitKeySequence]
+    """
+    Qubit key sequence, used in reactive forwarding.
+
+    This list shall have one string per qchannel, i.e. ``len(route)-1`` length.
+    Each string is a qubit reservation key that should be swapped into the end-to-end entanglement.
+    """
+
     swap: SwapSequence
     """
     Swap sequence -- nonnegative integers to control swapping order.
@@ -42,34 +73,13 @@ class PathInstructions(TypedDict):
     """
     Swap cutoff time -- maximum age at each swapping step.
 
-    This list shall have two elements per intermediate node, i.e. `2*(len(route)-2)`.
+    This list shall have two elements per intermediate node, i.e. ``2*(len(route)-2)`` length.
     The (2i)-th and (2i+1)-th element corresponds to left and right qchannel of the i-th intermediate node.
     Each element is a duration in time slots (see ``Time`` class); ``-1`` means no restriction.
 
     The semantics of "age" depend on the CutoffScheme passed to Forwarder.
     If swapping has been disabled, this list has no effect.
     If this list is omitted, it is equivalent to all ``-1`` i.e. no restriction on any node.
-    """
-
-    m_v: NotRequired[MultiplexingVector]
-    """
-    Multiplexing vector -- guides memory allocation in buffer-space multiplexing scheme.
-
-    This list shall have one element per qchannel, i.e. one less than ``route``.
-    Each element is a pair of nonnegative integers, corresponding to left and right qchannels.
-    Each integer indicates how many memory qubits shall be allocated on the left/right qchannel for this path.
-    If an integer is zero, it means allocating all qubits assigned to that qchannel for this path.
-
-    Example:
-        route = [S,    R,     D]
-        m_v   = [ (4,2), (3,0) ]
-
-    * S should allocate 4 qubits on S-R channel.
-    * R should allocate 2 qubits on S-R channel and 3 qubits on R-D channel.
-    * D should allocate all qubits assigned to R-D channel.
-
-    In reactive forwarding, each element can also be a qubit reservation key.
-    Only the qubit with that specific reservation key would be allocated.
     """
 
     purif: dict[str, int]
@@ -83,29 +93,54 @@ class PathInstructions(TypedDict):
     """
 
 
-def validate_path_instructions(inst: PathInstructions) -> None:
-    def check_purif_segment(segment_name: str) -> bool:
-        try:
-            idx0, idx1 = (route.index(node_name) for node_name in segment_name.split("-"))
-            return idx0 < idx1
-        except ValueError:
-            return False
+def _check_purif_segment(segment_name: str, route: Sequence[str]) -> bool:
+    try:
+        idx0, idx1 = (route.index(node_name) for node_name in segment_name.split("-"))
+        return idx0 < idx1
+    except ValueError:
+        return False
+
+
+def validate_path_instructions(
+    inst: PathInstructions,
+    *,
+    bufferspace: bool | None = False,
+    reactive: bool | None = False,
+) -> None:
+    """
+    Validate ``PathInstructions``.
+
+    Args:
+        inst: PathInstructions to be validated.
+        bufferspace: Require the presence or absence of ``bufferspace_*`` fields.
+        reactive: Require the presence or absence of ``reactive_*`` fields.
+    """
+    if inst["path_id"] < 0:
+        raise ValueError("path_id is negative")
 
     route = inst["route"]
-    if len(route) == 0:
+    n = len(route)
+    if n == 0:
         raise ValueError("route is empty")
+
+    if bufferspace not in (None, "bufferspace_mv" in inst):
+        raise ValueError(f"bufferspace_mv must be {'present' if bufferspace else 'absent'}")
+    if "bufferspace_mv" in inst and len(inst["bufferspace_mv"]) != 2 * (n - 1):
+        raise ValueError("bufferspace_mv does not match route length")
+
+    if reactive not in (None, "reactive_qubits" in inst):
+        raise ValueError(f"reactive_qubits must be {'present' if reactive else 'absent'}")
+    if "reactive_qubits" in inst and len(inst["reactive_qubits"]) != n - 1:
+        raise ValueError("reactive_qubits does not match route length")
 
     if len(inst["swap"]) != len(route):
         raise ValueError("swapping order does not match route length")
 
-    if "swap_cutoff" in inst and len(inst["swap_cutoff"]) != 2 * (len(route) - 2):
+    if "swap_cutoff" in inst and len(inst["swap_cutoff"]) != 2 * (n - 2):
         raise ValueError("swap_cutoff does not match route length")
 
-    if "m_v" in inst and len(inst["m_v"]) != len(route) - 1:
-        raise ValueError("multiplexing vector does not match route length")
-
     for segment_name in inst["purif"].keys():
-        if not check_purif_segment(segment_name):
+        if not _check_purif_segment(segment_name, route):
             raise ValueError(f"purif segment {segment_name} does not exist in route")
 
 

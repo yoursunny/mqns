@@ -31,7 +31,6 @@ class MuxSchemeDynamicBase(MuxScheme):
     @override
     def validate_path_instructions(self, inst: PathInstructions):
         validate_path_instructions(inst)
-        assert "m_v" not in inst
 
     @override
     def install_path_adj(self, inst: PathInstructions, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:

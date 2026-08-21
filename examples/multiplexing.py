@@ -49,7 +49,13 @@ from tap import Tap
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
 from mqns.network.fw import MultiplexingVector, RoutingPathStatic
 from mqns.network.network import QuantumNetwork
-from mqns.network.proactive import MuxSchemeBufferSpace, MuxSchemeInput, MuxSchemeStatistical, ProactiveForwarder
+from mqns.network.proactive import (
+    MuxSchemeBufferSpace,
+    MuxSchemeInput,
+    MuxSchemeStatistical,
+    ProactiveForwarder,
+    mux_scheme_is_buffer_space,
+)
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Simulator
@@ -125,42 +131,42 @@ def _mv_for_flow(flow: str, route: list[str], active_flows: set[str]) -> Multipl
         if pair == "EF":  # EF contested:
             if active_flows == {"AK", "CI"}:
                 # AK+CI: 2 flows on EF -> 16@E, 25@F each
-                tx_rx = (16, 25)
+                tx_rx = 16, 25
             elif active_flows == {"AK", "BL"}:
                 # AK+BL: 2 flows on EF (and also FJ elsewhere) -> 16@E, 25@F each
-                tx_rx = (16, 25)
+                tx_rx = 16, 25
             elif active_flows == {"AK", "CI", "DH"}:
                 # AK+CI+DH: 3 flows on EF
                 # E: 11 (AK), 11 (CI), 10 (DH)
                 # F: 17 (AK), 17 (CI), 16 (DH)
                 if flow == "AK":
-                    tx_rx = (11, 17)
+                    tx_rx = 11, 17
                 elif flow == "CI":
-                    tx_rx = (11, 17)
+                    tx_rx = 11, 17
                 elif flow == "DH":
-                    tx_rx = (10, 16)
+                    tx_rx = 10, 16
             elif active_flows == {"AK", "BL", "CI", "DH", "GM"}:
                 # All five: EF has 4 flows (A,B,C,D)
                 # E: 8 (AK,BL,CI,DH)
                 # F: 17 (AK,BL), 16 (CI,DH)
                 if flow in {"AK", "BL"}:
-                    tx_rx = (8, 13)
+                    tx_rx = 8, 13
                 elif flow in {"CI", "DH"}:
-                    tx_rx = (8, 12)
+                    tx_rx = 8, 12
             else:
                 tx_rx = (RX_QUBITS, TX_QUBITS)
         elif pair == "FJ":  # FJ contested:
             if active_flows == {"AK", "BL"}:
                 # AK+BL: 2 flows on FJ -> 16@J, 25@F each
-                tx_rx = (25, 16)  # (F side, J side)
+                tx_rx = 25, 16  # (F side, J side)
             elif active_flows == {"AK", "BL", "CI", "DH", "GM"}:
                 # All five: FJ has 3 flows (AK,BL,GM)
                 # F: 17 (AK,BL), 16 (GM); J: 11 (AK,BL), 10 (GM)
                 if flow in {"AK", "BL"}:
-                    tx_rx = (17, 11)
+                    tx_rx = 17, 11
                 elif flow == "GM":
-                    tx_rx = (16, 10)
-        mv.append(tx_rx)
+                    tx_rx = 16, 10
+        mv.extend(tx_rx)
 
     # print(f"flow: {flow} , route={route}, mv: {mv}")
     return mv
@@ -172,7 +178,7 @@ def build_network(mux: MuxSchemeInput, active_flows: Sequence[FlowDef], active_f
 
     b.proactive_centralized(mux=mux)
 
-    if isinstance(mux, MuxSchemeBufferSpace):
+    if mux_scheme_is_buffer_space(mux):
         # Explicit static paths with per-hop MVs
         for flow in active_flows:
             b.request(

@@ -30,17 +30,17 @@ class ForwarderNorthbound(ForwarderModule):
         """Process a PATH_INSERT control command."""
         paths = [(inst, self._path_convert(inst)) for inst in msg["paths"] if self.node.name in inst["route"]]
 
-        fr = FibRequest(msg["req_id"], [entry for _, entry in paths], epr_count=msg.get("epr_count", -1))
+        fr = FibRequest(msg["req_id"], [fp for _, fp in paths], epr_count=msg.get("epr_count", -1))
         self.fib.insert_req(fr)
 
         # Identify left/right channels, allocate qubits and process LinkLayer changes.
-        for inst, entry in paths:
-            if ch := self._find_adj(entry, -1):
-                self.mux.install_path_adj(inst, entry, PathDirection.L, ch)
-                self.install_path_adj(entry, PathDirection.L, ch)
-            if ch := self._find_adj(entry, +1):
-                self.mux.install_path_adj(inst, entry, PathDirection.R, ch)
-                self.install_path_adj(entry, PathDirection.R, ch)
+        for inst, fp in paths:
+            if ch := self._find_adj(fp, -1):
+                self.mux.install_path_adj(inst, fp, PathDirection.L, ch)
+                self.install_path_adj(fp, PathDirection.L, ch)
+            if ch := self._find_adj(fp, +1):
+                self.mux.install_path_adj(inst, fp, PathDirection.R, ch)
+                self.install_path_adj(fp, PathDirection.R, ch)
 
     def _path_convert(self, inst: PathInstructions) -> FibPath:
         route = inst["route"]

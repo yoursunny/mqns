@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from typing import override
 
 from mqns.network.fw import RoutingPath
-from mqns.network.fw.message import PathInstructions
+from mqns.network.fw.message import PathInstructions, QubitKeySequence
 from mqns.network.network import QuantumNetwork, Request
 from mqns.network.reactive.message import LinkStateEntry
 
@@ -49,7 +49,7 @@ class TopoLinkState:
         return [etgs.popleft() for etgs in link_etgs]
 
 
-type ReactiveRoutingPathDef = tuple[list[str], list[str]]
+type ReactiveRoutingPathDef = tuple[list[str], QubitKeySequence]
 """
 Path computed by ``ReactiveRoutingController``.
 
@@ -70,14 +70,12 @@ class ReactiveRoutingPath(RoutingPath):
         """List of computed paths with specific EPRs."""
 
         # Clear unsupported fields.
-        self.m_v = 0
+        self.m_v = "none"
         self.purif = {}
-
-    def reset(self) -> None:
-        self.path_id = -1
-        self.paths.clear()
 
     @override
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
         for route, qubits in self.paths:
-            yield self._make_path_instructions(net, route, m_v=qubits)
+            inst = self._make_path_instructions(net, route)
+            inst["reactive_qubits"] = qubits
+            yield inst
