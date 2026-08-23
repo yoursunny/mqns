@@ -108,9 +108,9 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
     @override
     def uninstall_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
         qubits = self.memory.find(lambda q, _: q.path_id == fp.path_id, qchannel=ch)
-        addrs = [q[0].addr for q in qubits]
+        addrs = [q.addr for q, _ in qubits]
         self.fw.log_debug("deallocating %s qubits: %s", dir, addrs)
-        # If some qubits are currently ACTIVE or RESERVED IN LinkLayer, deallocation would occur
+        # If some qubits are currently ACTIVE or RESERVED in LinkLayer, deallocation would occur
         # when they next reach RAW state.
         self.memory.deallocate(*addrs)
 

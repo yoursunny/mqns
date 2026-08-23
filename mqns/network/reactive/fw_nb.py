@@ -1,24 +1,26 @@
-from typing import override
-
-from mqns.entity.memory import PathDirection
-from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw import FibPath, ForwarderNorthbound
+from mqns.network.fw import (
+    FibPath,
+    FibRequest,
+    Forwarder,
+    ForwarderNorthbound,
+    MuxScheme,
+    fw_control_cmd_handler,
+)
+from mqns.network.fw.message import PathInsertMsg, PathInstructions
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
+from mqns.simulator import Time
 
 
 class ReactiveForwarderNorthbound(ForwarderNorthbound):
-    @override
-    def install_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        _ = dir, ch
-        if not self.node.timing.is_routing():
-            self.log_warning(
-                "received INSTALL_PATH message for path %s outside of ROUTING phase; t_rtg is too short?", fp.path_id
-            )
+    """
+    Northbound interface to communicate with ``ReactiveRoutingController``.
+    """
 
-    @override
-    def uninstall_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        _ = fp, dir, ch
-        raise ValueError(f"{self} should not receive PATH_DELETE command")
+    mux: MuxScheme
+
+    def install(self, fw: Forwarder):
+        super().install(fw)
+        self.mux = fw.mux
 
     def send_link_state(self):
         """
@@ -40,3 +42,38 @@ class ReactiveForwarderNorthbound(ForwarderNorthbound):
             "ls": link_states,
         }
         self.send_ctrl(msg)
+
+    @fw_control_cmd_handler("PATH_INSERT")
+    def handle_path_insert(self, msg: PathInsertMsg) -> None:
+        """Process a PATH_INSERT control command."""
+        if not self.node.timing.is_routing():
+            # The likely cause is setting t_rtg too short in TimingModeSync.
+            self.log_warning("PATH_INSERT(req_id=%s) ignored reason=not-routing-phase", msg["req_id"])
+            return
+
+        paths = [(inst, self._path_convert(inst)) for inst in msg["paths"] if self.node.name in inst["route"]]
+
+        fr = FibRequest(msg["req_id"], [fp for _, fp in paths], epr_count=msg.get("epr_count", -1))
+        self.fib.insert_req(fr)
+
+        # Identify left/right channels, allocate qubits and process LinkLayer changes.
+        for inst, fp in paths:
+            for dir, ch in self.iter_adjacency(fp):
+                self.mux.install_path_adj(inst, fp, dir, ch)
+
+    def _path_convert(self, inst: PathInstructions) -> FibPath:
+        route = inst["route"]
+        self.mux.validate_path_instructions(inst)
+
+        if "swap_cutoff" in inst:
+            swap_cutoff = [None if t < 0 else self.simulator.time(slot=t) for t in inst["swap_cutoff"]]
+        else:
+            swap_cutoff: list[Time | None] = [None] * (2 * (len(route) - 2))
+        return FibPath(
+            path_id=inst["path_id"],
+            route=route,
+            own_idx=route.index(self.node.name),
+            swap=inst["swap"],
+            swap_cutoff=swap_cutoff,
+            purif=inst["purif"],
+        )
