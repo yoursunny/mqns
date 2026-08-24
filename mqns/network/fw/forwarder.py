@@ -31,7 +31,6 @@ from mqns.network.fw.cutoff import CutoffScheme, CutoffSchemeWaitTime
 from mqns.network.fw.fib import Fib, FibPath, FibRequest
 from mqns.network.fw.fw_purif import ForwarderPurifProc
 from mqns.network.fw.fw_swap import ForwarderSwapProc
-from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.select import MemoryEprTuple, call_select
 from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
@@ -127,9 +126,6 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
     cutoff: Final[CutoffScheme]
     """EPR age cut-off scheme."""
 
-    mux: Final[MuxScheme]
-    """Multiplexing scheme."""
-
     fib: Final[Fib]
     """FIB data structure."""
 
@@ -142,7 +138,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
     cnt: Final[ForwarderCounters]
     """Counters."""
 
-    def __init__(self, *, mux: MuxScheme, **kwargs: Unpack[ForwarderInitKwargs]):
+    def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
         """
         This constructor sets up a node's entanglement forwarding logic in a quantum network.
         It configures the swapping success probability and preparing internal
@@ -152,7 +148,6 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         super().__init__()
 
         self.cutoff = copy.deepcopy(kwargs.get("cutoff")) or CutoffSchemeWaitTime()
-        self.mux = mux
         self._select_purif_qubit = kwargs.get("select_purif_qubit")
 
         self.fib = Fib()
@@ -183,7 +178,6 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         """Network-wide entanglement type."""
 
         self.cutoff.install(self)
-        self.mux.install(self)
         self.fib.install(self)
         self.purif.install(self)
         self.swap.install(self)
@@ -381,7 +375,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         if self._try_consume(mq0, epr0, fp):
             return
 
-        swap_decision = self.mux.find_swap_with(mq0, epr0, fp)
+        swap_decision = self.find_swap_with(mq0, epr0, fp)
         if swap_decision:
             mq1, fp = swap_decision
             self.cutoff.before_swap(mq0, mq1, fp)
@@ -443,6 +437,22 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         qubit.state = QubitState.CONSUME
         self.simulator.sched(QubitConsumeEvent(self.node, qubit, epr, t=self.simulator.tc, req_id=fr.req_id))
         return True
+
+    @abstractmethod
+    def find_swap_with(self, mq0: MemoryQubit, epr0: Entanglement, fp: FibPath | None) -> tuple[MemoryQubit, FibPath] | None:
+        """
+        Choose another qubit to swap with a qubit entering ELIGIBLE state and ready to swap.
+
+        Args:
+            mq0: The qubit entering ELIGIBLE state.
+            epr0: The entanglement stored in the qubit.
+            fp: FIB path entry found by ``qubit_is_entangled_next`` or used in last round of purification.
+
+        Returns:
+            None: Do not swap.
+            [0]: The other qubit, which must be in ELIGIBLE state.
+            [1]: FIB entry to guide ``ForwarderSwapProc``.
+        """
 
     def request_reached_epr_count(self, fr: FibRequest) -> None:
         """

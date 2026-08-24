@@ -1,14 +1,7 @@
-from mqns.entity.memory import MemoryQubit
+from mqns.entity.memory import MemoryQubit, PathDirection
 from mqns.entity.node import QNode
-from mqns.network.fw import (
-    FibPath,
-    FibRequest,
-    Forwarder,
-    ForwarderNorthbound,
-    MuxScheme,
-    fw_control_cmd_handler,
-)
-from mqns.network.fw.message import PathInsertMsg, PathInstructions
+from mqns.network.fw import FibPath, FibRequest, ForwarderNorthbound, fw_control_cmd_handler
+from mqns.network.fw.message import PathInsertMsg, PathInstructions, validate_path_instructions
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
 from mqns.simulator import Time
 from mqns.utils import unwrap
@@ -19,11 +12,8 @@ class ReactiveForwarderNorthbound(ForwarderNorthbound):
     Northbound interface to communicate with ``ReactiveRoutingController``.
     """
 
-    mux: MuxScheme
-
-    def install(self, fw: Forwarder):
-        super().install(fw)
-        self.mux = fw.mux
+    def __init__(self):
+        super().__init__()
 
         self._link_states: list[LinkStateEntry] = []
         """
@@ -72,12 +62,12 @@ class ReactiveForwarderNorthbound(ForwarderNorthbound):
 
         # Identify left/right channels, allocate qubits and process LinkLayer changes.
         for inst, fp in paths:
-            for dir, ch in self.iter_adjacency(fp):
-                self.mux.install_path_adj(inst, fp, dir, ch)
+            for dir, _ in self.iter_adjacency(fp):
+                self._install_path_adj(inst, fp, dir)
 
     def _path_convert(self, inst: PathInstructions) -> FibPath:
+        validate_path_instructions(inst, reactive=True)
         route = inst["route"]
-        self.mux.validate_path_instructions(inst)
 
         if "swap_cutoff" in inst:
             swap_cutoff = [None if t < 0 else self.simulator.time(slot=t) for t in inst["swap_cutoff"]]
@@ -91,3 +81,17 @@ class ReactiveForwarderNorthbound(ForwarderNorthbound):
             swap_cutoff=swap_cutoff,
             purif=inst["purif"],
         )
+
+    def _install_path_adj(self, inst: PathInstructions, fp: FibPath, dir: PathDirection) -> None:
+        assert "reactive_qubits" in inst
+        idx = fp.own_idx + (-1 if dir == PathDirection.L else 0)
+        key = inst["reactive_qubits"][idx]
+
+        try:
+            qubit, _ = next(self.memory.find(lambda q, _: q.key == key))
+        except StopIteration:
+            raise ValueError(f"reactive_qubits[{idx}] refers to non-existent qubit {key}")
+
+        qubit.path_id, qubit.path_direction = fp.path_id, dir
+        addrs = [qubit.addr]
+        self.fw.log_debug("allocating %s qubits: %s", dir, addrs)

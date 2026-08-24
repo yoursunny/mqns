@@ -19,7 +19,7 @@ from typing import Final, NotRequired, Unpack, cast, override
 
 from mqns.entity.memory import MemoryQubit
 from mqns.models.epr import Entanglement
-from mqns.network.fw import FibPath, FibRequest, Forwarder, ForwarderInitKwargs
+from mqns.network.fw import FibPath, FibRequest, Forwarder, ForwarderInitKwargs, MuxScheme
 from mqns.network.proactive.fw_nb import ProactiveForwarderNorthbound
 from mqns.network.proactive.mux import MuxSchemeInput, parse_mux_scheme
 
@@ -39,17 +39,20 @@ class ProactiveForwarder(Forwarder):
     nb: Final[ProactiveForwarderNorthbound]
     """Northbound interface to communicate with the ProactiveRoutingController."""
 
+    mux: Final[MuxScheme]
+    """Multiplexing scheme."""
+
     def __init__(self, **kwargs: Unpack[ProactiveForwarderInitKwargs]):
-        super().__init__(
-            mux=parse_mux_scheme(kwargs.pop("mux", None)),
-            **cast(ForwarderInitKwargs, kwargs),
-        )
+        mux = parse_mux_scheme(kwargs.pop("mux", None))
+        super().__init__(**cast(ForwarderInitKwargs, kwargs))
         self.nb = ProactiveForwarderNorthbound()
+        self.mux = mux
 
     @override
     def install(self, node):
         super().install(node)
         self.nb.install(self)
+        self.mux.install(self)
 
     @override
     def qubit_is_entangled_next(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
@@ -58,6 +61,10 @@ class ProactiveForwarder(Forwarder):
             return
 
         return self.mux.qubit_is_entangled(mq, epr)
+
+    @override
+    def find_swap_with(self, mq0: MemoryQubit, epr0: Entanglement, fp: FibPath | None) -> tuple[MemoryQubit, FibPath] | None:
+        return self.mux.find_swap_with(mq0, epr0, fp)
 
     @override
     def request_reached_epr_count(self, fr: FibRequest) -> None:

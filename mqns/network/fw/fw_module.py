@@ -83,7 +83,7 @@ class ForwarderModule(LogSelfMixin, ClassicCommandModule):
     fib: Fib
     fw_cnt: "ForwarderCounters"
 
-    def install(self, fw: "Forwarder"):
+    def install(self, fw: "Forwarder") -> None:
         self.fw = fw
         self.simulator = fw.simulator
         self.epr_type = fw.epr_type

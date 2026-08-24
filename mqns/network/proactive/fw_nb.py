@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING, cast
+
 from mqns.entity.memory import PathDirection
 from mqns.network.fw import (
     FibPath,
@@ -11,6 +13,9 @@ from mqns.network.fw.message import PathDeleteMsg, PathInsertMsg, PathInstructio
 from mqns.network.protocol.event import PathActivateEvent, PathDeactivateEvent
 from mqns.simulator import Time
 
+if TYPE_CHECKING:
+    from mqns.network.proactive.forwarder import ProactiveForwarder
+
 
 class ProactiveForwarderNorthbound(ForwarderNorthbound):
     """
@@ -19,9 +24,9 @@ class ProactiveForwarderNorthbound(ForwarderNorthbound):
 
     mux: MuxScheme
 
-    def install(self, fw: Forwarder):
+    def install(self, fw: Forwarder) -> None:
         super().install(fw)
-        self.mux = fw.mux
+        self.mux = cast("ProactiveForwarder", fw).mux
         self._fib_erase_delay = self.memory.t_cohere * 4
 
     @fw_control_cmd_handler("PATH_INSERT")
