@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
-from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
 from mqns.network.fw.fib import FibPath
@@ -52,13 +51,14 @@ class MuxScheme(ForwarderModule, ABC):
         """
 
     @abstractmethod
-    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibPath | None:
+    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
         """
         Handle a qubit entering ENTANGLED state, i.e. having an elementary entanglement.
 
         Pre-conditions:
 
         * The network is in ASYNC timing mode or INTERNAL phase.
+        * ``mq.partner`` is assigned.
         * ``mq.epr_path_ids`` is populated and non-empty.
         * ``epr`` is an elementary entanglement.
 

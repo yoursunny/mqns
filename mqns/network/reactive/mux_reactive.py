@@ -1,7 +1,6 @@
 from typing import override
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
-from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
 from mqns.network.fw.fib import FibPath
@@ -52,8 +51,8 @@ class MuxSchemeReactive(MuxScheme):
         return [mq.path_id]
 
     @override
-    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibPath | None:
-        _ = epr, neighbor
+    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
+        _ = epr
         mq.state = QubitState.PURIF
         return self.fib.get_path(unwrap_cast(mq.path_id))
 

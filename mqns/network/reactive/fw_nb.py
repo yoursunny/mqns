@@ -1,3 +1,5 @@
+from mqns.entity.memory import MemoryQubit
+from mqns.entity.node import QNode
 from mqns.network.fw import (
     FibPath,
     FibRequest,
@@ -9,6 +11,7 @@ from mqns.network.fw import (
 from mqns.network.fw.message import PathInsertMsg, PathInstructions
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
 from mqns.simulator import Time
+from mqns.utils import unwrap
 
 
 class ReactiveForwarderNorthbound(ForwarderNorthbound):
@@ -22,26 +25,37 @@ class ReactiveForwarderNorthbound(ForwarderNorthbound):
         super().install(fw)
         self.mux = fw.mux
 
+        self._link_states: list[LinkStateEntry] = []
+        """
+        LinkState accumulated during EXTERNAL phase and sent at start of ROUTING phase.
+        """
+
+    def append_link_state(self, neighbor: QNode, mq: MemoryQubit):
+        self._link_states.append(
+            {
+                "node": self.node.name,
+                "neighbor": neighbor.name,
+                "qubit": unwrap(mq.key),
+            }
+        )
+
     def send_link_state(self):
         """
         Send link state message to controller. Assumes direct connection to controller.
         """
-        link_states: list[LinkStateEntry] = []
-        for event in self.fw.waiting_etg:
-            assert event.qubit.key is not None
-            link_states.append({"node": event.node.name, "neighbor": event.neighbor.name, "qubit": event.qubit.key})
-
-        if len(link_states) == 0:
+        if len(self._link_states) == 0:
             self.log_debug("no link_state to send")
             return
         else:
-            self.log_debug("send link_state for %s etg qubits", len(self.fw.waiting_etg))
+            self.log_debug("send link_state for %s entries", len(self._link_states))
 
         msg: LinkStateMsg = {
             "cmd": "LS",
-            "ls": link_states,
+            "ls": self._link_states,
         }
         self.send_ctrl(msg)
+
+        self._link_states.clear()
 
     @fw_control_cmd_handler("PATH_INSERT")
     def handle_path_insert(self, msg: PathInsertMsg) -> None:

@@ -17,9 +17,11 @@
 
 from typing import Final, Unpack, override
 
-from mqns.network.fw import Forwarder, ForwarderInitKwargs
+from mqns.entity.memory import MemoryQubit
+from mqns.models.epr import Entanglement
+from mqns.network.fw import FibPath, Forwarder, ForwarderInitKwargs
 from mqns.network.network import TimingPhase, sync_phase_handler
-from mqns.network.protocol.event import PathActivateEvent
+from mqns.network.protocol.event import PathActivateEvent, QubitEntangledEvent
 from mqns.network.reactive.fw_nb import ReactiveForwarderNorthbound
 from mqns.network.reactive.mux_reactive import MuxSchemeReactive
 
@@ -69,3 +71,19 @@ class ReactiveForwarder(Forwarder):
         # Clear FIB and path assignments, as these are only useful for one slot.
         self.fib.clear()
         self.memory.deallocate(*(qubit.addr for qubit, _ in self.memory.find(lambda q, _: q.path_id is not None)))
+
+    @override
+    def qubit_is_entangled_in_external(self, event: QubitEntangledEvent) -> None:
+        """
+        Handle a qubit entering ENTANGLED state when in EXTERNAL phase of SYNC timing mode.
+        """
+        super().qubit_is_entangled_in_external(event)
+        self.nb.append_link_state(event.neighbor, event.qubit)
+
+    @override
+    def qubit_is_entangled_next(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
+        mq.epr_path_ids = self.mux.list_qubit_epr_path_ids(mq)
+        if not mq.epr_path_ids:
+            return
+
+        return self.mux.qubit_is_entangled(mq, epr)

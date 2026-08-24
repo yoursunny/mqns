@@ -17,7 +17,9 @@
 
 from typing import Final, NotRequired, Unpack, cast, override
 
-from mqns.network.fw import FibRequest, Forwarder, ForwarderInitKwargs
+from mqns.entity.memory import MemoryQubit
+from mqns.models.epr import Entanglement
+from mqns.network.fw import FibPath, FibRequest, Forwarder, ForwarderInitKwargs
 from mqns.network.proactive.fw_nb import ProactiveForwarderNorthbound
 from mqns.network.proactive.mux import MuxSchemeInput, parse_mux_scheme
 
@@ -48,6 +50,14 @@ class ProactiveForwarder(Forwarder):
     def install(self, node):
         super().install(node)
         self.nb.install(self)
+
+    @override
+    def qubit_is_entangled_next(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
+        mq.epr_path_ids = self.mux.list_qubit_epr_path_ids(mq)
+        if not mq.epr_path_ids:
+            return
+
+        return self.mux.qubit_is_entangled(mq, epr)
 
     @override
     def request_reached_epr_count(self, fr: FibRequest) -> None:

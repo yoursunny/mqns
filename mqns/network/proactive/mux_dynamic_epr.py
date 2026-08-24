@@ -4,7 +4,6 @@ from typing import Literal, override
 import numpy as np
 
 from mqns.entity.memory import MemoryQubit, QubitState
-from mqns.entity.node import QNode
 from mqns.models.epr import Entanglement
 from mqns.network.fw import Fib, FibPath
 from mqns.network.fw.select import call_select, parse_select, select_random
@@ -66,8 +65,7 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
         self._select_path = parse_select(type(self), "SelectPath_", select_path)
 
     @override
-    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibPath | None:
-        _ = neighbor
+    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
         # TODO: if paths have different swap policies
         #       -> consider only paths for which this qubit may be eligible ??
 

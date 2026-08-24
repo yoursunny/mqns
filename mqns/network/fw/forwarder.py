@@ -16,6 +16,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import copy
+from abc import abstractmethod
 from collections.abc import Callable
 from typing import Final, Literal, TypedDict, Unpack, override
 
@@ -35,7 +36,7 @@ from mqns.network.fw.select import MemoryEprTuple, call_select
 from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
 from mqns.simulator import event_handler
-from mqns.utils import json_encodable, unwrap_cast
+from mqns.utils import json_encodable, unwrap, unwrap_cast
 
 
 class ForwarderInitKwargs(TypedDict, total=False):
@@ -163,9 +164,9 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
             error_at_finish=kwargs.get("swap_error_at", "s") == "f",
         )
 
-        self.waiting_etg: list[QubitEntangledEvent] = []
+        self.entangled_in_external: list[QubitEntangledEvent] = []
         """
-        Elementary-entangled qubits received during EXTERNAL phase.
+        Elementary entanglements received during EXTERNAL phase.
         These are buffered until INTERNAL phase starts.
         """
 
@@ -193,9 +194,9 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         In SYNC timing mode, enter INTERNAL phase.
         """
         # Start processing elementary entanglements that arrived during EXTERNAL phase.
-        for etg_event in self.waiting_etg:
-            self.qubit_is_entangled(etg_event)
-        self.waiting_etg.clear()
+        for etg_event in self.entangled_in_external:
+            self.qubit_is_entangled_in_internal(etg_event)
+        self.entangled_in_external.clear()
 
     @sync_phase_handler(TimingPhase.INTERNAL, False)
     def sync_internal_exit(self) -> None:
@@ -223,10 +224,33 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
 
         """
         event.cancel()
-        if not self.node.timing.is_internal():  # in SYNC timing mode EXTERNAL phase
-            self.waiting_etg.append(event)
-            return
+        if self.node.timing.is_internal():
+            self.qubit_is_entangled_in_internal(event)
+        else:
+            self.qubit_is_entangled_in_external(event)
 
+    def qubit_is_entangled_in_external(self, event: QubitEntangledEvent) -> None:
+        """
+        Handle a qubit entering ENTANGLED state when in non-INTERNAL phase of SYNC timing mode.
+        """
+        self.entangled_in_external.append(event)
+
+    def qubit_is_entangled_in_internal(self, event: QubitEntangledEvent) -> None:
+        """
+        Handle a qubit entering ENTANGLED state when in INTERNAL phase of SYNC timing mode or ASYNC timing mode.
+
+        Subclass implementation must:
+
+        1. Invoke ``qubit_is_entangled_pre`` to retrieve and prepare the qubit and entanglement.
+
+        2. If the entanglement is unwanted, keep ``mq.epr_path_ids`` as ``None`` or empty.
+
+           Otherwise, populate ``mq.epr_path_ids`` to indicate which paths may be used,
+           change qubit state to either PURIF or ELIGIBLE to indicate the next step,
+           and retrieve a FIB path entry if needed.
+
+        3. Invoke ``qubit_is_entangled_post`` continuation function.
+        """
         self.cnt.n_entg += 1
 
         mq = event.qubit
@@ -234,26 +258,42 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         assert mq.key
         mq.partner = event.neighbor, mq.key
 
-        mq.epr_path_ids = self.mux.list_qubit_epr_path_ids(mq)
+        _, epr = self.memory.read(mq.addr, has=self.epr_type)
+        assert not epr.orig_eprs, f"{mq} is not elementary entanglement"
+
+        fp = self.qubit_is_entangled_next(mq, epr)
+        self.log_debug("ENTANGLED %s path_id=%s | %s", mq, fp.path_id if fp else None, epr)
+
         if not mq.epr_path_ids:
-            self.log_debug("ENTANGLED_RELEASING reason=uninstalled-path %s", mq)
             self.release_qubit(mq, need_remove=True)
             return
 
-        _, epr = self.memory.read(mq.addr, has=self.epr_type)
-        assert not epr.orig_eprs, f"{mq} is not elementary entanglement"
-        fp = self.mux.qubit_is_entangled(mq, epr, event.neighbor)
-        self.log_debug("ENTANGLED %s path_id=%s | %s", mq, fp.path_id if fp else None, epr)
-
         match mq.state:
             case QubitState.PURIF:
-                assert fp
-                self.qubit_is_purif(mq, fp, event.neighbor)
+                self.qubit_is_purif(mq, unwrap(fp), event.neighbor)
             case QubitState.ELIGIBLE:
                 self.qubit_is_eligible(mq, fp)
+            case _:
+                # MuxSchemeStatistical may leave the qubit in ENTANGLED1 state
+                assert mq.state is QubitState.ENTANGLED1, f"unexpected state {mq.state}"
 
         if mq.state is not QubitState.RELEASE:
             self.swap.pop_waiting_su(mq)
+
+    @abstractmethod
+    def qubit_is_entangled_next(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
+        """
+        Part of ``qubit_is_entangled_in_internal`` logic, overridden by subclass.
+
+        If the entanglement is unwanted, keep ``mq.epr_path_ids`` unset or empty.
+        The qubit would then be released.
+
+        Otherwise, populate ``mq.epr_path_ids`` with potential paths, then either:
+
+        * Change qubit state to PURIF, return a FIB path entry to guide purification.
+        * Change qubit state to ELIGIBLE, to start swapping.
+          If a FIB entry is returned, it is supplied to swap candidate selection function.
+        """
 
     def qubit_is_purif(self, qubit: MemoryQubit, fp: FibPath, partner: QNode):
         """

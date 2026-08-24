@@ -3,7 +3,6 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal, override
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
-from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
 from mqns.network.fw import FibPath, MuxScheme
@@ -112,10 +111,12 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         assert all(r == 0 for r in inst["purif"].values())
 
     @override
-    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibPath | None:
+    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
         if self.coordinated_decisions and epr.affectionated_path_id >= 0:
             assert epr.affectionated_path_id in unwrap_cast(mq.epr_path_ids)
             mq.epr_path_ids = [epr.affectionated_path_id]
+
+        neighbor, _ = unwrap_cast(mq.partner)
 
         def calc_rank_diff(path_id: int):
             fp = self.fib.get_path(path_id)
