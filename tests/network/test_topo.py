@@ -242,17 +242,17 @@ def test_custom_topo_basic():
     qBC = net.get_qchannel("B", "C")
 
     assert mA.capacity == 2
-    assert mA.read(0, must=True)[0].qchannel == qAB
-    assert mA.read(1, must=True)[0].qchannel == qAB
+    assert mA.read(0)[0].qchannel is qAB
+    assert mA.read(1)[0].qchannel is qAB
     assert mB.capacity == 4
-    assert mB.read(0, must=True)[0].qchannel == qAB
-    assert mB.read(1, must=True)[0].qchannel == qBC
-    assert mB.read(2, must=True)[0].qchannel == qBC
-    assert mB.read(3, must=True)[0].qchannel == qBC
+    assert mB.read(0)[0].qchannel is qAB
+    assert mB.read(1)[0].qchannel is qBC
+    assert mB.read(2)[0].qchannel is qBC
+    assert mB.read(3)[0].qchannel is qBC
     assert mC.capacity == 3
-    assert mC.read(0, must=True)[0].qchannel == qBC
-    assert mC.read(1, must=True)[0].qchannel == qBC
-    assert mC.read(2, must=True)[0].qchannel == qBC
+    assert mC.read(0)[0].qchannel is qBC
+    assert mC.read(1)[0].qchannel is qBC
+    assert mC.read(2)[0].qchannel is qBC
 
 
 def test_custom_topo_low_memory():

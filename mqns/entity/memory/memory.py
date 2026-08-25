@@ -175,7 +175,7 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         # Pop the current MemoryDecohereEvent so that it can be dispatched to applications.
         mq.events.pop(MemoryDecohereEvent)
 
-        _, new_qm = self.read(mq.addr, must=True, remove=qm)
+        _, new_qm = self.read(mq.addr, remove=qm)
         if new_qm is not qm:
             # qubit already released via swap/purify or re-entangled
             return
@@ -193,11 +193,14 @@ class QuantumMemory(EventDispatcherMixin, Entity):
     @event_handler
     def async_write(self, event: MemoryWriteRequestEvent) -> None:
         event.cancel()
-        qubit = next(self.find(lambda _, v: v is None), None)
-        assert qubit is not None, "memory is full"
-        result = self.write(qubit[0].addr, event.qubit)
+        qubit, _ = next(self.find(lambda _, v: v is None), (None, None))
+        if qubit is None:
+            raise MemoryError("memory is full")
+        if qubit.key is None:
+            qubit.key = getattr(event.qubit, "name", None)
+        self.write(qubit.addr, event.qubit)
         t = self.simulator.tc + self.delay.calculate()
-        self.simulator.sched(MemoryWriteResponseEvent(self.node, result, request=event, t=t))
+        self.simulator.sched(MemoryWriteResponseEvent(self.node, qubit, request=event, t=t))
 
     @property
     def count(self) -> int:
@@ -242,7 +245,7 @@ class QuantumMemory(EventDispatcherMixin, Entity):
             iterable = (self._storage[addr] for addr in ch_addrs)
         for qubit, data in iterable:
             if (has is None or type(data) is has) and predicate(qubit, data):
-                yield (qubit, data)
+                yield qubit, data
 
     def assign(self, ch: QuantumChannel, *, n=1) -> list[int]:
         """
@@ -284,7 +287,12 @@ class QuantumMemory(EventDispatcherMixin, Entity):
             qubit.qchannel = None
 
     def allocate(
-        self, ch: QuantumChannel, path_id: int, path_direction: PathDirection, *, n: int | Literal["all"] = 1
+        self,
+        ch: QuantumChannel,
+        path_id: int,
+        path_direction: PathDirection,
+        *,
+        n: int | Literal["all"] = 1,
     ) -> list[int]:
         """
         Allocate n qubits to a given path ID.
@@ -334,25 +342,38 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         mq.path_direction = None
 
     @overload
-    def read(self, key: int | str, *, remove: bool | QuantumModel = False) -> tuple[MemoryQubit, QuantumModel | None] | None:
+    def read(
+        self, key: int, *, must: Literal[True] = True, remove: bool | QuantumModel = False
+    ) -> tuple[MemoryQubit, QuantumModel | None]:
         """
         Retrieve a qubit and associated data.
 
         Args:
-            key: Qubit address or reservation key.
+            key: Qubit address.
             remove: Whether to remove the data.
                     If specified as QuantumModel, remove only if stored data is the same object.
 
         Returns:
-            Qubit and associated data (possibly empty), or None if qubit is not found by EPR name.
+            Qubit and associated data (possibly empty).
+        """
 
-        Raises:
-            LookupError: Qubit not found.
+    @overload
+    def read(self, key: str, *, remove: bool | QuantumModel = False) -> tuple[MemoryQubit, QuantumModel | None] | None:
+        """
+        Retrieve a qubit and associated data.
+
+        Args:
+            key: Qubit reservation key.
+            remove: Whether to remove the data.
+                    If specified as QuantumModel, remove only if stored data is the same object.
+
+        Returns:
+            Qubit and associated data (possibly empty), or None if qubit is not found by reservation key.
         """
 
     @overload
     def read(
-        self, key: int | str, *, must: Literal[True], remove: bool | QuantumModel = False
+        self, key: str, *, must: Literal[True], remove: bool | QuantumModel = False
     ) -> tuple[MemoryQubit, QuantumModel | None]:
         """
         Retrieve a qubit and associated data.
@@ -409,11 +430,10 @@ class QuantumMemory(EventDispatcherMixin, Entity):
             qubit, data = self._storage[key]
         else:
             qubit, data = next(self.find(lambda q, _: q.key == key), (None, None))
-
-        if qubit is None:
-            if must or has:
-                raise LookupError(f"{self}: cannot find {key}")
-            return None
+            if qubit is None:
+                if must or has:
+                    raise LookupError(f"{self}: cannot find {key}")
+                return None
 
         if has and type(data) is not has:
             raise ValueError(f"{self}: data at {qubit.addr} is not {has}")
@@ -421,11 +441,11 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         if remove in (True, data):
             qubit.events.discard(MemoryDecohereEvent)
             self._usage -= 1
-            self._storage[qubit.addr] = (qubit, None)
+            self._storage[qubit.addr] = qubit, None
 
         return qubit, data
 
-    def write(self, key: int | str, data: QuantumModel, *, replace=False, auto_key=True) -> MemoryQubit:
+    def write(self, key: int | str, data: QuantumModel, *, replace=False) -> MemoryQubit:
         """
         Store data in memory.
 
@@ -434,7 +454,6 @@ class QuantumMemory(EventDispatcherMixin, Entity):
             data: Data to be stored.
                   If this is an EPR, a decoherence event is scheduled automatically.
             replace: True allows replacing existing data; False requires qubit to be empty.
-            auto_key: If set True and ``qubit.key`` is empty, set ``qubit.key`` to ``data.name``.
 
         Returns:
             Qubit where the data is stored.
@@ -447,19 +466,15 @@ class QuantumMemory(EventDispatcherMixin, Entity):
             qubit, old = self._storage[key]
         else:
             qubit, old = next(self.find(lambda q, _: q.key == key), (None, None))
+            if qubit is None:
+                raise LookupError(f"{self}: qubit {key} not found")
 
-        if qubit is None:
-            raise LookupError(f"{self}: qubit {key} not found")
-
-        if not replace and old is not None:
-            raise ValueError(f"{self}: {qubit} contains existing data: {old}")
-
-        if auto_key and qubit.key is None:
-            qubit.key = getattr(data, "name", None)
-
-        self._storage[qubit.addr] = (qubit, data)
         if old is None:
             self._usage += 1
+        elif not replace:
+            raise ValueError(f"{self}: {qubit} contains existing data: {old}")
+
+        self._storage[qubit.addr] = qubit, data
 
         if isinstance(data, Entanglement):
             assert data.decohere_time >= self.simulator.tc
@@ -474,5 +489,5 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         """Clear all qubits in the memory."""
         for qubit, _ in self._storage:
             qubit.reset_state(QubitState.RAW)
-            self._storage[qubit.addr] = (qubit, None)
+            self._storage[qubit.addr] = qubit, None
         self._usage = 0

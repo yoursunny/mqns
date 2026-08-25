@@ -313,10 +313,10 @@ def test_path_delete(
 
         def assert_states():
             if expected1 is not None:
-                mq1, _ = nl1.memory.read(0, must=True)
+                mq1, _ = nl1.memory.read(0)
                 assert mq1.state is expected1
             if expected2 is not None:
-                mq2, _ = nl2.memory.read(0, must=True)
+                mq2, _ = nl2.memory.read(0)
                 assert mq2.state is expected2
 
         event = func_to_event(simulator.time(sec=t), assert_states)
