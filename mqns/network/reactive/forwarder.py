@@ -19,11 +19,11 @@ from typing import Final, Unpack, override
 
 from mqns.entity.memory import MemoryQubit, QubitState
 from mqns.models.epr import Entanglement
-from mqns.network.fw import FibPath, Forwarder, ForwarderInitKwargs, MuxScheme
+from mqns.network.fw import FibPath, Forwarder, ForwarderInitKwargs
 from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import PathActivateEvent, QubitEntangledEvent
 from mqns.network.reactive.fw_nb import ReactiveForwarderNorthbound
-from mqns.utils import unwrap, unwrap_cast
+from mqns.network.reactive.fw_plan import ReactivePlanner
 
 
 class ReactiveForwarder(Forwarder):
@@ -35,12 +35,16 @@ class ReactiveForwarder(Forwarder):
     routing is done at the controller.
     """
 
+    planner: Final[ReactivePlanner]
+    """Store the planned action for each qubit."""
+
     nb: Final[ReactiveForwarderNorthbound]
     """Northbound interface to communicate with the ReactiveRoutingController."""
 
     def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
         super().__init__(**kwargs)
-        self.nb = ReactiveForwarderNorthbound()
+        self.planner = ReactivePlanner()
+        self.nb = ReactiveForwarderNorthbound(self.planner)
 
     @override
     def install(self, node):
@@ -70,7 +74,7 @@ class ReactiveForwarder(Forwarder):
         """
         # Clear FIB and path assignments, as these are only useful for one slot.
         self.fib.clear()
-        self.memory.deallocate(*(qubit.addr for qubit, _ in self.memory.find(lambda q, _: q.path_id is not None)))
+        self.planner.clear()
 
     @override
     def qubit_is_entangled_in_external(self, event: QubitEntangledEvent) -> None:
@@ -82,27 +86,16 @@ class ReactiveForwarder(Forwarder):
 
     @override
     def qubit_is_entangled_next(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
-        if mq.path_id is None:  # qubit not used in PATH_INSERT
-            return
-        mq.epr_path_ids = [mq.path_id]
+        _ = epr
+        fp = self.planner.find_fib_path(mq)
+        if fp is None:
+            return None
 
+        mq.epr_path_ids = [fp.path_id]
         mq.state = QubitState.PURIF
-        return self.fib.get_path(unwrap_cast(mq.path_id))
+        return fp
 
     @override
     def find_swap_with(self, mq0: MemoryQubit, epr0: Entanglement, fp: FibPath | None) -> tuple[MemoryQubit, FibPath] | None:
-        _ = epr0
-        try:
-            mq1, _ = next(
-                self.memory.find(
-                    lambda q, _: (
-                        MuxScheme.qubits_swappable(mq0, q)  # basic condition met
-                        and q.path_id == mq0.path_id  # allocated to the same path_id
-                        and q.path_direction is not mq0.path_direction  # in the opposite path direction
-                    ),
-                    has=self.epr_type,
-                )
-            )
-            return mq1, unwrap(fp)
-        except StopIteration:
-            return None
+        _ = epr0, fp
+        return self.planner.find_swap_with(mq0)

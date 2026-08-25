@@ -392,33 +392,29 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         """
         now = self.simulator.tc
         if fp is None:
-            # This branch is taken when using MuxSchemeStatistical.
+            # This branch is taken only when using MuxSchemeStatistical.
             # It searches for active requests spanning src,dst in either direction.
             # If none is found, the EPR cannot be consumed.
             frs = self.fib.list_end_reqs(unwrap_cast(qubit.partner)[0].name)
             if (fr := next((fr for fr in frs if fr.is_active(now)), None)) is None:
                 return False
-        else:
-            # This branch is taken when using either MuxSchemeBufferSpace or MuxSchemeDynamicEpr.
-            if fp.sg is not None:
-                # Having a swap group in the FIB path entry implies own node is not an end node,
-                # so that the EPR should continue swapping and not be consumed.
-                return False
-            fr = fp.req
-            if not fr.is_active(now):
-                self.log_debug(
-                    "CONSUME_SKIP addr=%s key=%s partner=%s epr-count-remain=%s reason=req-inactive",
-                    qubit.addr,
-                    qubit.key,
-                    unwrap_cast(qubit.partner)[0].name,
-                    fr.epr_count_remain,
-                )
-                # If the FIB request entry is no longer active, consumption is disallowed.
-                # Returning False would cause .qubit_is_eligible() to start swapping but own node is an end-node
-                # for the FIB path entry so there's nothing to swap with.
-                # Instead, we release the qubit and return True to prevent swapping.
-                self.release_qubit(qubit, need_remove=True)
-                return True
+        elif not fp.own_is_end_node:
+            # When own node is not an end node, the EPR should continue swapping and not be consumed.
+            return False
+        elif not (fr := fp.req).is_active(now):
+            self.log_debug(
+                "CONSUME_SKIP addr=%s key=%s partner=%s epr-count-remain=%s reason=req-inactive",
+                qubit.addr,
+                qubit.key,
+                unwrap_cast(qubit.partner)[0].name,
+                fr.epr_count_remain,
+            )
+            # If the FIB request entry is no longer active, consumption is disallowed.
+            # Returning False would cause .qubit_is_eligible() to start swapping but own node is an end-node
+            # for the FIB path entry so there's nothing to swap with.
+            # Instead, we release the qubit and return True to prevent swapping.
+            self.release_qubit(qubit, need_remove=True)
+            return True
 
         # If epr_count is unrestricted, fr.epr_count_remain initializes as infinity and remains infinity.
         fr.epr_count_remain -= 1

@@ -127,7 +127,7 @@ def test_path_validation():
 def test_fib_swap_group(purif: str | None, own: str, expected: tuple[str, str, str, str] | None):
     nodes = "ABCDEFGHIJ"
     ranks = "3001012003"
-    entry = FibPath(
+    fp = FibPath(
         path_id=0,
         route=nodes,
         own_idx=nodes.index(own),
@@ -136,16 +136,18 @@ def test_fib_swap_group(purif: str | None, own: str, expected: tuple[str, str, s
         purif={purif: 1} if purif else {},
     )
 
-    sg = entry.sg
+    sg = fp.sg
 
     if expected is None:
+        assert fp.own_is_end_node
         assert sg is None
         return
 
+    assert not fp.own_is_end_node
     assert sg is not None
     assert sg.nodes == list(expected[1])
     assert sg.own_idx == sg.nodes.index(own)
     assert (sg.l_neigh, "".join(sg.nodes), sg.r_neigh, sg.dir) == expected
 
-    _, rank = entry.find_index_and_swap_rank(sg.nodes[0])
+    _, rank = fp.find_index_and_swap_rank(sg.nodes[0])
     assert sg.rank == rank

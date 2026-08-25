@@ -76,7 +76,13 @@ class FibPath:
         return self.req.req_id
 
     @property
+    def own_is_end_node(self) -> bool:
+        """Whether own node is an end node."""
+        return self.sg is None
+
+    @property
     def own_swap_rank(self) -> int:
+        """Swap rank of own node."""
         return self.swap[self.own_idx]
 
     def find_index_and_swap_rank(self, node_name: str) -> tuple[int, int]:

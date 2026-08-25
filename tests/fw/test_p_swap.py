@@ -47,7 +47,7 @@ def test_3_disabled():
     def check_fib_entries():
         for fw in (fwA, fwB, fwC):
             fp = fw.fib.get_path(rp.path_id)
-            assert fp.sg is None
+            assert fp.own_is_end_node
 
     simulator.sched(func_to_event(simulator.time(sec=2.0), check_fib_entries))
     provide_entanglements(
