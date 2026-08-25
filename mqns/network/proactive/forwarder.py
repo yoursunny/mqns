@@ -19,9 +19,10 @@ from typing import Final, NotRequired, Unpack, cast, override
 
 from mqns.entity.memory import MemoryQubit
 from mqns.models.epr import Entanglement
-from mqns.network.fw import FibPath, FibRequest, Forwarder, ForwarderInitKwargs, MuxScheme
+from mqns.network.fw import FibPath, FibRequest, Forwarder, ForwarderInitKwargs
 from mqns.network.proactive.fw_nb import ProactiveForwarderNorthbound
-from mqns.network.proactive.mux import MuxSchemeInput, parse_mux_scheme
+from mqns.network.proactive.mux import MuxScheme
+from mqns.network.proactive.mux_input import MuxSchemeInput, parse_mux_scheme
 
 
 class ProactiveForwarderInitKwargs(ForwarderInitKwargs):

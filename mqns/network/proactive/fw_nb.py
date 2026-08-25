@@ -1,15 +1,9 @@
 from typing import TYPE_CHECKING, cast
 
 from mqns.entity.memory import PathDirection
-from mqns.network.fw import (
-    FibPath,
-    FibRequest,
-    Forwarder,
-    ForwarderNorthbound,
-    MuxScheme,
-    fw_control_cmd_handler,
-)
+from mqns.network.fw import FibPath, FibRequest, Forwarder, ForwarderNorthbound, fw_control_cmd_handler
 from mqns.network.fw.message import PathDeleteMsg, PathInsertMsg, PathInstructions
+from mqns.network.proactive.mux import MuxScheme
 from mqns.network.protocol.event import PathActivateEvent, PathDeactivateEvent
 from mqns.simulator import Time
 
@@ -32,13 +26,13 @@ class ProactiveForwarderNorthbound(ForwarderNorthbound):
     @fw_control_cmd_handler("PATH_INSERT")
     def handle_path_insert(self, msg: PathInsertMsg) -> None:
         """Process a PATH_INSERT control command."""
-        paths = [(inst, self._path_convert(inst)) for inst in msg["paths"] if self.node.name in inst["route"]]
+        paths = [self._path_convert(inst) for inst in msg["paths"] if self.node.name in inst["route"]]
 
-        fr = FibRequest(msg["req_id"], [fp for _, fp in paths], epr_count=msg.get("epr_count", -1))
+        fr = FibRequest(msg["req_id"], [fp for fp, _ in paths], epr_count=msg.get("epr_count", -1))
         self.fib.insert_req(fr)
 
         # Identify left/right channels, allocate qubits and process LinkLayer changes.
-        for inst, fp in paths:
+        for fp, inst in paths:
             for dir, ch in self.iter_adjacency(fp):
                 self.mux.install_path_adj(inst, fp, dir, ch)
                 self.simulator.sched(
@@ -51,9 +45,9 @@ class ProactiveForwarderNorthbound(ForwarderNorthbound):
                     )
                 )
 
-    def _path_convert(self, inst: PathInstructions) -> FibPath:
-        route = inst["route"]
+    def _path_convert(self, inst: PathInstructions) -> tuple[FibPath, PathInstructions]:
         self.mux.validate_path_instructions(inst)
+        route = inst["route"]
 
         # Insert FIB entry.
         if "swap_cutoff" in inst:
@@ -67,7 +61,7 @@ class ProactiveForwarderNorthbound(ForwarderNorthbound):
             swap=inst["swap"],
             swap_cutoff=swap_cutoff,
             purif=inst["purif"],
-        )
+        ), inst
 
     @fw_control_cmd_handler("PATH_DELETE")
     def handle_path_delete(self, msg: PathDeleteMsg) -> None:

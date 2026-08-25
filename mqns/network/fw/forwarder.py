@@ -232,18 +232,6 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
     def qubit_is_entangled_in_internal(self, event: QubitEntangledEvent) -> None:
         """
         Handle a qubit entering ENTANGLED state when in INTERNAL phase of SYNC timing mode or ASYNC timing mode.
-
-        Subclass implementation must:
-
-        1. Invoke ``qubit_is_entangled_pre`` to retrieve and prepare the qubit and entanglement.
-
-        2. If the entanglement is unwanted, keep ``mq.epr_path_ids`` as ``None`` or empty.
-
-           Otherwise, populate ``mq.epr_path_ids`` to indicate which paths may be used,
-           change qubit state to either PURIF or ELIGIBLE to indicate the next step,
-           and retrieve a FIB path entry if needed.
-
-        3. Invoke ``qubit_is_entangled_post`` continuation function.
         """
         self.cnt.n_entg += 1
 

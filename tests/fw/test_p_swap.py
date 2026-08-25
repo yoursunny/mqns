@@ -744,7 +744,7 @@ def test_tree2_statistical(
 
     edges = ((fwD, fwB), (fwE, fwB), (fwB, fwA), (fwA, fwC), (fwC, fwF), (fwC, fwG))
     provide_entanglements(
-        *((t, *edge) for (t, edge) in zip(etg_ms, edges)),
+        *((t, *edge) for (t, edge) in zip(etg_ms, edges, strict=True)),
         transform_t=lambda ms: 1 + ms / 1000,
     )
     simulator.run()

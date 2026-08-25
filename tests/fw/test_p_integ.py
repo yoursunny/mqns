@@ -8,15 +8,9 @@ from mqns.entity.memory import QuantumMemory
 from mqns.entity.qchannel import LinkArch, LinkArchAlways, LinkArchDimBk, LinkArchSr
 from mqns.entity.timer import Timer
 from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
-from mqns.network.fw import (
-    MuxScheme,
-    RoutingPathInitArgs,
-    RoutingPathSingle,
-    RoutingPathStatic,
-    SwapSequenceInput,
-)
+from mqns.network.fw import RoutingPathInitArgs, RoutingPathSingle, RoutingPathStatic, SwapSequenceInput
 from mqns.network.network import Request, TimingMode, TimingModeAsync, TimingModeSync
-from mqns.network.proactive import MuxSchemeBufferSpace, MuxSchemeDynamicEpr, MuxSchemeStatistical, ProactiveForwarder
+from mqns.network.proactive import MuxSchemeInput, MuxSchemeStatistical, ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Time
@@ -56,15 +50,15 @@ def test_4_swap(epr_type: type[Entanglement], timing: TimingMode, swap: SwapSequ
 @pytest.mark.parametrize(
     ("mux", "swap", "end_time"),
     [
-        pytest.param(MuxSchemeBufferSpace(), "asap", 1, id="BufferSpace-asap"),
-        pytest.param(MuxSchemeBufferSpace(), "l2r", 1, id="BufferSpace-l2r"),
+        pytest.param("B", "asap", 1, id="BufferSpace-asap"),
+        pytest.param("B", "l2r", 1, id="BufferSpace-l2r"),
         pytest.param(MuxSchemeStatistical(select_swap_qubit="random"), "asap", 1, id="Statistical"),
-        pytest.param(MuxSchemeDynamicEpr(), "asap", 10, id="DynamicEpr"),
+        pytest.param("D", "asap", 10, id="DynamicEpr"),
     ],
 )
 @pytest.mark.parametrize("route_len", [3, 5])
 @pytest.mark.parametrize("LA", [LinkArchDimBk, LinkArchSr])
-def test_tree2_bidir(mux: MuxScheme, swap: SwapSequenceInput, end_time: float, route_len: int, LA: type[LinkArch]):
+def test_tree2_bidir(mux: MuxSchemeInput, swap: SwapSequenceInput, end_time: float, route_len: int, LA: type[LinkArch]):
     """Test bidirectional paths in tree topology."""
     net, simulator = build_tree_network(
         t_cohere=1.0,
@@ -80,7 +74,7 @@ def test_tree2_bidir(mux: MuxScheme, swap: SwapSequenceInput, end_time: float, r
     # Path 0 uses A-C or B-A-C segment in one direction.
     # Path 1 uses C-A or C-A-B segment in the opposite direction.
     rp_args = RoutingPathInitArgs(
-        m_v=1 if isinstance(mux, MuxSchemeBufferSpace) else "none",
+        m_v=1 if mux == "B" else "none",
         swap=swap,
         swap_cutoff=[0.01, 0.01] * (route_len - 2),
     )
@@ -90,15 +84,15 @@ def test_tree2_bidir(mux: MuxScheme, swap: SwapSequenceInput, end_time: float, r
     print_node_counters(net)
 
     consumed0 = RequestCounters.of(net, req0).n_consumed
-    consume1 = RequestCounters.of(net, req1).n_consumed
+    consumed1 = RequestCounters.of(net, req1).n_consumed
 
-    if isinstance(mux, MuxSchemeDynamicEpr) and route_len == 5:
-        assert consumed0 + consume1 > 0
-        if min(consumed0, consume1) == 0:
+    if mux == "D" and route_len == 5:
+        assert consumed0 + consumed1 > 0
+        if min(consumed0, consumed1) == 0:
             pytest.xfail(reason="https://github.com/usnistgov/mqns/issues/60#issuecomment-5180421126")
 
     assert consumed0 > 0
-    assert consume1 > 0
+    assert consumed1 > 0
 
 
 def test_rect2_path_delete():
