@@ -1,7 +1,7 @@
 mod messages;
 mod southbound;
 
-pub use messages::{LinkStateEntry, LinkStateMsg, MultiplexingVectorElem, PathInstructions};
+pub use messages::{LinkStateEntry, LinkStateMsg, PathInstructions};
 pub use southbound::Southbound;
 
 /// Convert seconds to time slots at given accuracy.

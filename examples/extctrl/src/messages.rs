@@ -21,39 +21,82 @@ pub struct PathDeleteMsg {
 }
 
 /// Swapping and purification instructions for the forwarders.
-/// See mqns.network.fw.PathInstructions struct for details.
+/// See `mqns.network.fw.PathInstructions` struct for details.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PathInstructions {
     pub path_id: u32,
     pub route: Vec<String>,
-    pub swap: Vec<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bufferspace_mv: Option<Vec<u32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reactive_qubits: Option<Vec<String>>,
+    pub swap: Vec<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swap_cutoff: Option<Vec<i32>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub m_v: Option<Vec<MultiplexingVectorElem>>,
-    pub purif: HashMap<String, String>,
+    pub purif: HashMap<String, u32>,
 }
 
 impl PathInstructions {
-    /// Assign m_v with specific qubits.
-    ///
-    /// * `qubits`: A vector of qubit reservation keys, one per quantum channel in the route.
-    pub fn set_mv_qubits(&mut self, qubits: Vec<String>) {
-        self.m_v = Some(
-            qubits
-                .into_iter()
-                .map(MultiplexingVectorElem::Key)
-                .collect(),
-        );
+    /// Create a builder.
+    pub fn new(path_id: u32, route: Vec<String>) -> PathInstructionsBuilder {
+        let n_nodes = route.len();
+        PathInstructionsBuilder(PathInstructions {
+            path_id,
+            route,
+            bufferspace_mv: None,
+            reactive_qubits: None,
+            swap: vec![0; n_nodes],
+            swap_cutoff: None,
+            purif: HashMap::new(),
+        })
+    }
+
+    /// Split `"A-B-C"` to `vec!["A", "B", "C"]`.
+    pub fn split_route(nodes: &str) -> Vec<String> {
+        nodes.split('-').map(String::from).collect()
     }
 }
 
-/// Multiplexing Vector element in PathInstructions.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum MultiplexingVectorElem {
-    Count(i32, i32),
-    Key(String),
+pub struct PathInstructionsBuilder(PathInstructions);
+
+impl PathInstructionsBuilder {
+    /// Build the instance.
+    pub fn build(self) -> PathInstructions {
+        self.0
+    }
+
+    fn n_nodes(&self) -> usize {
+        self.0.route.len()
+    }
+
+    pub fn bufferspace_mv(mut self, mv: Vec<u32>) -> Self {
+        assert!(mv.len() == 2 * (self.n_nodes() - 1));
+        self.0.bufferspace_mv = Some(mv);
+        self
+    }
+
+    pub fn reactive_qubits(mut self, qubit_keys: Vec<String>) -> Self {
+        assert!(qubit_keys.len() == self.n_nodes() - 1);
+        self.0.reactive_qubits = Some(qubit_keys);
+        self
+    }
+
+    pub fn swap(mut self, swap: Vec<u32>) -> Self {
+        assert!(swap.len() == self.n_nodes());
+        self.0.swap = swap;
+        self
+    }
+
+    pub fn swap_cutoff(mut self, cutoff: Vec<i32>) -> Self {
+        assert!(cutoff.len() == 2 * (self.n_nodes() - 2));
+        self.0.swap_cutoff = Some(cutoff);
+        self
+    }
+
+    pub fn purif(mut self, purif: HashMap<String, u32>) -> Self {
+        self.0.purif = purif;
+        self
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
