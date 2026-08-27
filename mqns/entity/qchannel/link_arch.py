@@ -5,7 +5,7 @@ from typing import Final, NotRequired, Protocol, TypedDict, Unpack
 
 from mqns.entity.node import QNode
 from mqns.models.core.bell_diagonal import make_bell_diagonal_probv
-from mqns.models.delay import DelayModel
+from mqns.models.delay import ConstantDelayModel, DelayModel
 from mqns.models.epr import Entanglement, EntanglementInitKwargs, MixedStateEntanglement, WernerStateEntanglement
 from mqns.models.error import ErrorModel, TimeDecayFunc, time_decay_nop
 from mqns.simulator import Time
@@ -146,9 +146,7 @@ class LinkArchBase(ABC):
     def set(self, **kwargs: Unpack[LinkArchParameters]) -> None:
         accuracy = kwargs["time_accuracy"]
         ch = kwargs["ch"]
-        tau_l = ch.delay.calculate()
-        for _ in range(16):
-            assert ch.delay.calculate() == tau_l, "QuantumChannel.delay must be constant"
+        tau_l = ConstantDelayModel.extract(ch.delay)
 
         self.success_prob = self._compute_success_prob(
             length=ch.length,

@@ -16,6 +16,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
+from typing import Final
 
 
 class DelayModel(ABC):
@@ -24,7 +25,7 @@ class DelayModel(ABC):
     """
 
     def __init__(self, name: str) -> None:
-        self.name = name
+        self.name: Final = name
 
     @abstractmethod
     def calculate(self) -> float:

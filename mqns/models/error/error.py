@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Self, overload, override
+from typing import TYPE_CHECKING, Final, Self, overload, override
 
 import numpy as np
 
@@ -14,7 +14,7 @@ class ErrorModel(ABC):
     """
 
     def __init__(self, name: str):
-        self.name = name
+        self.name: Final = name
         """Name of this error model."""
         self._p_survival = 1.0
         self._last_rate = 0.0

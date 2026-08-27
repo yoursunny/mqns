@@ -3,7 +3,7 @@ import os
 import time
 from collections.abc import Callable, Iterable
 from pstats import SortKey
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, overload
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, Protocol, overload
 
 from mqns.simulator.event import Event, func_to_event
 from mqns.simulator.pool import HeapEventPool, SynchronizedEventPool
@@ -66,10 +66,10 @@ class Simulator:
         self.accuracy = accuracy
 
         assert ts >= 0.0
-        self.ts = self.time(sec=ts)
+        self.ts: Final = self.time(sec=ts)
         """Simulation start time."""
         assert te >= ts
-        self.te = Time.SENTINEL if math.isinf(te) else self.time(sec=te)
+        self.te: Final = Time.SENTINEL if math.isinf(te) else self.time(sec=te)
         """Simulation end time. ``Time.SENTINEL`` means continuous simulation."""
         self.time_spend = 0.0
         """Wall-clock time for entire simulation run."""
