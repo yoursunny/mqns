@@ -24,14 +24,14 @@ import csv
 import itertools
 import sys
 import tomllib
-from typing import Literal, TypedDict, cast, override
+from typing import TypedDict, cast, override
 
 import tomli_w
 from tap import Tap
 
 from mqns.network.builder import NetworkBuilder
-from mqns.network.fw import MuxSchemeBufferSpace, MuxSchemeStatistical
 from mqns.network.network import MatrixTrafficGenerator, QuantumNetwork, Request, TrafficMatrixMapping
+from mqns.network.proactive import MuxSchemeLiteral, mux_scheme_is_buffer_space
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator, Time
 from mqns.utils import log, rng, seed_env
@@ -45,7 +45,7 @@ class Args(Tap):
     tm_gen: bool = False  # write empty traffic definition to stdout
     tm: str = ""  # network traffic definition file
     sim_duration: float = 1.0  # simulation duration in seconds
-    mux: Literal["B", "S"] = "B"  # multiplexing scheme
+    mux: MuxSchemeLiteral = "B"  # multiplexing scheme
     rate: float = 1.0  # request arrival rate (req/s)
     csv: str = ""  # save results as CSV file
 
@@ -85,11 +85,10 @@ def gen_tm() -> None:
 def build_network(args: Args) -> QuantumNetwork:
     b = NetworkBuilder()
     define_topo(b)
-    match args.mux:
-        case "B":
-            b.proactive_centralized(mux=MuxSchemeBufferSpace(), mv_auto=1)
-        case "S":
-            b.proactive_centralized(mux=MuxSchemeStatistical())
+    b.proactive_centralized(
+        mux=args.mux,
+        mv_auto=1 if mux_scheme_is_buffer_space(args.mux) else None,
+    )
     return b.make_network()
 
 

@@ -2,13 +2,9 @@ from mqns.network.fw.controller import RoutingController
 from mqns.network.fw.cutoff import CutoffScheme, CutoffSchemeWaitTime, CutoffSchemeWaitTimeCounters
 from mqns.network.fw.fib import Fib, FibPath, FibRequest
 from mqns.network.fw.forwarder import Forwarder, ForwarderCounters, ForwarderInitKwargs
-from mqns.network.fw.fw_module import fw_control_cmd_handler, fw_signaling_cmd_handler
+from mqns.network.fw.fw_module import ForwarderModule, fw_control_cmd_handler, fw_signaling_cmd_handler
 from mqns.network.fw.fw_nb import ForwarderNorthbound
-from mqns.network.fw.message import MultiplexingVector, SwapSequence
-from mqns.network.fw.mux import MuxScheme
-from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
-from mqns.network.fw.mux_dynamic_epr import MuxSchemeDynamicEpr
-from mqns.network.fw.mux_statistical import MuxSchemeStatistical
+from mqns.network.fw.message import MultiplexingVector, QubitKeySequence, SwapSequence
 from mqns.network.fw.routing import (
     MultiplexingVectorInput,
     RoutingPath,
@@ -17,7 +13,7 @@ from mqns.network.fw.routing import (
     RoutingPathSingle,
     RoutingPathStatic,
 )
-from mqns.network.fw.select import MemoryEprIterator, MemoryEprTuple
+from mqns.network.fw.select import MemoryEprTuple
 from mqns.network.fw.swap_sequence import SwapPolicy, SwapSequenceInput, parse_swap_sequence
 
 __all__ = [
@@ -30,18 +26,15 @@ __all__ = [
     "Forwarder",
     "ForwarderCounters",
     "ForwarderInitKwargs",
+    "ForwarderModule",
     "ForwarderNorthbound",
     "fw_control_cmd_handler",
     "fw_signaling_cmd_handler",
-    "MemoryEprIterator",
     "MemoryEprTuple",
     "MultiplexingVector",
     "MultiplexingVectorInput",
-    "MuxScheme",
-    "MuxSchemeBufferSpace",
-    "MuxSchemeDynamicEpr",
-    "MuxSchemeStatistical",
     "parse_swap_sequence",
+    "QubitKeySequence",
     "RoutingController",
     "RoutingPath",
     "RoutingPathInitArgs",
@@ -55,10 +48,10 @@ __all__ = [
 
 for name in __all__:
     if name in (
-        "MemoryEprIterator",
         "MemoryEprTuple",
         "MultiplexingVector",
         "MultiplexingVectorInput",
+        "QubitKeySequence",
         "SwapPolicy",
         "SwapSequence",
         "SwapSequenceInput",

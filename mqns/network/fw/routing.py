@@ -5,7 +5,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from itertools import pairwise
 from typing import Literal, TypedDict, Unpack, override
 
-from mqns.network.fw.message import MultiplexingVector, PathInstructions, validate_path_instructions
+from mqns.network.fw.message import MultiplexingVector, PathInstructions
 from mqns.network.fw.swap_sequence import SwapSequenceInput, parse_swap_sequence
 from mqns.network.network import QuantumNetwork
 from mqns.simulator import Time
@@ -75,7 +75,7 @@ class RoutingPath(ABC):
         """
         self.swap: SwapSequenceInput = kwargs.get("swap") or "asap"
         self.swap_cutoff = kwargs.get("swap_cutoff")
-        self.m_v = kwargs.get("m_v", "auto")
+        self.m_v: MultiplexingVectorInput = kwargs.get("m_v", "auto")
         self.purif = dict(kwargs.get("purif") or {})
 
     @abstractmethod
@@ -97,7 +97,7 @@ class RoutingPath(ABC):
         net: QuantumNetwork,
         route: list[str],
         *,
-        m_v: MultiplexingVector | None = None,
+        override_mv: MultiplexingVector | None = None,
     ) -> PathInstructions:
         swap = parse_swap_sequence(self.swap, route)
         inst: PathInstructions = {
@@ -111,12 +111,10 @@ class RoutingPath(ABC):
             accuracy = net.simulator.accuracy
             inst["swap_cutoff"] = [-1 if t < 0 else Time.sec_to_slot(t, accuracy) for t in self.swap_cutoff]
 
-        if m_v is None:
-            m_v = self._compute_mv(net, route)
-        if m_v is not None:
-            inst["m_v"] = m_v
+        mv = self._compute_mv(net, route) if override_mv is None else override_mv
+        if mv is not None:
+            inst["bufferspace_mv"] = mv
 
-        validate_path_instructions(inst)
         return inst
 
     def _compute_mv(self, net: QuantumNetwork, route: Sequence[str]) -> MultiplexingVector | None:
@@ -135,7 +133,7 @@ class RoutingPath(ABC):
 
         if isinstance(mv, int):
             assert mv >= 0
-            return [(mv, mv)] * n_hops
+            return [mv, mv] * n_hops
 
         return mv
 
@@ -206,11 +204,9 @@ class RoutingPathMulti(RoutingPath):
                     shared = qchannel_use_count[ch.name]
                     assert shared > 0
 
-                    m_v.append(
-                        (
-                            sum(1 for _ in node_a.memory.find(lambda *_: True, qchannel=ch)) // shared,
-                            sum(1 for _ in node_b.memory.find(lambda *_: True, qchannel=ch)) // shared,
-                        )
+                    m_v += (
+                        sum(1 for _ in node_a.memory.find(lambda *_: True, qchannel=ch)) // shared,
+                        sum(1 for _ in node_b.memory.find(lambda *_: True, qchannel=ch)) // shared,
                     )
 
-            yield self._make_path_instructions(net, route.path, m_v=m_v)
+            yield self._make_path_instructions(net, route.path, override_mv=m_v)

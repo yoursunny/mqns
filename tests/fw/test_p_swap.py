@@ -16,14 +16,11 @@ from mqns.network.fw import (
     Fib,
     Forwarder,
     MemoryEprTuple,
-    MuxSchemeBufferSpace,
-    MuxSchemeDynamicEpr,
-    MuxSchemeStatistical,
     RoutingPathMulti,
     RoutingPathStatic,
 )
 from mqns.network.network import TimingModeSync
-from mqns.network.proactive import ProactiveForwarder
+from mqns.network.proactive import MuxSchemeBufferSpace, MuxSchemeDynamicEpr, MuxSchemeStatistical, ProactiveForwarder
 from mqns.network.protocol.consumer import Consumer, RequestCounters
 from mqns.simulator import func_to_event
 from mqns.utils import unwrap, unwrap_cast
@@ -50,7 +47,7 @@ def test_3_disabled():
     def check_fib_entries():
         for fw in (fwA, fwB, fwC):
             fp = fw.fib.get_path(rp.path_id)
-            assert fp.sg is None
+            assert fp.own_is_end_node
 
     simulator.sched(func_to_event(simulator.time(sec=2.0), check_fib_entries))
     provide_entanglements(
@@ -80,7 +77,12 @@ def test_3_disabled():
 def test_3_ssq(ssq: MuxSchemeBufferSpace.SelectSwapQubit | None, addrs: list[int] | None):
     """Test SelectSwapQubit in 3-node topology."""
     net, simulator = build_linear_network(
-        3, t_cohere=0.090, ch_capacity=8, fw={"p_swap": 1.0, "mux": MuxSchemeBufferSpace(select_swap_qubit=ssq)}, end_time=1.120
+        3,
+        t_cohere=0.090,
+        ch_capacity=8,
+        fw={"p_swap": 1.0},
+        mux=MuxSchemeBufferSpace(select_swap_qubit=ssq),
+        end_time=1.120,
     )
     fwA, fwB, fwC = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
@@ -573,13 +575,9 @@ def test_5_decohere(
     )
     simulator.run()
     print_node_counters(net)
-    # check_fw_counters(
-    #     net,
-    #     n_su_lower=(1, 0, 0, 0, 1),
-    # )
     assert RequestCounters.of(net, rp).n_consumed == n_consumed
     QuantumMemory.check_leaks(net.nodes)
-    assert list(node.get_app(QubitReleaseReset).last_t for node in net.nodes[: len(t_release)]) == [
+    assert [node.get_app(QubitReleaseReset).last_t for node in itertools.islice(net.nodes, len(t_release))] == [
         simulator.time(sec=t) for t in t_release
     ]
 
@@ -652,7 +650,8 @@ def test_tree2_dynepr(t_edge_etg: float, selected_path: tuple[int, int], n_consu
         return chosen
 
     net, simulator = build_tree_network(
-        fw={"p_swap": 1.0, "mux": MuxSchemeDynamicEpr(select_path=select_path)},
+        fw={"p_swap": 1.0},
+        mux=MuxSchemeDynamicEpr(select_path=select_path),
         # If there is a conflict in path selection, there will be two leftover EPRs.
         swap_table_leak_tol=2 if selected_path[0] != selected_path[1] else 0,
     )
@@ -734,7 +733,8 @@ def test_tree2_statistical(
         mux = MuxSchemeStatistical(select_swap_qubit=select_qubit, coordinated_decisions=True, select_path=select_path)
 
     net, simulator = build_tree_network(
-        fw={"p_swap": 1.0, "mux": mux},
+        fw={"p_swap": 1.0},
+        mux=mux,
         end_time=2,
     )
     fwA, fwB, fwC, fwD, fwE, fwF, fwG = (node.get_app(ProactiveForwarder) for node in net.nodes)
@@ -744,7 +744,7 @@ def test_tree2_statistical(
 
     edges = ((fwD, fwB), (fwE, fwB), (fwB, fwA), (fwA, fwC), (fwC, fwF), (fwC, fwG))
     provide_entanglements(
-        *((t, *edge) for (t, edge) in zip(etg_ms, edges)),
+        *((t, *edge) for (t, edge) in zip(etg_ms, edges, strict=True)),
         transform_t=lambda ms: 1 + ms / 1000,
     )
     simulator.run()
@@ -821,7 +821,8 @@ def test_tree3_statistical(
 
     net, simulator = build_tree_network(
         height=3,
-        fw={"p_swap": 1.0, "mux": MuxSchemeStatistical(select_swap_qubit=select_qubit, select_path=select_path)},
+        fw={"p_swap": 1.0},
+        mux=MuxSchemeStatistical(select_swap_qubit=select_qubit, select_path=select_path),
         end_time=2,
         swap_table_leak_tol=2,
     )

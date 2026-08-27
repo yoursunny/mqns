@@ -2,7 +2,13 @@ from typing import override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
 from mqns.entity.node import Application, Controller
-from mqns.network.fw.message import PathDeleteMsg, PathInsertMsg, PathInstructions, PathReachEprCountMsg
+from mqns.network.fw.message import (
+    PathDeleteMsg,
+    PathInsertMsg,
+    PathInstructions,
+    PathReachEprCountMsg,
+    validate_path_instructions,
+)
 from mqns.network.fw.routing import MultiplexingVectorInput, RoutingPath
 from mqns.network.network import RequestInactiveEvent
 
@@ -19,7 +25,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
                      This should be set to ``max`` if forwarders use ``MuxSchemeBufferSpace``, otherwise ``none``.
         """
         super().__init__()
-        self.mv_auto = mv_auto
+        self.mv_auto: MultiplexingVectorInput = mv_auto
 
     @override
     def install(self, node):
@@ -49,6 +55,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         for path_id, inst in enumerate(rp.compute_paths(self.net), start=rp.path_id):
             self._next_path_id = max(self._next_path_id, path_id + 1)
             inst["path_id"] = path_id
+            validate_path_instructions(inst, bufferspace=None, reactive=None)
             insts.append(inst)
             nodes.update(inst["route"])
 
@@ -95,21 +102,21 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
 
         req = next((req for req in self.net.requests if req.req_id == req_id), None)
         if req is None:
-            self.log_debug("reach_epr_count req=%s end_node=%s outcome=req_not_found", req_id, end_node)
+            self.log_debug("reach_epr_count req=%s end_node=%s outcome=req-not-found", req_id, end_node)
             return
 
         try:
             req.epr_count_await.remove(end_node)
         except KeyError:
-            self.log_debug("reach_epr_count req=%s end_node=%s outcome=node_not_pending", req_id, end_node)
+            self.log_debug("reach_epr_count req=%s end_node=%s outcome=node-not-pending", req_id, end_node)
             return
 
         if req.epr_count_await:
             self.log_debug(
-                "reach_epr_count req=%s end_node=%s outcome=wait_for_other_end await=%s", req_id, end_node, req.epr_count_await
+                "reach_epr_count req=%s end_node=%s outcome=wait-for-other-end await=%s", req_id, end_node, req.epr_count_await
             )
             return
 
-        self.log_debug("reach_epr_count req=%s end_node=%s outcome=deactivate_request", req_id, end_node)
+        self.log_debug("reach_epr_count req=%s end_node=%s outcome=deactivate-request", req_id, end_node)
         self.simulator.sched(event := RequestInactiveEvent(self.node, req, t=self.simulator.tc))
         req.inactive_event.set(event)

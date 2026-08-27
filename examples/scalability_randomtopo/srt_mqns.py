@@ -8,7 +8,7 @@ from mqns.network.proactive import ProactiveForwarder, ProactiveRoutingControlle
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Simulator
-from mqns.utils import WallClockTimeout, json_default, log
+from mqns.utils import WallClockTimeout, json_default, log, unwrap
 
 from srt_detail.defs import RequestStats, RunArgs, RunResult, build_network
 
@@ -24,7 +24,7 @@ def run_simulation(args: RunArgs) -> RunResult:
     s = Simulator(0, args.sim_duration, accuracy=1000000, install_to=(log, net))
 
     # Install paths for requests.
-    ctrl = net.get_controller().get_app(ProactiveRoutingController)
+    ctrl = unwrap(net.controller).get_app(ProactiveRoutingController)
     for req in net.requests:
         ctrl.install_path(RoutingPathSingle(req.src, req.dst, **req.rp_args))
 

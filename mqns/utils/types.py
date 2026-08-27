@@ -1,7 +1,7 @@
 from collections import defaultdict
 from collections.abc import Callable
 from operator import attrgetter
-from typing import Any, cast
+from typing import Any, Final, cast, get_args, get_origin
 
 
 def unwrap[T](var: T | None) -> T:
@@ -56,7 +56,7 @@ class DecoratorDispatchBuilder[K, F: Callable]:
             nested_base: If specified, also gather decorated methods from member variables
                 of ``cls`` class if the member has ``nested_base`` as a base class.
                 The member variable must be declared at class level with a type hint referencing
-                its type; forward references and annotations are not supported.
+                its type or ``Final[T]``; forward references and other annotations are not supported.
         """
         d = defaultdict[K, list[F]](list)
 
@@ -68,12 +68,25 @@ class DecoratorDispatchBuilder[K, F: Callable]:
 
         return dict(d)
 
+    @staticmethod
+    def _want_field(attr_type: Any, nested_base: type) -> type | None:
+        if isinstance(attr_type, type):
+            if issubclass(attr_type, nested_base):
+                return attr_type
+            return None
+        if get_origin(attr_type) is Final:
+            (inner_type,) = get_args(attr_type)
+            if issubclass(inner_type, nested_base):
+                return inner_type
+            return None
+        return None
+
     def _gather_nested(self, d: defaultdict[K, list[F]], cls: type, nested_base: type) -> None:
         for attr_name, attr_type in cls.__annotations__.items():
-            if not (isinstance(attr_type, type) and issubclass(attr_type, nested_base)):
+            if (inner_type := self._want_field(attr_type, nested_base)) is None:
                 continue
             attr_get = attrgetter(attr_name)
-            for k, l in cast(dict[K, list[F]], getattr(attr_type, self.classvar_name)).items():
+            for k, l in cast(dict[K, list[F]], getattr(inner_type, self.classvar_name)).items():
                 d[k] += (self._make_wrapper(attr_get, func) for func in l)
 
     def _gather_base(self, d: defaultdict[K, list[F]], base: type) -> None:

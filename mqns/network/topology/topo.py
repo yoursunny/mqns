@@ -143,19 +143,18 @@ class Topology(ABC):
             ll: List of quantum channels.
         """
         cchannel_list: list[ClassicChannel] = []
-        if classic_topo == ClassicTopology.All:
-            topo = list(itertools.combinations(nl, 2))
-            for idx, (src, dst) in enumerate(topo):
+        if classic_topo is ClassicTopology.All:
+            for idx, (src, dst) in enumerate(itertools.combinations(nl, 2)):
                 cchannel = ClassicChannel(f"c{idx + 1}", **self.cchannel_args)
-                src.add_cchannel(cchannel=cchannel)
-                dst.add_cchannel(cchannel=cchannel)
+                src.add_cchannel(cchannel)
+                dst.add_cchannel(cchannel)
                 cchannel_list.append(cchannel)
-        elif classic_topo == ClassicTopology.Follow:
+        elif classic_topo is ClassicTopology.Follow:
             for idx, qchannel in enumerate(ll):
                 node_list = qchannel.node_list
                 cchannel = ClassicChannel(f"c-{qchannel.name}", **self.cchannel_args)
                 for n in node_list:
-                    n.add_cchannel(cchannel=cchannel)
+                    n.add_cchannel(cchannel)
                 cchannel_list.append(cchannel)
 
         return cchannel_list

@@ -1,14 +1,12 @@
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal, Protocol, override
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
-from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
-from mqns.network.fw.fib import FibPath
+from mqns.network.fw import FibPath
 from mqns.network.fw.message import PathInstructions, validate_path_instructions
-from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.select import (
-    MemoryEprIterator,
     MemoryEprTuple,
     call_select,
     parse_select,
@@ -16,7 +14,8 @@ from mqns.network.fw.select import (
     select_swap_qubit_newest,
     select_swap_qubit_oldest,
 )
-from mqns.utils import unwrap_cast
+from mqns.network.proactive.mux import MuxScheme
+from mqns.utils import unwrap, unwrap_cast
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
@@ -66,10 +65,10 @@ class MuxSchemeFibBase(MuxScheme):
         self._select_swap_qubit = parse_select(type(self), "SelectSwapQubit_", select_swap_qubit)
 
     def select_swap_candidate(
-        self, mq0: MemoryQubit, epr0: Entanglement, fp: FibPath, candidates: MemoryEprIterator
+        self, mt0: MemoryEprTuple, fp: FibPath, predicate: Callable[[MemoryQubit, Entanglement], bool]
     ) -> tuple[MemoryQubit, FibPath] | None:
-        assert fp
-        mt1 = call_select(candidates, self._select_swap_qubit, self.fw, (mq0, epr0), fp)
+        candidates = self.memory.find(predicate, has=self.epr_type)
+        mt1 = call_select(candidates, self._select_swap_qubit, self.fw, mt0, fp)
         return None if mt1 is None else (mt1[0], fp)
 
 
@@ -91,41 +90,23 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
 
     @override
     def validate_path_instructions(self, inst: PathInstructions) -> None:
-        validate_path_instructions(inst)
-        assert "m_v" in inst
+        validate_path_instructions(inst, bufferspace=True)
 
     @override
     def install_path_adj(self, inst: PathInstructions, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        assert "m_v" in inst
-        mv = inst["m_v"]
-        mv_offset, ch_side = (-1, 1) if dir == PathDirection.L else (0, 0)
-        mv_index = fp.own_idx + mv_offset
-        mv_element = mv[mv_index]
+        assert "bufferspace_mv" in inst
+        n_qubits = inst["bufferspace_mv"][2 * fp.own_idx + (-1 if dir == PathDirection.L else 0)]
 
-        if isinstance(mv_element, str):
-            # allocate a specific memory qubit identified with reservation key (only used in reactive forwarding)
-            qubit, _ = next(self.memory.find(lambda q, _: q.key == mv_element), (None, None))
-            if qubit is None:
-                raise ValueError(f"m_v[{mv_index}] refers to non-existent qubit {mv_element}")
-            qubit.path_id, qubit.path_direction = fp.path_id, dir
-            addrs = [qubit.addr]
-        else:
-            # allocate memory qubit(s) assigned to the channel (typically used in proactive forwarding)
-            n_qubits = mv_element[ch_side]
-            addrs = self.memory.allocate(
-                ch,
-                fp.path_id,
-                dir,
-                n="all" if n_qubits == 0 else n_qubits,
-            )
-        self.fw.log_debug("allocating %s qubits: %s", dir, addrs)
+        n = "all" if n_qubits == 0 else n_qubits
+        addrs = self.memory.allocate(ch, fp.path_id, dir, n=n)
+        self.fw.log_debug("allocating path %s-%s qubits: %s", fp.path_id, dir.name, addrs)
 
     @override
     def uninstall_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
         qubits = self.memory.find(lambda q, _: q.path_id == fp.path_id, qchannel=ch)
-        addrs = [q[0].addr for q in qubits]
-        self.fw.log_debug("deallocating %s qubits: %s", dir, addrs)
-        # If some qubits are currently ACTIVE or RESERVED IN LinkLayer, deallocation would occur
+        addrs = [q.addr for q, _ in qubits]
+        self.fw.log_debug("deallocating path %s-%s qubits: %s", fp.path_id, dir.name, addrs)
+        # If some qubits are currently ACTIVE or RESERVED in LinkLayer, deallocation would occur
         # when they next reach RAW state.
         self.memory.deallocate(*addrs)
 
@@ -140,24 +121,19 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
         return [mq.path_id]
 
     @override
-    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibPath | None:
-        _ = epr, neighbor
+    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
+        _ = epr
         mq.state = QubitState.PURIF
         return self.fib.get_path(unwrap_cast(mq.path_id))
 
     @override
     def find_swap_with(self, mq0: MemoryQubit, epr0: Entanglement, fp: FibPath | None) -> tuple[MemoryQubit, FibPath] | None:
-        assert fp
         return self.select_swap_candidate(
-            mq0,
-            epr0,
-            fp,
-            self.memory.find(
-                lambda q, _: (
-                    self.qubits_swappable(mq0, q)  # basic condition met
-                    and q.path_id == mq0.path_id  # allocated to the same path_id
-                    and q.path_direction is not mq0.path_direction  # in the opposite path direction
-                ),
-                has=self.epr_type,
+            (mq0, epr0),
+            unwrap(fp),
+            lambda q, _: (
+                self.qubits_swappable(mq0, q)  # basic condition met
+                and q.path_id == mq0.path_id  # allocated to the same path_id
+                and q.path_direction is not mq0.path_direction  # in the opposite path direction
             ),
         )

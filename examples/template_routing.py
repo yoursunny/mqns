@@ -41,6 +41,7 @@ How to use it:
    python your_script.py --runs 5
 """
 
+import itertools
 from dataclasses import dataclass
 from typing import Any
 
@@ -50,9 +51,6 @@ from tap import Tap
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
 from mqns.network.fw import (
     MultiplexingVector,
-    MuxScheme,
-    MuxSchemeBufferSpace,
-    MuxSchemeStatistical,
     RoutingPath,
     RoutingPathMulti,
     RoutingPathSingle,
@@ -60,6 +58,7 @@ from mqns.network.fw import (
 )
 from mqns.network.network import QuantumNetwork
 from mqns.network.network.timing import TimingModeSync
+from mqns.network.proactive import MuxScheme, MuxSchemeBufferSpace, MuxSchemeStatistical
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.route import DijkstraRouteAlgorithm, YenRouteAlgorithm
 from mqns.simulator import Simulator
@@ -171,11 +170,12 @@ def _mux_buffer_space() -> MuxScheme:
 # This example gives each flow half of the trunk budget.
 def _mv_two_flows_equal_share(route: list[str]) -> MultiplexingVector:
     mv: MultiplexingVector = []
-    for u, v in zip(route[:-1], route[1:]):
+    # for u, v in zip(route[:-1], route[1:]):
+    for u, v in itertools.pairwise(route):
         if (u, v) == ("R2", "R3") or (u, v) == ("R3", "R2"):
-            mv.append((max(1, CAP_DEFAULT // 2), max(1, CAP_DEFAULT // 2)))
+            mv += (max(1, CAP_DEFAULT // 2), max(1, CAP_DEFAULT // 2))
         else:
-            mv.append((CAP_DEFAULT, CAP_DEFAULT))
+            mv += (CAP_DEFAULT, CAP_DEFAULT)
     return mv
 
 

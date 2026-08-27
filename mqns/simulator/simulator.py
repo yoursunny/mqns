@@ -3,7 +3,7 @@ import os
 import time
 from collections.abc import Callable, Iterable
 from pstats import SortKey
-from typing import TYPE_CHECKING, Any, Literal, Protocol, overload
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, overload
 
 from mqns.simulator.event import Event, func_to_event
 from mqns.simulator.pool import HeapEventPool, SynchronizedEventPool
@@ -19,6 +19,10 @@ if TYPE_CHECKING:
     from mqns.entity.monitor import Monitor
 
 
+class SimulatorOwner(Protocol):
+    simulator: "Simulator"
+
+
 class SimulatorInstallable(Protocol):
     def install(self, simulator: "Simulator") -> Any: ...
 
@@ -28,12 +32,18 @@ class Simulator:
     Discrete-event driven simulator core.
     """
 
-    _run_tracebackhide = True
+    _run_tracebackhide: ClassVar = True
     """
     If True, the ``.run()`` method is hidden from pytest traceback.
     """
 
     watchers: dict[type[Event], list["Monitor"]] | None = None
+
+    @staticmethod
+    def ensure_not_installed_to(obj: SimulatorOwner) -> None:
+        __tracebackhide__ = True
+        if hasattr(obj, "simulator"):
+            raise RuntimeError(f"{obj}: function only available prior to .install()")
 
     def __init__(
         self,
@@ -61,7 +71,7 @@ class Simulator:
         assert te >= ts
         self.te = Time.SENTINEL if math.isinf(te) else self.time(sec=te)
         """Simulation end time. ``Time.SENTINEL`` means continuous simulation."""
-        self.time_spend: float = 0
+        self.time_spend = 0.0
         """Wall-clock time for entire simulation run."""
 
         if (need_synchronized is None and self.is_continuous) or need_synchronized:
@@ -92,7 +102,7 @@ class Simulator:
         * When a finite simulation has finished, this is same as ``.te``.
         * Otherwise, this reflects the time of the currently processing or last processed event.
         """
-        return self.time(slot=self._pool.tc)
+        return Time(self._pool.tc, accuracy=self.accuracy)
 
     @property
     def running(self) -> bool:

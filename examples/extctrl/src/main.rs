@@ -2,8 +2,7 @@ use anyhow::Result;
 use async_nats;
 use bpaf::Bpaf;
 use mqns_example_extctrl::{
-    LinkStateEntry, LinkStateMsg, MultiplexingVectorElem, PathInstructions, Southbound,
-    sec_to_time_slot,
+    LinkStateEntry, LinkStateMsg, PathInstructions, Southbound, sec_to_time_slot,
 };
 use serde_json;
 use std::{
@@ -61,7 +60,7 @@ enum PathOpt {
 }
 
 impl PathOpt {
-    fn to_swap(&self) -> Vec<i32> {
+    fn to_swap(&self) -> Vec<u32> {
         match self {
             PathOpt::ASAP => vec![1, 0, 0, 1],
             PathOpt::L2R => vec![2, 0, 1, 2],
@@ -154,33 +153,26 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn make_path(path_id: u32, nodes: &str, opt: PathOpt) -> PathInstructions {
-    let route: Vec<String> = nodes.split('-').map(String::from).collect();
-    let len = route.len();
-    PathInstructions {
-        path_id,
-        route,
-        swap: opt.to_swap(),
-        swap_cutoff: None,
-        m_v: Some(vec![MultiplexingVectorElem::Count(1, 1); len - 1]),
-        purif: HashMap::new(),
-    }
-}
-
 async fn tx_loop_pca(args: &Args, sb: &Southbound) -> Result<()> {
     for sec in 0..=args.sim_duration {
         println!("Simulation Time: {} / {}", sec, args.sim_duration);
         let t = sec * args.sim_accuracy;
 
         if args.path1 != PathOpt::Disabled && args.path1_i == sec {
-            let path = make_path(10, "S1-R1-R2-D1", args.path1);
             println!("    Installing path1");
+            let path = PathInstructions::new(10, PathInstructions::split_route("S1-R1-R2-D1"))
+                .bufferspace_mv(vec![1; 6])
+                .swap(args.path1.to_swap())
+                .build();
             sb.path_insert(t, path.path_id, &[path]).await?;
         }
 
         if args.path2 != PathOpt::Disabled && args.path2_i == sec {
-            let path = make_path(20, "S2-R1-R2-D2", args.path2);
             println!("    Installing path2");
+            let path = PathInstructions::new(20, PathInstructions::split_route("S2-R1-R2-D2"))
+                .bufferspace_mv(vec![1; 6])
+                .swap(args.path2.to_swap())
+                .build();
             sb.path_insert(t, path.path_id, &[path]).await?;
         }
 
@@ -284,24 +276,32 @@ async fn tx_loop_rcs(
         println!("    {:?}", tls);
 
         if args.path1 != PathOpt::Disabled && args.path1_i <= sec {
-            let mut path = make_path(10, "S1-R1-R2-D1", args.path1);
-            if let Some(consumed) = tls.try_consume(&path.route) {
-                path.set_mv_qubits(consumed);
+            let route = PathInstructions::split_route("S1-R1-R2-D1");
+            if let Some(consumed) = tls.try_consume(&route) {
+                let path = PathInstructions::new(10, route)
+                    .reactive_qubits(consumed)
+                    .swap(args.path1.to_swap())
+                    .build();
+
                 println!(
                     "    Installing path1: {}",
-                    serde_json::to_string(&path.m_v).unwrap()
+                    serde_json::to_string(&path.reactive_qubits).unwrap()
                 );
                 sb.path_insert(t, path.path_id, &[path]).await?;
             }
         }
 
         if args.path2 != PathOpt::Disabled && args.path2_i <= sec {
-            let mut path = make_path(20, "S2-R1-R2-D2", args.path2);
-            if let Some(consumed) = tls.try_consume(&path.route) {
-                path.set_mv_qubits(consumed);
+            let route = PathInstructions::split_route("S2-R1-R2-D2");
+            if let Some(consumed) = tls.try_consume(&route) {
+                let path = PathInstructions::new(20, route)
+                    .reactive_qubits(consumed)
+                    .swap(args.path2.to_swap())
+                    .build();
+
                 println!(
                     "    Installing path2: {}",
-                    serde_json::to_string(&path.m_v).unwrap()
+                    serde_json::to_string(&path.reactive_qubits).unwrap()
                 );
                 sb.path_insert(t, path.path_id, &[path]).await?;
             }

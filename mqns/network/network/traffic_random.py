@@ -41,6 +41,7 @@ def generate_random_requests(
     if not allow_overlay and n * 2 > nnodes:
         raise ValueError("Too many requests")
     net.build_route()
+    nl = list(node.name for node in net.nodes)
 
     requests: list[Request] = []
     used_endpoints = set[int]()
@@ -54,7 +55,7 @@ def generate_random_requests(
         if not allow_overlay and (src in used_endpoints or dst in used_endpoints):
             continue
 
-        np: NodePair = net.nodes[src].name, net.nodes[dst].name
+        np: NodePair = nl[src], nl[dst]
         routes = net.query_route(*np, error_on_empty=False)
         if not routes:
             continue

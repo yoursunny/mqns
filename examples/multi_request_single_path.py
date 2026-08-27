@@ -27,7 +27,7 @@ import numpy as np
 from tap import Tap
 
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
-from mqns.network.fw import MuxScheme, MuxSchemeDynamicEpr, MuxSchemeStatistical
+from mqns.network.proactive import MuxSchemeDynamicEpr, MuxSchemeInput, MuxSchemeStatistical
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.simulator import Simulator
 from mqns.utils import log, rng, seed_seq_env
@@ -49,7 +49,7 @@ PATH_TITLES = ("S1-D1", "S2-D2")
 N_PATHS = len(PATH_TITLES)
 
 
-def run_simulation(seed: int, args: Args, mux: MuxScheme, t_cohere: float):
+def run_simulation(seed: int, args: Args, mux: MuxSchemeInput, t_cohere: float):
     rng.reseed(seed)
 
     net = (
@@ -164,7 +164,7 @@ def plot(results: dict[str, list[list[PathStats]]], *, save_plt: str):
 
 
 # Simulation constants
-STRATEGIES: dict[str, MuxScheme] = {
+STRATEGIES: dict[str, MuxSchemeInput] = {
     "Statistical Mux.": MuxSchemeStatistical(coordinated_decisions=False),
     "Random Alloc.": MuxSchemeDynamicEpr(),
     "Swap-weighted Alloc.": MuxSchemeDynamicEpr(select_path="swap_weighted"),

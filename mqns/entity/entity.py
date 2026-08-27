@@ -29,27 +29,15 @@ class Entity(LogSelfMixin, ABC):
     """
 
     def __init__(self, name: str):
-        """
-        Args:
-            name: the name of this entity.
-        """
         self.name = name
         """Entity name."""
-
-    def ensure_not_installed(self) -> None:
-        """
-        Assert that this entity has not been installed into a simulator.
-        """
-        assert not hasattr(self, "simulator"), "function only available prior to self.install()"
 
     def install(self, simulator: Simulator) -> None:
         """
         Initialize the entity and schedule initial events.
-        This must be invoked before ``simulator.run()``.
 
         Args:
-            simulator: the simulator.
-
+            simulator: An simulator that is not running.
         """
         assert not hasattr(self, "simulator") or self.simulator is simulator
         assert not simulator.running

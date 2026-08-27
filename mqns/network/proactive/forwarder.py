@@ -15,41 +15,19 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Unpack, override
+from typing import Final, NotRequired, Unpack, cast, override
 
-from mqns.entity.memory import PathDirection
-from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw import FibPath, FibRequest, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
-from mqns.network.protocol.event import PathActivateEvent, PathDeactivateEvent
+from mqns.entity.memory import MemoryQubit
+from mqns.models.epr import Entanglement
+from mqns.network.fw import FibPath, FibRequest, Forwarder, ForwarderInitKwargs
+from mqns.network.proactive.fw_nb import ProactiveForwarderNorthbound
+from mqns.network.proactive.mux import MuxScheme
+from mqns.network.proactive.mux_input import MuxSchemeInput, parse_mux_scheme
 
 
-class ProactiveForwarderNorthbound(ForwarderNorthbound):
-    @override
-    def install_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        self.simulator.sched(
-            PathActivateEvent(
-                self.node,
-                ch,
-                self._ll_path_id(fp),
-                t=self.simulator.tc,
-                is_primary=dir is PathDirection.R,
-            )
-        )
-
-    @override
-    def uninstall_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        _ = dir
-        self.simulator.sched(
-            PathDeactivateEvent(
-                self.node,
-                ch,
-                self._ll_path_id(fp),
-                t=self.simulator.tc,
-            )
-        )
-
-    def _ll_path_id(self, fp: FibPath) -> int | None:
-        return fp.path_id if self.mux.qubit_has_path_id() else None
+class ProactiveForwarderInitKwargs(ForwarderInitKwargs):
+    mux: NotRequired[MuxSchemeInput]
+    """Path multiplexing scheme, default is buffer-space."""
 
 
 class ProactiveForwarder(Forwarder):
@@ -59,17 +37,35 @@ class ProactiveForwarder(Forwarder):
     routing is done at the controller.
     """
 
-    nb: ProactiveForwarderNorthbound
+    nb: Final[ProactiveForwarderNorthbound]
     """Northbound interface to communicate with the ProactiveRoutingController."""
 
-    def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
-        super().__init__(**kwargs)
+    mux: Final[MuxScheme]
+    """Multiplexing scheme."""
+
+    def __init__(self, **kwargs: Unpack[ProactiveForwarderInitKwargs]):
+        mux = parse_mux_scheme(kwargs.pop("mux", None))
+        super().__init__(**cast(ForwarderInitKwargs, kwargs))
         self.nb = ProactiveForwarderNorthbound()
+        self.mux = mux
 
     @override
     def install(self, node):
         super().install(node)
         self.nb.install(self)
+        self.mux.install(self)
+
+    @override
+    def qubit_is_entangled_next(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
+        mq.epr_path_ids = self.mux.list_qubit_epr_path_ids(mq)
+        if not mq.epr_path_ids:
+            return
+
+        return self.mux.qubit_is_entangled(mq, epr)
+
+    @override
+    def find_swap_with(self, mq0: MemoryQubit, epr0: Entanglement, fp: FibPath | None) -> tuple[MemoryQubit, FibPath] | None:
+        return self.mux.find_swap_with(mq0, epr0, fp)
 
     @override
     def request_reached_epr_count(self, fr: FibRequest) -> None:

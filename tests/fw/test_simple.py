@@ -6,7 +6,7 @@ import pytest
 
 from mqns.network.fw import parse_swap_sequence
 from mqns.network.fw.fib import FibPath
-from mqns.network.fw.message import validate_path_instructions
+from mqns.network.fw.message import PathInstructions, validate_path_instructions
 
 
 def test_parse_swap_sequence():
@@ -42,48 +42,65 @@ def test_parse_swap_sequence():
 def test_path_validation():
     """Test path validation logic."""
 
-    route3 = ["A", "B", "C"]
-    swap3 = [1, 0, 1]
-    scut3 = [2000, 1000]
-    mv3 = [(1, 1)] * 2
+    inst_base: PathInstructions = {"path_id": 0, "route": ["A", "B", "C"], "swap": [1, 0, 1], "purif": {}}
 
+    validate_path_instructions(inst_base)
+
+    # path_id
+    with pytest.raises(ValueError, match="path_id"):
+        validate_path_instructions({**inst_base, "path_id": -1})
+
+    # route
     with pytest.raises(ValueError, match="route is empty"):
-        validate_path_instructions({"path_id": 0, "route": [], "swap": [], "swap_cutoff": [], "purif": {}})
+        validate_path_instructions({**inst_base, "route": []})
+
+    # bufferspace_mv
+    validate_path_instructions({**inst_base, "bufferspace_mv": [1, 1] * 2}, bufferspace=True)
+
+    with pytest.raises(ValueError, match="bufferspace_mv must be absent"):
+        validate_path_instructions({**inst_base, "bufferspace_mv": [1, 1] * 2})
+
+    with pytest.raises(ValueError, match="bufferspace_mv must be present"):
+        validate_path_instructions({**inst_base}, bufferspace=True)
+
+    with pytest.raises(ValueError, match="bufferspace_mv does not match route length"):
+        validate_path_instructions({**inst_base, "bufferspace_mv": [1, 1] * 3}, bufferspace=True)
+
+    # reactive_qubits
+    validate_path_instructions({**inst_base, "reactive_qubits": ["epr0", "epr1"]}, reactive=True)
+
+    with pytest.raises(ValueError, match="reactive_qubits must be absent"):
+        validate_path_instructions({**inst_base, "reactive_qubits": ["epr0", "epr1"]})
+
+    with pytest.raises(ValueError, match="reactive_qubits must be present"):
+        validate_path_instructions({**inst_base}, reactive=True)
+
+    with pytest.raises(ValueError, match="reactive_qubits does not match route length"):
+        validate_path_instructions({**inst_base, "reactive_qubits": ["epr0", "epr1", "epr2"]}, reactive=True)
+
+    # swap and swap_cutoff
+    validate_path_instructions({**inst_base, "swap_cutoff": [2000, 1000]})
 
     with pytest.raises(ValueError, match="swapping order"):
-        validate_path_instructions(
-            {"path_id": 0, "route": ["A", "B", "C", "D", "E"], "swap": swap3, "swap_cutoff": scut3, "purif": {}}
-        )
+        validate_path_instructions({**inst_base, "swap": [1, 0, 0, 1]})
 
     with pytest.raises(ValueError, match="swap_cutoff"):
-        validate_path_instructions(
-            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": [2000, 1000, 1000], "purif": {}}
-        )
+        validate_path_instructions({**inst_base, "swap_cutoff": [2000, 1000, 1000]})
 
-    with pytest.raises(ValueError, match="multiplexing vector"):
-        validate_path_instructions(
-            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": [(1, 1)] * 3, "purif": {}}
-        )
+    # purif
+    validate_path_instructions({**inst_base, "purif": {"A-B": 2, "B-C": 1, "A-C": 1}})
 
     with pytest.raises(ValueError, match="purif segment"):
-        validate_path_instructions(
-            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"P-Q": 1}}
-        )
+        validate_path_instructions({**inst_base, "purif": {"P-Q": 1}})
 
     with pytest.raises(ValueError, match="purif segment"):
-        validate_path_instructions(
-            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"A-B-C": 1}}
-        )
+        validate_path_instructions({**inst_base, "purif": {"A-B-C": 1}})
 
     with pytest.raises(ValueError, match="purif segment"):
-        validate_path_instructions(
-            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"B-B": 1}}
-        )
+        validate_path_instructions({**inst_base, "purif": {"B-B": 1}})
 
     with pytest.raises(ValueError, match="purif segment"):
-        validate_path_instructions(
-            {"path_id": 0, "route": route3, "swap": swap3, "swap_cutoff": scut3, "m_v": mv3, "purif": {"C-A": 1}}
-        )
+        validate_path_instructions({**inst_base, "purif": {"C-A": 1}})
 
 
 @pytest.mark.parametrize(
@@ -110,7 +127,7 @@ def test_path_validation():
 def test_fib_swap_group(purif: str | None, own: str, expected: tuple[str, str, str, str] | None):
     nodes = "ABCDEFGHIJ"
     ranks = "3001012003"
-    entry = FibPath(
+    fp = FibPath(
         path_id=0,
         route=nodes,
         own_idx=nodes.index(own),
@@ -119,16 +136,18 @@ def test_fib_swap_group(purif: str | None, own: str, expected: tuple[str, str, s
         purif={purif: 1} if purif else {},
     )
 
-    sg = entry.sg
+    sg = fp.sg
 
     if expected is None:
+        assert fp.own_is_end_node
         assert sg is None
         return
 
+    assert not fp.own_is_end_node
     assert sg is not None
     assert sg.nodes == list(expected[1])
     assert sg.own_idx == sg.nodes.index(own)
     assert (sg.l_neigh, "".join(sg.nodes), sg.r_neigh, sg.dir) == expected
 
-    _, rank = entry.find_index_and_swap_rank(sg.nodes[0])
+    _, rank = fp.find_index_and_swap_rank(sg.nodes[0])
     assert sg.rank == rank

@@ -109,12 +109,12 @@ def test_decoherence_event():
     # Expect it to decohere at t=1.0
     scenario.s.run()
 
-    res, _ = mem.read("epr3", must=True)
+    res, _ = mem.read(0)
     assert res is qubit
     assert qubit.state is QubitState.RELEASE, f"unexpected state {qubit.state}"
 
 
-def test_memory_clear_and_deallocate():
+def test_clear_and_deallocate():
     scenario = TwoNodes(capacity=2)
     mem = scenario.m1
     mem.assign(scenario.qc, n=2)
@@ -131,8 +131,8 @@ def test_memory_clear_and_deallocate():
     addrs = mem.allocate(scenario.qc, 7, PathDirection.L, n=2)
     assert len(addrs) == 2
 
-    q0, _ = mem.read(addrs[0], must=True)
-    q1, _ = mem.read(addrs[1], must=True)
+    q0, _ = mem.read(addrs[0])
+    q1, _ = mem.read(addrs[1])
     assert q0.addr != q1.addr
     assert q0.path_id == 7
     assert q1.path_id == 7
@@ -166,26 +166,28 @@ def test_qubit_reservation_behavior():
     assert qubit.addr == addr1
 
 
-def test_memory_sync_qubit():
+def test_sync_qubit():
     scenario = TwoNodes()
     mem = scenario.m1
 
     q1 = Qubit(name="test_qubit")
 
-    mem.write(0, q1)
+    mq = mem.write(0, q1)
+    mq.key = "test_qubit"
     assert mem.read("test_qubit") is not None
 
     assert mem.read("nonexistent") is None
     assert pytest.raises(LookupError, lambda: mem.read("nonexistent", must=True))
 
 
-def test_memory_sync_qubit_limited():
+def test_sync_qubit_limited():
     scenario = TwoNodes(capacity=5)
     mem = scenario.m1
 
     for i in range(5):
         q = Qubit(name=f"q{i}")
-        mem.write(i, q)
+        mq = mem.write(i, q)
+        mq.key = q.name
         assert mem.count == i + 1
 
     q = Qubit(name="q5")
@@ -202,7 +204,7 @@ def test_memory_sync_qubit_limited():
     assert mem.read("q6", must=True)[0].addr == 3
 
 
-def test_memory_async_qubit():
+def test_async_qubit():
     class MemoryReadResponseApp(Application[QNode]):
         def __init__(self):
             super().__init__()

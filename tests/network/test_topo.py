@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Iterable
 from typing import cast
 
 import pytest
@@ -20,11 +20,12 @@ from mqns.network.topology import (
 from mqns.simulator import Simulator
 
 
-def collect_channels(net: QuantumNetwork, channels: Sequence[ClassicChannel | QuantumChannel]) -> set[tuple[int, int]]:
+def collect_channels(net: QuantumNetwork, channels: Iterable[ClassicChannel | QuantumChannel]) -> set[tuple[int, int]]:
+    nl = list(net.nodes)
     result = set[tuple[int, int]]()
     for ch in channels:
         nA, nB = cast(list[QNode], ch.node_list)
-        iA, iB = net.nodes.index(nA), net.nodes.index(nB)
+        iA, iB = nl.index(nA), nl.index(nB)
         assert iA != iB
         result.add((iA, iB) if iA < iB else (iB, iA))
     return result
@@ -58,7 +59,7 @@ def test_linear_topo():
 
     assert len(net.qchannels) == 3
     for i, ch in enumerate(net.qchannels):
-        assert set(ch.node_list) == set([net.nodes[i], net.nodes[i + 1]])
+        assert [node.name for node in ch.node_list] == [f"n{1 + i}", f"n{2 + i}"]
 
 
 def test_grid_topo_square():
@@ -200,7 +201,7 @@ def test_custom_topo_empty():
     assert len(net.qchannels) == 0
     assert len(net.cchannels) == 0
     assert net.controller is None
-    assert len(net.all_nodes) == 0
+    assert len([*net.all_nodes]) == 0
 
 
 def test_custom_topo_basic():
@@ -227,31 +228,31 @@ def test_custom_topo_basic():
     net = QuantumNetwork(topo)
     net.install(Simulator(0, 10))
 
-    assert len(net.nodes) == 3
+    assert [node.name for node in net.nodes] == ["A", "B", "C"]
     assert len(net.qchannels) == 2
     assert len(net.cchannels) == 1
     assert net.controller is not None
-    assert len(net.all_nodes) == 4
+    assert [node.name for node in net.all_nodes] == ["A", "B", "C", "ctrl"]
 
     mA = net.get_node("A").memory
     mB = net.get_node("B").memory
     mC = net.get_node("C").memory
 
-    qAB = net.get_qchannel("q_A,B")
-    qBC = net.get_qchannel("q_B,C")
+    qAB = net.get_qchannel("A", "B")
+    qBC = net.get_qchannel("B", "C")
 
     assert mA.capacity == 2
-    assert mA.read(0, must=True)[0].qchannel == qAB
-    assert mA.read(1, must=True)[0].qchannel == qAB
+    assert mA.read(0)[0].qchannel is qAB
+    assert mA.read(1)[0].qchannel is qAB
     assert mB.capacity == 4
-    assert mB.read(0, must=True)[0].qchannel == qAB
-    assert mB.read(1, must=True)[0].qchannel == qBC
-    assert mB.read(2, must=True)[0].qchannel == qBC
-    assert mB.read(3, must=True)[0].qchannel == qBC
+    assert mB.read(0)[0].qchannel is qAB
+    assert mB.read(1)[0].qchannel is qBC
+    assert mB.read(2)[0].qchannel is qBC
+    assert mB.read(3)[0].qchannel is qBC
     assert mC.capacity == 3
-    assert mC.read(0, must=True)[0].qchannel == qBC
-    assert mC.read(1, must=True)[0].qchannel == qBC
-    assert mC.read(2, must=True)[0].qchannel == qBC
+    assert mC.read(0)[0].qchannel is qBC
+    assert mC.read(1)[0].qchannel is qBC
+    assert mC.read(2)[0].qchannel is qBC
 
 
 def test_custom_topo_low_memory():

@@ -15,50 +15,15 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Unpack, override
+from typing import Final, Unpack, override
 
-from mqns.entity.memory import PathDirection
-from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw import FibPath, Forwarder, ForwarderInitKwargs, ForwarderNorthbound
+from mqns.entity.memory import MemoryQubit, QubitState
+from mqns.models.epr import Entanglement
+from mqns.network.fw import FibPath, Forwarder, ForwarderInitKwargs
 from mqns.network.network import TimingPhase, sync_phase_handler
-from mqns.network.protocol.event import PathActivateEvent
-from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
-
-
-class ReactiveForwarderNorthbound(ForwarderNorthbound):
-    @override
-    def install_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        _ = dir, ch
-        if not self.node.timing.is_routing():
-            self.log_warning(
-                "received INSTALL_PATH message for path %s outside of ROUTING phase; t_rtg is too short?", fp.path_id
-            )
-
-    @override
-    def uninstall_path_adj(self, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
-        _ = fp, dir, ch
-        raise ValueError(f"{self} should not receive PATH_DELETE command")
-
-    def send_link_state(self):
-        """
-        Send link state message to controller. Assumes direct connection to controller.
-        """
-        link_states: list[LinkStateEntry] = []
-        for event in self.fw.waiting_etg:
-            assert event.qubit.key is not None
-            link_states.append({"node": event.node.name, "neighbor": event.neighbor.name, "qubit": event.qubit.key})
-
-        if len(link_states) == 0:
-            self.log_debug("no link_state to send")
-            return
-        else:
-            self.log_debug("send link_state for %s etg qubits", len(self.fw.waiting_etg))
-
-        msg: LinkStateMsg = {
-            "cmd": "LS",
-            "ls": link_states,
-        }
-        self.send_ctrl(msg)
+from mqns.network.protocol.event import PathActivateEvent, QubitEntangledEvent
+from mqns.network.reactive.fw_nb import ReactiveForwarderNorthbound
+from mqns.network.reactive.fw_plan import ReactivePlanner
 
 
 class ReactiveForwarder(Forwarder):
@@ -70,12 +35,16 @@ class ReactiveForwarder(Forwarder):
     routing is done at the controller.
     """
 
-    nb: ReactiveForwarderNorthbound
+    planner: Final[ReactivePlanner]
+    """Store the planned action for each qubit."""
+
+    nb: Final[ReactiveForwarderNorthbound]
     """Northbound interface to communicate with the ReactiveRoutingController."""
 
     def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
         super().__init__(**kwargs)
-        self.nb = ReactiveForwarderNorthbound()
+        self.planner = ReactivePlanner()
+        self.nb = ReactiveForwarderNorthbound(self.planner)
 
     @override
     def install(self, node):
@@ -105,4 +74,28 @@ class ReactiveForwarder(Forwarder):
         """
         # Clear FIB and path assignments, as these are only useful for one slot.
         self.fib.clear()
-        self.memory.deallocate(*(qubit.addr for qubit, _ in self.memory.find(lambda q, _: q.path_id is not None)))
+        self.planner.clear()
+
+    @override
+    def qubit_is_entangled_in_external(self, event: QubitEntangledEvent) -> None:
+        """
+        Handle a qubit entering ENTANGLED state when in EXTERNAL phase of SYNC timing mode.
+        """
+        super().qubit_is_entangled_in_external(event)
+        self.nb.append_link_state(event.neighbor, event.qubit)
+
+    @override
+    def qubit_is_entangled_next(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
+        _ = epr
+        fp = self.planner.find_fib_path(mq)
+        if fp is None:
+            return None
+
+        mq.epr_path_ids = [fp.path_id]
+        mq.state = QubitState.PURIF
+        return fp
+
+    @override
+    def find_swap_with(self, mq0: MemoryQubit, epr0: Entanglement, fp: FibPath | None) -> tuple[MemoryQubit, FibPath] | None:
+        _ = epr0, fp
+        return self.planner.find_swap_with(mq0)

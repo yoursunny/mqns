@@ -3,12 +3,10 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal, override
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
-from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
-from mqns.network.fw.fib import FibPath
+from mqns.network.fw import FibPath
 from mqns.network.fw.message import PathInstructions, validate_path_instructions
-from mqns.network.fw.mux import MuxScheme
 from mqns.network.fw.select import (
     MemoryEprTuple,
     call_select,
@@ -17,7 +15,8 @@ from mqns.network.fw.select import (
     select_swap_qubit_newest,
     select_swap_qubit_oldest,
 )
-from mqns.utils import unwrap_cast
+from mqns.network.proactive.mux import MuxScheme
+from mqns.utils import unwrap, unwrap_cast
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
@@ -32,7 +31,6 @@ class MuxSchemeDynamicBase(MuxScheme):
     @override
     def validate_path_instructions(self, inst: PathInstructions):
         validate_path_instructions(inst)
-        assert "m_v" not in inst
 
     @override
     def install_path_adj(self, inst: PathInstructions, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
@@ -53,18 +51,14 @@ class MuxSchemeDynamicBase(MuxScheme):
 
     @override
     def list_qubit_epr_path_ids(self, mq: MemoryQubit) -> list[int]:
-        assert mq.path_id is None
-        assert mq.qchannel, f"{self.fw}: No qubit-qchannel assignment. Not supported."
-        return self.qchannel_paths_map.get(mq.qchannel.name, [])
+        return self.qchannel_paths_map.get(unwrap(mq.qchannel).name, [])
 
 
 class MuxSchemeStatistical(MuxSchemeDynamicBase):
     """
     Statistical multiplexing scheme.
 
-    Limitations:
-    * Across all paths, each node is either a repeater or an end node.
-    * Across all paths, each link must have the same direction (left to right).
+    Limitation: across all paths, each node is either a repeater or an end node.
     """
 
     type SelectSwapQubit = Callable[[list[MemoryEprTuple], "Forwarder", MemoryEprTuple], MemoryEprTuple]
@@ -114,10 +108,12 @@ class MuxSchemeStatistical(MuxSchemeDynamicBase):
         assert all(r == 0 for r in inst["purif"].values())
 
     @override
-    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibPath | None:
+    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
         if self.coordinated_decisions and epr.affectionated_path_id >= 0:
             assert epr.affectionated_path_id in unwrap_cast(mq.epr_path_ids)
             mq.epr_path_ids = [epr.affectionated_path_id]
+
+        neighbor, _ = unwrap_cast(mq.partner)
 
         def calc_rank_diff(path_id: int):
             fp = self.fib.get_path(path_id)

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, override
 
 from mqns.entity.node.app import Application
 from mqns.entity.node.node import Node
+from mqns.simulator import Simulator
 
 if TYPE_CHECKING:
     from mqns.entity.memory import QuantumMemory
@@ -69,7 +70,7 @@ class QNode(Node):
         Assign QuantumMemory to this node.
         This setter is available prior to calling .install().
         """
-        self.ensure_not_installed()
+        Simulator.ensure_not_installed_to(self)
         value.node = self
         self._memory = value
 
@@ -81,7 +82,7 @@ class QNode(Node):
 
         This function is available prior to calling .install().
         """
-        self.ensure_not_installed()
+        Simulator.ensure_not_installed_to(self)
         operator.set_own(self)
         self.operators.append(operator)
 

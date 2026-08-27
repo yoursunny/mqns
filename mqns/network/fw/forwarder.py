@@ -16,8 +16,9 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import copy
+from abc import abstractmethod
 from collections.abc import Callable
-from typing import Literal, TypedDict, Unpack, override
+from typing import Final, Literal, TypedDict, Unpack, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin
 from mqns.entity.memory import MemoryDecohereEvent, MemoryQubit, PathDirection, QubitState
@@ -30,13 +31,11 @@ from mqns.network.fw.cutoff import CutoffScheme, CutoffSchemeWaitTime
 from mqns.network.fw.fib import Fib, FibPath, FibRequest
 from mqns.network.fw.fw_purif import ForwarderPurifProc
 from mqns.network.fw.fw_swap import ForwarderSwapProc
-from mqns.network.fw.mux import MuxScheme
-from mqns.network.fw.mux_buffer_space import MuxSchemeBufferSpace
 from mqns.network.fw.select import MemoryEprTuple, call_select
 from mqns.network.network import TimingPhase, sync_phase_handler
 from mqns.network.protocol.event import QubitConsumeEvent, QubitEntangledEvent, QubitReleasedEvent
 from mqns.simulator import event_handler
-from mqns.utils import json_encodable, unwrap_cast
+from mqns.utils import json_encodable, unwrap, unwrap_cast
 
 
 class ForwarderInitKwargs(TypedDict, total=False):
@@ -50,8 +49,6 @@ class ForwarderInitKwargs(TypedDict, total=False):
     """Swapping error applied at start or finish time, default is ``s``."""
     cutoff: CutoffScheme | None
     """EPR age cut-off scheme, default is wait-time."""
-    mux: MuxScheme | None
-    """Path multiplexing scheme, default is buffer-space."""
     select_purif_qubit: Callable[[list[MemoryEprTuple], MemoryQubit, FibPath, QNode], MemoryEprTuple] | None
     """Qubit selection among purification candidates, default is picking first candidate."""
 
@@ -126,20 +123,20 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
     routing is done at the controller.
     """
 
-    cutoff: CutoffScheme
+    cutoff: Final[CutoffScheme]
     """EPR age cut-off scheme."""
 
-    mux: MuxScheme
-    """Multiplexing scheme."""
-
-    fib: Fib
+    fib: Final[Fib]
     """FIB data structure."""
 
-    purif: ForwarderPurifProc
+    purif: Final[ForwarderPurifProc]
     """Purification procedure module."""
 
-    swap: ForwarderSwapProc
+    swap: Final[ForwarderSwapProc]
     """Swapping procedure module."""
+
+    cnt: Final[ForwarderCounters]
+    """Counters."""
 
     def __init__(self, **kwargs: Unpack[ForwarderInitKwargs]):
         """
@@ -151,7 +148,6 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         super().__init__()
 
         self.cutoff = copy.deepcopy(kwargs.get("cutoff")) or CutoffSchemeWaitTime()
-        self.mux: MuxScheme = copy.deepcopy(kwargs.get("mux")) or MuxSchemeBufferSpace()
         self._select_purif_qubit = kwargs.get("select_purif_qubit")
 
         self.fib = Fib()
@@ -163,16 +159,13 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
             error_at_finish=kwargs.get("swap_error_at", "s") == "f",
         )
 
-        self.waiting_etg: list[QubitEntangledEvent] = []
+        self.entangled_in_external: list[QubitEntangledEvent] = []
         """
-        Elementary-entangled qubits received during EXTERNAL phase.
+        Elementary entanglements received during EXTERNAL phase.
         These are buffered until INTERNAL phase starts.
         """
 
         self.cnt = ForwarderCounters()
-        """
-        Counters.
-        """
 
     @override
     def install(self, node):
@@ -185,7 +178,6 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         """Network-wide entanglement type."""
 
         self.cutoff.install(self)
-        self.mux.install(self)
         self.fib.install(self)
         self.purif.install(self)
         self.swap.install(self)
@@ -196,9 +188,9 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         In SYNC timing mode, enter INTERNAL phase.
         """
         # Start processing elementary entanglements that arrived during EXTERNAL phase.
-        for etg_event in self.waiting_etg:
-            self.qubit_is_entangled(etg_event)
-        self.waiting_etg.clear()
+        for etg_event in self.entangled_in_external:
+            self.qubit_is_entangled_in_internal(etg_event)
+        self.entangled_in_external.clear()
 
     @sync_phase_handler(TimingPhase.INTERNAL, False)
     def sync_internal_exit(self) -> None:
@@ -226,10 +218,21 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
 
         """
         event.cancel()
-        if not self.node.timing.is_internal():  # in SYNC timing mode EXTERNAL phase
-            self.waiting_etg.append(event)
-            return
+        if self.node.timing.is_internal():
+            self.qubit_is_entangled_in_internal(event)
+        else:
+            self.qubit_is_entangled_in_external(event)
 
+    def qubit_is_entangled_in_external(self, event: QubitEntangledEvent) -> None:
+        """
+        Handle a qubit entering ENTANGLED state when in non-INTERNAL phase of SYNC timing mode.
+        """
+        self.entangled_in_external.append(event)
+
+    def qubit_is_entangled_in_internal(self, event: QubitEntangledEvent) -> None:
+        """
+        Handle a qubit entering ENTANGLED state when in INTERNAL phase of SYNC timing mode or ASYNC timing mode.
+        """
         self.cnt.n_entg += 1
 
         mq = event.qubit
@@ -237,26 +240,42 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         assert mq.key
         mq.partner = event.neighbor, mq.key
 
-        mq.epr_path_ids = self.mux.list_qubit_epr_path_ids(mq)
+        _, epr = self.memory.read(mq.addr, has=self.epr_type)
+        assert not epr.orig_eprs, f"{mq} is not elementary entanglement"
+
+        fp = self.qubit_is_entangled_next(mq, epr)
+        self.log_debug("ENTANGLED %s path_id=%s | %s", mq, fp.path_id if fp else None, epr)
+
         if not mq.epr_path_ids:
-            self.log_debug("ENTANGLED_RELEASING reason=uninstalled-path %s", mq)
             self.release_qubit(mq, need_remove=True)
             return
 
-        _, epr = self.memory.read(mq.addr, has=self.epr_type)
-        assert not epr.orig_eprs, f"{mq} is not elementary entanglement"
-        fp = self.mux.qubit_is_entangled(mq, epr, event.neighbor)
-        self.log_debug("ENTANGLED %s path_id=%s | %s", mq, fp.path_id if fp else None, epr)
-
         match mq.state:
             case QubitState.PURIF:
-                assert fp
-                self.qubit_is_purif(mq, fp, event.neighbor)
+                self.qubit_is_purif(mq, unwrap(fp), event.neighbor)
             case QubitState.ELIGIBLE:
                 self.qubit_is_eligible(mq, fp)
+            case _:
+                # MuxSchemeStatistical may leave the qubit in ENTANGLED1 state
+                assert mq.state is QubitState.ENTANGLED1, f"unexpected state {mq.state}"
 
         if mq.state is not QubitState.RELEASE:
             self.swap.pop_waiting_su(mq)
+
+    @abstractmethod
+    def qubit_is_entangled_next(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
+        """
+        Part of ``qubit_is_entangled_in_internal`` logic, overridden by subclass.
+
+        If the entanglement is unwanted, keep ``mq.epr_path_ids`` unset or empty.
+        The qubit would then be released.
+
+        Otherwise, populate ``mq.epr_path_ids`` with potential paths, then either:
+
+        * Change qubit state to PURIF, return a FIB path entry to guide purification.
+        * Change qubit state to ELIGIBLE, to start swapping.
+          If a FIB entry is returned, it is supplied to swap candidate selection function.
+        """
 
     def qubit_is_purif(self, qubit: MemoryQubit, fp: FibPath, partner: QNode):
         """
@@ -344,7 +363,7 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         if self._try_consume(mq0, epr0, fp):
             return
 
-        swap_decision = self.mux.find_swap_with(mq0, epr0, fp)
+        swap_decision = self.find_swap_with(mq0, epr0, fp)
         if swap_decision:
             mq1, fp = swap_decision
             self.cutoff.before_swap(mq0, mq1, fp)
@@ -361,33 +380,29 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         """
         now = self.simulator.tc
         if fp is None:
-            # This branch is taken when using MuxSchemeStatistical.
+            # This branch is taken only when using MuxSchemeStatistical.
             # It searches for active requests spanning src,dst in either direction.
             # If none is found, the EPR cannot be consumed.
             frs = self.fib.list_end_reqs(unwrap_cast(qubit.partner)[0].name)
             if (fr := next((fr for fr in frs if fr.is_active(now)), None)) is None:
                 return False
-        else:
-            # This branch is taken when using either MuxSchemeBufferSpace or MuxSchemeDynamicEpr.
-            if fp.sg is not None:
-                # Having a swap group in the FIB path entry implies own node is not an end node,
-                # so that the EPR should continue swapping and not be consumed.
-                return False
-            fr = fp.req
-            if not fr.is_active(now):
-                self.log_debug(
-                    "CONSUME_SKIP addr=%s key=%s partner=%s epr-count-remain=%s reason=req-inactive",
-                    qubit.addr,
-                    qubit.key,
-                    unwrap_cast(qubit.partner)[0].name,
-                    fr.epr_count_remain,
-                )
-                # If the FIB request entry is no longer active, consumption is disallowed.
-                # Returning False would cause .qubit_is_eligible() to start swapping but own node is an end-node
-                # for the FIB path entry so there's nothing to swap with.
-                # Instead, we release the qubit and return True to prevent swapping.
-                self.release_qubit(qubit, need_remove=True)
-                return True
+        elif not fp.own_is_end_node:
+            # When own node is not an end node, the EPR should continue swapping and not be consumed.
+            return False
+        elif not (fr := fp.req).is_active(now):
+            self.log_debug(
+                "CONSUME_SKIP addr=%s key=%s partner=%s epr-count-remain=%s reason=req-inactive",
+                qubit.addr,
+                qubit.key,
+                unwrap_cast(qubit.partner)[0].name,
+                fr.epr_count_remain,
+            )
+            # If the FIB request entry is no longer active, consumption is disallowed.
+            # Returning False would cause .qubit_is_eligible() to start swapping but own node is an end-node
+            # for the FIB path entry so there's nothing to swap with.
+            # Instead, we release the qubit and return True to prevent swapping.
+            self.release_qubit(qubit, need_remove=True)
+            return True
 
         # If epr_count is unrestricted, fr.epr_count_remain initializes as infinity and remains infinity.
         fr.epr_count_remain -= 1
@@ -406,6 +421,22 @@ class Forwarder(ClassicCommandDispatcherMixin, Application[QNode]):
         qubit.state = QubitState.CONSUME
         self.simulator.sched(QubitConsumeEvent(self.node, qubit, epr, t=self.simulator.tc, req_id=fr.req_id))
         return True
+
+    @abstractmethod
+    def find_swap_with(self, mq0: MemoryQubit, epr0: Entanglement, fp: FibPath | None) -> tuple[MemoryQubit, FibPath] | None:
+        """
+        Choose another qubit to swap with a qubit entering ELIGIBLE state and ready to swap.
+
+        Args:
+            mq0: The qubit entering ELIGIBLE state.
+            epr0: The entanglement stored in the qubit.
+            fp: FIB path entry found by ``qubit_is_entangled_next`` or used in last round of purification.
+
+        Returns:
+            None: Do not swap.
+            [0]: The other qubit, which must be in ELIGIBLE state.
+            [1]: FIB entry to guide ``ForwarderSwapProc``.
+        """
 
     def request_reached_epr_count(self, fr: FibRequest) -> None:
         """

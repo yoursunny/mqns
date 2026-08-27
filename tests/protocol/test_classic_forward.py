@@ -61,7 +61,7 @@ def test_classic_forward():
     classic_route = DijkstraRouteAlgorithm(name="classic route")
 
     # build classic routing table
-    classic_route.build(net.nodes, net.cchannels)
+    classic_route.build(list(net.nodes), net.cchannels)
     print(classic_route.route_table)
 
     for n in net.nodes:

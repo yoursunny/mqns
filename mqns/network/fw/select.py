@@ -1,4 +1,4 @@
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable
 from typing import Any, Never, cast
 
 from mqns.entity.memory import MemoryQubit
@@ -54,7 +54,6 @@ def select_random[T](candidates: list[T], *_: Any) -> T:
 
 
 type MemoryEprTuple = tuple[MemoryQubit, Entanglement]
-type MemoryEprIterator = Iterator[MemoryEprTuple]
 
 
 def select_swap_qubit_oldest(candidates: list[MemoryEprTuple], *_) -> MemoryEprTuple:

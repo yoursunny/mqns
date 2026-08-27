@@ -4,13 +4,12 @@ from typing import Literal, override
 import numpy as np
 
 from mqns.entity.memory import MemoryQubit, QubitState
-from mqns.entity.node import QNode
 from mqns.models.epr import Entanglement
-from mqns.network.fw.fib import Fib, FibPath
-from mqns.network.fw.mux_buffer_space import MuxSchemeFibBase
-from mqns.network.fw.mux_statistical import MuxSchemeDynamicBase
+from mqns.network.fw import Fib, FibPath
 from mqns.network.fw.select import call_select, parse_select, select_random
-from mqns.utils import rng, unwrap_cast
+from mqns.network.proactive.mux_buffer_space import MuxSchemeFibBase
+from mqns.network.proactive.mux_statistical import MuxSchemeDynamicBase
+from mqns.utils import rng, unwrap, unwrap_cast
 
 
 def _select_path_swap_weighted(path_ids: list[int], epr: Entanglement, fib: Fib) -> FibPath:
@@ -66,8 +65,7 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
         self._select_path = parse_select(type(self), "SelectPath_", select_path)
 
     @override
-    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement, neighbor: QNode) -> FibPath | None:
-        _ = neighbor
+    def qubit_is_entangled(self, mq: MemoryQubit, epr: Entanglement) -> FibPath | None:
         # TODO: if paths have different swap policies
         #       -> consider only paths for which this qubit may be eligible ??
 
@@ -88,16 +86,12 @@ class MuxSchemeDynamicEpr(MuxSchemeFibBase, MuxSchemeDynamicBase):
 
     @override
     def find_swap_with(self, mq0: MemoryQubit, epr0: Entanglement, fp: FibPath | None) -> tuple[MemoryQubit, FibPath] | None:
-        assert fp
+        fp = unwrap(fp)
         return self.select_swap_candidate(
-            mq0,
-            epr0,
+            (mq0, epr0),
             fp,
-            self.memory.find(
-                lambda q, _: (
-                    self.qubits_swappable(mq0, q)  # basic condition met
-                    and fp.path_id in unwrap_cast(q.epr_path_ids)  # has compatible path_id
-                ),
-                has=self.epr_type,
+            lambda q, _: (
+                self.qubits_swappable(mq0, q)  # basic condition met
+                and fp.path_id in unwrap_cast(q.epr_path_ids)  # has compatible path_id
             ),
         )
