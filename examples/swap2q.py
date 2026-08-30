@@ -50,7 +50,7 @@ from mqns.simulator import Simulator
 from mqns.utils import log, rng, seed_seq_env, unwrap
 
 import examples_common.swap_2links as s2q_model
-from examples_common.plotting import plt, plt_save
+from examples_common.plotting import Axes, plt, plt_save
 
 log.set_default_level("CRITICAL")
 
@@ -86,7 +86,7 @@ class Args(Tap):
             "ssq": self.ssq,
         }
 
-    def to_matching_policy(self) -> Literal["RANDOM", "FIFO", "LIFO"]:
+    def to_matching_policy(self) -> s2q_model.MatchingPolicy:
         """Convert to swap_2Q matching_policy parameter."""
         match self.ssq:
             case "random":
@@ -116,17 +116,18 @@ class Row(TypedDict):
 
     f_req: float
     """Required fidelity."""
-    modeled: dict
-    """Converted ``s2q_model.ComputedWaitTimeBudget``."""
-    """Wait-time budgets."""
-    rate_mdl: float
-    """Rate -- model estimation."""
+    m_budgets: dict
+    """Wait-time budgets and swap timing."""
+    m_bd: list[float]
+    """Rate and fidelity from BD model."""
+    m_ctmc: list[float]
+    """Rate and fidelity from CTMC model."""
+    m_sim: list[float]
+    """Rate and fidelity from SIM model."""
     rate_mean: float
     """Rate -- mean."""
     rate_std: float
     """Rate -- standard deviation."""
-    fid_mdl: float
-    """Fidelity -- model estimation."""
     fid_mean: float
     """Fidelity -- mean of per-run means."""
     fid_std: float
@@ -156,13 +157,12 @@ def _convert_fidelity(raw_error: s2q_model.PauliError) -> Sequence[float]:
     return raw_fidelity, p_error * z_ratio, p_error * x_ratio, p_error * y_ratio
 
 
-def run_simulation(
+def _run_simulation(
     seed: int,
     args: Args,
     duration: float,
     modeled: s2q_model.ComputedWaitTimeBudget | None,
 ) -> QuantumNetwork:
-    _ = args
     rng.reseed(seed)
 
     b = NetworkBuilder(epr_type=MixedStateEntanglement)
@@ -208,26 +208,44 @@ def run_simulation(
 
 
 def run_calibration(seed: int, args: Args) -> list[float]:
+    """
+    Perform a calibration run with swapping disabled.
+
+    Args:
+        Entanglement arrival rate for each qubit pair on a link.
+        The list must have ``len(args.L)`` elements.
+    """
     duration = args.sim_duration[0]
-    net = run_simulation(seed, args, duration, None)
+    net = _run_simulation(seed, args, duration, None)
 
-    lam: list[float] = []
-    for link_primary in "S", "R":
-        ll_cnt = net.get_node(link_primary).get_app(LinkLayer).cnt
-        lam.append(ll_cnt.n_etg / duration)
-    return lam
+    def get_lam(node_pri: str, m: int) -> float:
+        ll_cnt = net.get_node(node_pri).get_app(LinkLayer).cnt
+        return ll_cnt.n_etg / duration / m
+
+    return [get_lam(node, m) for node, m in zip("SR", args.M, strict=True)]
 
 
-def run_evaluation(seed: int, args: Args, modeled: s2q_model.ComputedWaitTimeBudget):
+def run_evaluation(seed: int, args: Args, modeled: s2q_model.ComputedWaitTimeBudget) -> Stats:
+    """
+    Perform an evaluation run with swapping enabled.
+
+    Args:
+        modeled: Wait-time budgets and swap timing.
+    """
     duration = args.sim_duration[1]
-    net = run_simulation(seed, args, duration, modeled)
+    net = _run_simulation(seed, args, duration, modeled)
 
     req_cnt = RequestCounters.of(net, 0, "S-D")
     rate = req_cnt.get_rate(duration)
     fids = np.array(unwrap(req_cnt.consumed_fidelity_values), dtype=float)
     if len(fids) == 0:
-        return [Stats(rate=rate, fid_mean=0, fid_std=0)]
-    return [Stats(rate=rate, fid_mean=fids.mean(), fid_std=fids.std())]
+        return Stats(rate=rate, fid_mean=0, fid_std=0)
+    return Stats(rate=rate, fid_mean=fids.mean(), fid_std=fids.std())
+
+
+def _make_queue_spec(m: int, lam1: float, w: float, t: float) -> s2q_model.QueueSpec:
+    lam = [lam1 * (m - n) for n in range(m + 1)]
+    return s2q_model.QueueSpec(M=m, lam=lam, tau=None, W=w, T=t, f=None)
 
 
 def run_row(args: Args, f_req: float, lam_mean: list[float]) -> Row:
@@ -241,36 +259,38 @@ def run_row(args: Args, f_req: float, lam_mean: list[float]) -> Row:
         depol=args.depol,
     )
 
-    Q1, Q2 = [
-        s2q_model.QueueSpec(M=m, lam=lam, tau=None, W=w, T=t, f=None)
-        for m, lam, w, t in zip(args.M, lam_mean, modeled.W, modeled.T, strict=True)
-    ]
-    raw_rate, wait_times = s2q_model.swap_2Q(
-        Q1,
-        Q2,
-        matching_policy=args.to_matching_policy(),
-    )
-
-    runs: list[Stats] = []
-    for seed in seed_seq_env(args.runs, 100):
-        runs += run_evaluation(seed, args, modeled)
+    runs = [run_evaluation(seed, args, modeled) for seed in seed_seq_env(args.runs, 100)]
 
     rates = np.fromiter((s["rate"] for s in runs), dtype=float)
     fids = np.fromiter((s["fid_mean"] if s["rate"] > 0 else np.nan for s in runs), dtype=float)
     with np.errstate(divide="ignore", invalid="ignore"):
         fid_mean, fid_std = np.nanmean(fids).item(), np.nanstd(fids).item()
 
-    modeled_dict = modeled._asdict()
-    del modeled_dict["F_req"]
-    del modeled_dict["w2t"]
+    m_budgets = modeled._asdict()
+    del m_budgets["F_req"]
+    del m_budgets["w2t"]
+
+    Q1, Q2 = [_make_queue_spec(*args) for args in zip(args.M, lam_mean, modeled.W, modeled.T, strict=True)]
+    matching_policy = args.to_matching_policy()
+
+    def run_model(method: s2q_model.Method):
+        raw_rate, wait_times = s2q_model.swap_2Q(
+            Q1,
+            Q2,
+            Tswp=modeled.Tswp,
+            method=method,
+            matching_policy=matching_policy,
+        )
+        return [args.q * raw_rate, modeled.w2t(wait_times)]
 
     return Row(
         f_req=f_req,
-        modeled=modeled_dict,
-        rate_mdl=args.q * raw_rate,
+        m_budgets=m_budgets,
+        m_bd=run_model("BD"),
+        m_ctmc=run_model("CTMC"),
+        m_sim=run_model("SIM"),
         rate_mean=rates.mean(),
         rate_std=rates.std(),
-        fid_mdl=modeled.w2t(wait_times),
         fid_mean=fid_mean,
         fid_std=fid_std,
         runs=runs,
@@ -284,7 +304,7 @@ def main(args: Args) -> Report:
     lam_mean: list[float] = []
     lam_std: list[float] = []
     # Collect mean LinkLayer arrival rates of each channel.
-    for i in range(len(lam_runs[0])):  # len(lam_runs[0]) is number of links in the linear network
+    for i in range(len(args.L)):
         lam_array = np.fromiter((lam_run[i] for lam_run in lam_runs), dtype=float)
         lam_mean.append(lam_array.mean())
         lam_std.append(lam_array.std())
@@ -307,11 +327,16 @@ def main(args: Args) -> Report:
 def plot(args: Args, rows: list[Row]) -> None:
     F_req = [row["f_req"] for row in rows]
 
+    def plot_model_rate_or_fid(ax: Axes, color: str, i: int, prefix: str) -> None:
+        ax.plot(F_req, [row["m_bd"][i] for row in rows], linestyle="solid", color=color, label=f"{prefix} (BD)")
+        ax.plot(F_req, [row["m_ctmc"][i] for row in rows], linestyle="dashed", color=color, label=f"{prefix} (CTMC)")
+        ax.plot(F_req, [row["m_sim"][i] for row in rows], linestyle="dotted", color=color, label=f"{prefix} (SIM)")
+
     fig, ax1 = plt.subplots(figsize=(5, 4), constrained_layout=True)
     color = "tab:blue"
     ax1.set_xlabel("Required Fidelity")
     ax1.set_ylabel("Rate (epps)", color=color)
-    ax1.plot(F_req, [row["rate_mdl"] for row in rows], color=color, label="Rate (Model)")
+    plot_model_rate_or_fid(ax1, color, 0, "Rate")
     ax1.errorbar(
         F_req,
         [row["rate_mean"] for row in rows],
@@ -327,7 +352,7 @@ def plot(args: Args, rows: list[Row]) -> None:
     ax2 = ax1.twinx()
     color = "tab:red"
     ax2.set_ylabel("Fidelity", color=color)
-    ax2.plot(F_req, [row["fid_mdl"] for row in rows], color=color, label="Fidelity (Model)")
+    plot_model_rate_or_fid(ax2, color, 1, "Fidelity")
     ax2.errorbar(
         F_req,
         [row["fid_mean"] for row in rows],

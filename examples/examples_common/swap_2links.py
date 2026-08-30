@@ -84,7 +84,12 @@ class QueueSpec(NamedTuple):
     M: int
     """How many memory qubit pairs on this link."""
     lam: float | list[float]
-    """Entanglement arrival rate in Hz for each qubit pair."""
+    """
+    Entanglement arrival rate in Hz.
+
+    lam[N] is the arrival rate when N of M qubits are locked.
+    Thus, lam[0] is the full rate when all qubits are available, while lam[M] must be zero.
+    """
     tau: Any
     """Unused."""
     W: float
@@ -95,13 +100,18 @@ class QueueSpec(NamedTuple):
     """Unused."""
 
 
+type Method = Literal["BD", "CTMC", "SIM"]
+type Capacity = Literal["single", "multi"]
+type MatchingPolicy = Literal["FIFO", "LIFO", "RANDOM", "RAND"]
+
+
 def swap_2Q(
     Q1: QueueSpec,
     Q2: QueueSpec,
     Tswp: float = 0,
-    method: Literal["BD", "CTMC", "SIM"] = "BD",
-    capacity: Literal["single", "multi"] = "multi",
-    matching_policy: Literal["FIFO", "LIFO", "RANDOM", "RAND"] = "RANDOM",
+    method: Method = "BD",
+    capacity: Capacity = "multi",
+    matching_policy: MatchingPolicy = "RANDOM",
 ) -> tuple[float, list[float]]:
     """
     Calculates the swapping rate for two queues with
