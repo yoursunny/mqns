@@ -18,6 +18,7 @@
 
 from mqns.network.fw import RoutingController, RoutingPathMulti, RoutingPathSingle
 from mqns.network.network import RequestActiveEvent, RequestInactiveEvent
+from mqns.network.proactive.mux_input import MuxSchemeInput, mux_scheme_is_buffer_space
 from mqns.network.route import YenRouteAlgorithm
 from mqns.simulator import event_handler
 from mqns.utils import unwrap
@@ -31,6 +32,9 @@ class ProactiveRoutingController(RoutingController):
     This controller is compatible with both SYNC and SYNC timing modes.
     It can automatically pick up requests added through ``QuantumNetwork``.
     """
+
+    def __init__(self, *, mux: MuxSchemeInput):
+        super().__init__(mv_auto="max" if mux_scheme_is_buffer_space(mux) else "none")
 
     @event_handler
     def handle_request_active(self, event: RequestActiveEvent) -> None:

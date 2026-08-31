@@ -63,7 +63,7 @@ class ReactiveRoutingController(RoutingController):
     """
 
     def __init__(self):
-        super().__init__(mv_auto="max")
+        super().__init__()
 
         self.cnt = ReactiveRoutingControllerCounters()
         """

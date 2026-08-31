@@ -12,7 +12,7 @@ type MuxSchemeLiteral = Literal["B", "S", "D"]
 String identification of a ``MuxScheme`` constructor.
 """
 
-_MUX_SCHEME_NAMED: Mapping[MuxSchemeLiteral, type[MuxScheme]] = {
+MUX_SCHEME_MAP: Mapping[MuxSchemeLiteral, type[MuxScheme]] = {
     "B": MuxSchemeBufferSpace,
     "S": MuxSchemeStatistical,
     "D": MuxSchemeDynamicEpr,
@@ -32,7 +32,7 @@ def parse_mux_scheme(input: MuxSchemeInput) -> MuxScheme:
         return MuxSchemeBufferSpace()
     if isinstance(input, MuxScheme):
         return copy.deepcopy(input)
-    return _MUX_SCHEME_NAMED[input]()
+    return MUX_SCHEME_MAP[input]()
 
 
 def mux_scheme_is_buffer_space(input: MuxSchemeInput) -> bool:
