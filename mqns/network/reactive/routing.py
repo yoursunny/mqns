@@ -70,12 +70,12 @@ class ReactiveRoutingPath(RoutingPath):
         """List of computed paths with specific EPRs."""
 
         # Clear unsupported fields.
-        self.m_v = "none"
+        self.bufferspace_mv = "none"
         self.purif = {}
 
     @override
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
-        for route, qubits in self.paths:
-            inst = self._make_path_instructions(net, route)
+        for path_id, (route, qubits) in enumerate(self.paths, start=self.path_id):
+            inst = self._make_path_instructions(net, route, path_id)
             inst["reactive_qubits"] = qubits
             yield inst

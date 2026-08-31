@@ -21,14 +21,14 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
     def __init__(self, *, mv_auto: MultiplexingVectorInput):
         """
         Args:
-            mv_auto: How to interpret ``RoutingPath(m_v="auto")``.
+            mv_auto: How to interpret ``RoutingPath(bufferspace_mv="auto")``.
                      This should be set to ``max`` if forwarders use ``MuxSchemeBufferSpace``, otherwise ``none``.
         """
         super().__init__()
         self.mv_auto: MultiplexingVectorInput = mv_auto
 
     @override
-    def install(self, node):
+    def install(self, node) -> None:
         self._application_install(node, Controller)
         self.net = self.node.network
         self._next_req_id = 0
@@ -36,7 +36,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
 
         self.net.build_route()
 
-    def install_path(self, rp: RoutingPath, *, epr_count=-1):
+    def install_path(self, rp: RoutingPath, *, epr_count=-1) -> None:
         """
         Compute routing path(s) and send PATH_INSERT commands to nodes.
         """
@@ -47,14 +47,13 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         if rp.path_id < 0:
             rp.path_id = self._next_path_id
 
-        if rp.m_v == "auto":
-            rp.m_v = self.mv_auto
+        if rp.bufferspace_mv == "auto":
+            rp.bufferspace_mv = self.mv_auto
 
         insts: list[PathInstructions] = []
         nodes = set[str]()
-        for path_id, inst in enumerate(rp.compute_paths(self.net), start=rp.path_id):
-            self._next_path_id = max(self._next_path_id, path_id + 1)
-            inst["path_id"] = path_id
+        for inst in rp.list_paths(self.net, recompute=True):
+            self._next_path_id = max(self._next_path_id, inst["path_id"] + 1)
             validate_path_instructions(inst, bufferspace=None, reactive=None)
             insts.append(inst)
             nodes.update(inst["route"])
@@ -69,7 +68,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
             ),
         )
 
-    def uninstall_path(self, rp: RoutingPath):
+    def uninstall_path(self, rp: RoutingPath) -> None:
         """
         Compute routing path(s) and send PATH_DELETE commands to nodes.
         """
@@ -77,7 +76,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         assert rp.path_id >= 0
 
         nodes = set[str]()
-        for inst in rp.compute_paths(self.net):
+        for inst in rp.list_paths(self.net):
             nodes.update(inst["route"])
 
         self._send_path_command(

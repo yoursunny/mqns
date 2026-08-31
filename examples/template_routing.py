@@ -219,8 +219,8 @@ SCENARIOS: dict[str, Scenario] = {
     "two_flows_buffer_space_single": Scenario(
         # manually set paths + qubit allocation
         install_paths=[
-            RoutingPathStatic(ROUTE_S1_D1, m_v=_mv_two_flows_equal_share(ROUTE_S1_D1), swap=SWAPPING_POLICY),
-            RoutingPathStatic(ROUTE_S2_D2, m_v=_mv_two_flows_equal_share(ROUTE_S2_D2), swap=SWAPPING_POLICY),
+            RoutingPathStatic(ROUTE_S1_D1, bufferspace_mv=_mv_two_flows_equal_share(ROUTE_S1_D1), swap=SWAPPING_POLICY),
+            RoutingPathStatic(ROUTE_S2_D2, bufferspace_mv=_mv_two_flows_equal_share(ROUTE_S2_D2), swap=SWAPPING_POLICY),
         ],
         mux=_mux_buffer_space(),
         route_algorithm=DijkstraRouteAlgorithm(),
