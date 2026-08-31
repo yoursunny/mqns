@@ -114,7 +114,7 @@ def build_network(args: RunArgs) -> QuantumNetwork:
             Consumer(),
         ],
     )
-    topo.controller = Controller("ctrl", apps=[ProactiveRoutingController(mv_auto="none")])
+    topo.controller = Controller("ctrl", apps=[ProactiveRoutingController(mux="S")])
 
     # Construct network.
     net = QuantumNetwork(topo, classic_topo=ClassicTopology.Follow)

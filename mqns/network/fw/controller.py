@@ -18,7 +18,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
     Centralized control plane that works with ``Forwarder`` subclass.
     """
 
-    def __init__(self, *, mv_auto: MultiplexingVectorInput):
+    def __init__(self, *, mv_auto: MultiplexingVectorInput = "none"):
         """
         Args:
             mv_auto: How to interpret ``RoutingPath(bufferspace_mv="auto")``.
