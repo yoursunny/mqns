@@ -20,22 +20,22 @@ from mqns.models.error import TimeDecayInput
 from mqns.models.error.input import ErrorModelInputBasic, ErrorModelInputLength, ErrorModelInputTime
 from mqns.network.fw import (
     ForwarderInitKwargs,
-    MultiplexingVectorInput,
     RoutingPath,
     RoutingPathInitArgs,
 )
 from mqns.network.network import QuantumNetwork, Request, TimingMode, TimingModeAsync, TimingModeSync
 from mqns.network.proactive import (
+    MUX_SCHEME_MAP,
     MuxSchemeInput,
+    MuxSchemeLiteral,
     ProactiveForwarder,
     ProactiveRoutingController,
-    mux_scheme_is_buffer_space,
 )
 from mqns.network.protocol.classicbridge import ClassicBridge
 from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.network.reactive import ReactiveForwarder, ReactiveRoutingController
-from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm, YenRouteAlgorithm
+from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm
 from mqns.network.topology import ClassicTopology, Topology
 from mqns.network.topology.customtopo import CustomTopology, Topo, TopoController, TopoQChannel, TopoQNode
 
@@ -74,8 +74,9 @@ def tap_configure(tap: Tap) -> None:
     Recognized types:
 
     * ``EprTypeLiteral``
-    * ``LinkArchLiteral``
     * ``ErrorModelInput*``
+    * ``LinkArchLiteral``
+    * ``MuxSchemeLiteral``
     * ``TimeDecayInput``
     """
     for key, typ in tap._annotations.items():
@@ -98,12 +99,14 @@ def tap_configure(tap: Tap) -> None:
             )
         elif typ is EprTypeLiteral:
             tap.add_argument(f"--{key}", type=str, default="W", choices=EPR_TYPE_MAP.keys())
-        elif typ is LinkArchLiteral:
-            tap.add_argument(f"--{key}", type=str, default="DIM-BK-SeQUeNCe", choices=LINK_ARCH_MAP.keys())
         elif typ is ErrorModelInputBasic:
             tap.add_argument(f"--{key}", type=str, metavar="ErrorModelType:p_error")
         elif typ in (ErrorModelInputTime, ErrorModelInputLength, TimeDecayInput):
             tap.add_argument(f"--{key}", type=str, metavar="ErrorModelType:rate")
+        elif typ is MuxSchemeLiteral:
+            tap.add_argument(f"--{key}", type=str, choices=MUX_SCHEME_MAP.keys())
+        elif typ is LinkArchLiteral:
+            tap.add_argument(f"--{key}", type=str, default="DIM-BK-SeQUeNCe", choices=LINK_ARCH_MAP.keys())
 
 
 CTRL_DELAY = 5e-06
@@ -465,7 +468,6 @@ class NetworkBuilder:
         self,
         *,
         mux: MuxSchemeInput = None,
-        mv_auto: MultiplexingVectorInput | None = None,
         **kwargs: Unpack[AppsForwarderArgs],
     ) -> Self:
         """
@@ -478,20 +480,13 @@ class NetworkBuilder:
         self._extract_apps_common_args(kwargs)
         kwargs.setdefault("p_swap", 0.5)
 
-        if mv_auto is None:
-            mv_auto = "none"
-            if mux_scheme_is_buffer_space(mux):
-                mv_auto = "max"
-            elif isinstance(self.route, YenRouteAlgorithm):
-                raise TypeError("YenRouteAlgorithm is only compatible with MuxSchemeBufferSpace")
-
         self._add_link_layer()
         self.qnode_apps.append(
             ProactiveForwarder(mux=mux, **kwargs),
         )
         self._add_consumer()
         self.controller_apps.append(
-            ProactiveRoutingController(mv_auto=mv_auto),
+            ProactiveRoutingController(mux=mux),
         )
         return self
 

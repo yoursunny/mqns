@@ -29,7 +29,7 @@ from typing import TypedDict, cast, override
 import tomli_w
 from tap import Tap
 
-from mqns.network.builder import NetworkBuilder
+from mqns.network.builder import NetworkBuilder, tap_configure
 from mqns.network.network import MatrixTrafficGenerator, QuantumNetwork, Request, TrafficMatrixMapping
 from mqns.network.proactive import MuxSchemeLiteral, mux_scheme_is_buffer_space
 from mqns.network.protocol.consumer import RequestCounters
@@ -48,6 +48,10 @@ class Args(Tap):
     mux: MuxSchemeLiteral = "B"  # multiplexing scheme
     rate: float = 1.0  # request arrival rate (req/s)
     csv: str = ""  # save results as CSV file
+
+    @override
+    def configure(self) -> None:
+        tap_configure(self)
 
     @override
     def process_args(self) -> None:
@@ -85,10 +89,7 @@ def gen_tm() -> None:
 def build_network(args: Args) -> QuantumNetwork:
     b = NetworkBuilder()
     define_topo(b)
-    b.proactive_centralized(
-        mux=args.mux,
-        mv_auto=1 if mux_scheme_is_buffer_space(args.mux) else None,
-    )
+    b.proactive_centralized(mux=args.mux)
     return b.make_network()
 
 
@@ -103,6 +104,7 @@ def run_simulation(seed: int, args: Args, tm: NetTrafficDef) -> Result:
         net,
         cast(TrafficMatrixMapping, tm["matrix"]),
         sched="eager",
+        rp_args={"bufferspace_mv": 1 if mux_scheme_is_buffer_space(args.mux) else "none"},
         rate=args.rate,
         duration=tm["duration"],
         epr_count=tm["epr_count"],

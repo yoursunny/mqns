@@ -18,7 +18,6 @@ from mqns.network.proactive import (
     MuxSchemeInput,
     ProactiveForwarder,
     ProactiveRoutingController,
-    mux_scheme_is_buffer_space,
 )
 from mqns.network.protocol.consumer import Consumer
 from mqns.network.protocol.event import QubitEntangledEvent, QubitReleasedEvent
@@ -130,9 +129,7 @@ def _build_network_finish(
     if (ctrl := d.get("ctrl")) is None:
         match d.get("mode", "P"):
             case "P":
-                ctrl = ProactiveRoutingController(
-                    mv_auto="max" if mux_scheme_is_buffer_space(d.get("mux")) else "none",
-                )
+                ctrl = ProactiveRoutingController(mux=d.get("mux"))
             case "R":
                 ctrl = ReactiveRoutingController()
     topo.controller = Controller("ctrl", apps=[ctrl])
