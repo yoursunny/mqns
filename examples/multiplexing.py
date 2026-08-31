@@ -182,7 +182,9 @@ def build_network(mux: MuxSchemeInput, active_flows: Sequence[FlowDef], active_f
         # Explicit static paths with per-hop MVs
         for flow in active_flows:
             b.request(
-                RoutingPathStatic(flow.route, req_id=flow.req_id, m_v=_mv_for_flow(flow.label, flow.route, active_flows_set))
+                RoutingPathStatic(
+                    flow.route, req_id=flow.req_id, bufferspace_mv=_mv_for_flow(flow.label, flow.route, active_flows_set)
+                )
             )
     else:
         # Statistical: best-effort usage; no pre-split

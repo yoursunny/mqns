@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Iterator, Mapping, Sequence
 from itertools import pairwise
-from typing import Literal, TypedDict, Unpack, override
+from typing import Final, Literal, TypedDict, Unpack, override
 
 from mqns.network.fw.message import MultiplexingVector, PathInstructions
 from mqns.network.fw.swap_sequence import SwapSequenceInput, parse_swap_sequence
@@ -16,7 +16,7 @@ type MultiplexingVectorInput = Literal["auto", "none", "max"] | int | Multiplexi
 Buffer-space multiplexing vector or how to generate them.
 
 * "auto": Equivalent to "max" if the network uses buffer-space multiplexing scheme, otherwise "none".
-* "none": No m_v, for use with statistical or dynamic EPR multiplexing schemes.
+* "none": Network is not using buffer-space multiplexing scheme.
 * "max": Allocate the maximum quantity of qubits per quantum channel, depending on channel capacity.
   * If multiple ``RoutingPath`` shares one channel, this would likely cause a conflict.
   * In ``RoutingPathMulti``, if the same channel is shared by multiple paths generated
@@ -34,12 +34,12 @@ class RoutingPathInitArgs(TypedDict, total=False):
     """Request identifier, defaults to auto-assignment."""
     path_id: int
     """Path identifier for the first path, defaults to auto-assignment."""
+    bufferspace_mv: MultiplexingVectorInput
+    """Buffer-space multiplexing vector or how to generate them, defaults to "auto"."""
     swap: SwapSequenceInput
     """Swap sequence or swap policy, defaults to ASAP."""
     swap_cutoff: Sequence[float] | None
     """Swap cut-off times in seconds."""
-    m_v: MultiplexingVectorInput
-    """Multiplexing vector."""
     purif: Mapping[str, int] | None
     """Purification scheme."""
 
@@ -49,34 +49,81 @@ class RoutingPath(ABC):
     Compute routing path(s) for installing through RoutingController.
     """
 
+    src: Final[str]
+    """
+    End node name at the source (left) side.
+    """
+
+    dst: Final[str]
+    """
+    End node name at the destination (right) side.
+    """
+
+    req_id: int
+    """
+    Request identifier.
+    """
+
+    path_id: int
+    """
+    Path identifier for the first path.
+    If there are multiple paths, subsequent paths are given consecutive ids.
+    """
+
+    bufferspace_mv: MultiplexingVectorInput
+    """
+    Buffer-space multiplexing vector.
+    """
+
+    swap: SwapSequenceInput
+    """
+    Swap sequence or swap policy.
+    """
+
+    swap_cutoff: Sequence[float] | None
+    """
+    Swap cut-off values in seconds.
+    """
+
+    purif: dict[str, int]
+    """
+    Purification scheme.
+    """
+
+    _computed_paths: list[PathInstructions] | None = None
+
     def __init__(self, src: str, dst: str, **kwargs: Unpack[RoutingPathInitArgs]):
         self.src = src
-        """
-        Source node name.
-        """
         self.dst = dst
-        """
-        Destination node name.
-        """
         self.req_id = kwargs.get("req_id", -1)
-        """
-        Request identifier.
-
-        If negative, the controller will assign the next unused value before calling ``compute_paths``.
-        """
         self.path_id = kwargs.get("path_id", -1)
-        """
-        Path identifier for the first path.
-
-        If negative, the controller will assign the next unused value before calling ``compute_paths``.
-
-        When ``compute_paths`` yields multiple paths, this is the path_id on the first path,
-        while subsequent paths are given consecutive path_ids.
-        """
-        self.swap: SwapSequenceInput = kwargs.get("swap") or "asap"
+        self.bufferspace_mv = kwargs.get("bufferspace_mv", "auto")
+        self.swap = kwargs.get("swap") or "asap"
         self.swap_cutoff = kwargs.get("swap_cutoff")
-        self.m_v: MultiplexingVectorInput = kwargs.get("m_v", "auto")
         self.purif = dict(kwargs.get("purif") or {})
+
+    def list_paths(self, net: QuantumNetwork, *, recompute=False) -> Sequence[PathInstructions]:
+        """
+        Compute and return a list of path instructions.
+
+        Pre-conditions:
+
+        * ``self.bufferspace_mv`` is not "auto".
+        * ``self.req_id`` and ``self.path_id`` are assigned to non-negative values.
+
+        Args:
+            net: The quantum network.
+                 ``net.build_route()`` must have been called prior to invoking this function.
+            recompute: If False, use previously computed results if available.
+
+        Returns:
+            A list of path instructions.
+        """
+        assert self.req_id >= 0
+        assert self.path_id >= 0
+        if recompute or self._computed_paths is None:
+            self._computed_paths = list(self.compute_paths(net))
+        return self._computed_paths
 
     @abstractmethod
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
@@ -96,12 +143,13 @@ class RoutingPath(ABC):
         self,
         net: QuantumNetwork,
         route: list[str],
+        path_id: int,
         *,
         override_mv: MultiplexingVector | None = None,
     ) -> PathInstructions:
         swap = parse_swap_sequence(self.swap, route)
         inst: PathInstructions = {
-            "path_id": -1,
+            "path_id": path_id,
             "route": route,
             "swap": swap,
             "purif": self.purif,
@@ -120,10 +168,10 @@ class RoutingPath(ABC):
     def _compute_mv(self, net: QuantumNetwork, route: Sequence[str]) -> MultiplexingVector | None:
         _ = net
         n_hops = len(route) - 1
-        mv = self.m_v
+        mv = self.bufferspace_mv
 
         if mv == "auto":
-            raise RuntimeError("m_v=auto must be replaced by caller")
+            raise RuntimeError("bufferspace_mv=auto must be replaced by caller")
 
         if mv == "none":
             return None
@@ -153,7 +201,7 @@ class RoutingPathStatic(RoutingPath):
 
     @override
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
-        yield self._make_path_instructions(net, self.route)
+        yield self._make_path_instructions(net, self.route, self.path_id)
 
 
 class RoutingPathSingle(RoutingPath):
@@ -165,7 +213,7 @@ class RoutingPathSingle(RoutingPath):
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
         route = net.query_route(self.src, self.dst)[0]
         log.debug("ROUTING: Computed path #%s: %s", self.path_id, route)
-        yield self._make_path_instructions(net, route.path)
+        yield self._make_path_instructions(net, route.path, self.path_id)
 
 
 class RoutingPathMulti(RoutingPath):
@@ -194,19 +242,19 @@ class RoutingPathMulti(RoutingPath):
         for path_id, route in enumerate(routes, start=self.path_id):
             log.debug("ROUTING: Computed path #%s: %s", path_id, route)
 
-            m_v: MultiplexingVector | None = None
+            mv: MultiplexingVector | None = None
 
-            if self.m_v == "max":
-                # For m_v="max", equally divide the channel capacity by how many paths share the channel.
-                m_v = []
+            if self.bufferspace_mv == "max":
+                # For "max", equally divide the channel capacity by how many paths share the channel.
+                mv = []
                 for node_a, node_b in pairwise(route.nodes):
                     ch = net.get_qchannel(node_a.name, node_b.name)
                     shared = qchannel_use_count[ch.name]
                     assert shared > 0
 
-                    m_v += (
+                    mv += (
                         sum(1 for _ in node_a.memory.find(lambda *_: True, qchannel=ch)) // shared,
                         sum(1 for _ in node_b.memory.find(lambda *_: True, qchannel=ch)) // shared,
                     )
 
-            yield self._make_path_instructions(net, route.path, override_mv=m_v)
+            yield self._make_path_instructions(net, route.path, path_id, override_mv=mv)

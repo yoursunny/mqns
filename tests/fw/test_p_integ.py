@@ -74,7 +74,7 @@ def test_tree2_bidir(mux: MuxSchemeInput, swap: SwapSequenceInput, end_time: flo
     # Path 0 uses A-C or B-A-C segment in one direction.
     # Path 1 uses C-A or C-A-B segment in the opposite direction.
     rp_args = RoutingPathInitArgs(
-        m_v=1 if mux == "B" else "none",
+        bufferspace_mv=1 if mux == "B" else "none",
         swap=swap,
         swap_cutoff=[0.01, 0.01] * (route_len - 2),
     )
