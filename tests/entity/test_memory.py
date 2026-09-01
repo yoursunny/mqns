@@ -86,7 +86,7 @@ def test_channel_qubit_assignment_and_search():
         mem.allocate(scenario.qc, 9, PathDirection.L)
 
     # Assigned qubit should now be returned by find()
-    qubits = list(mem.find(lambda *_: True, qchannel=scenario.qc))
+    qubits = list(mem.find(QuantumMemory.all, qchannel=scenario.qc))
     assert len(qubits) == 2
     for qubit, data in qubits:
         assert qubit.qchannel == scenario.qc

@@ -1,3 +1,4 @@
+from enum import Enum, auto
 from typing import TYPE_CHECKING, Final, Self, TypedDict, Unpack, cast, final, overload, override
 
 from mqns.entity.node import Controller, NodePair, split_node_pair
@@ -45,6 +46,38 @@ class RequestInitArgs(TypedDict, total=False):
     """
 
 
+class RequestState(Enum):
+    """
+    Indicate the state of a request.
+    """
+
+    NEW = auto()
+    """
+    Request is recently created and not yet submitted to the controller.
+    This includes the time before ``active_since``.
+    """
+
+    REJECTED = auto()
+    """
+    Request is rejected by the controller because the network has insufficient resources.
+    """
+
+    ACTIVE = auto()
+    """
+    Request is accepted by the controller and entanglement may be arriving.
+    """
+
+    EXPIRED = auto()
+    """
+    Request is finished because ``active_until`` is reached.
+    """
+
+    EPR_COUNT_REACHED = auto()
+    """
+    Request is finished because ``epr_count`` is reached.
+    """
+
+
 class Request:
     """Requests entanglement pairs between a source and a destination."""
 
@@ -52,6 +85,8 @@ class Request:
     """Source node name."""
     dst: Final[str]
     """Destination node name."""
+
+    state: RequestState = RequestState.NEW
 
     active_since: Time | float
     """
@@ -171,7 +206,7 @@ class Request:
         return self.rp.req_id if self.rp else self.rp_args.get("req_id", -1)
 
     def __repr__(self) -> str:
-        tokens = [f"{self.src}-{self.dst}", f"active_period={self.active_since}-{self.active_until}"]
+        tokens = [f"{self.src}-{self.dst}", self.state.name, f"active_period={self.active_since}-{self.active_until}"]
         if self.epr_count > 0:
             tokens.append(f"epr_count={self.epr_count}")
         return f"Request({', '.join(tokens)})"
@@ -188,6 +223,7 @@ class RequestActiveEvent(Event):
 
     @override
     def invoke(self) -> None:
+        self.req.state = RequestState.ACTIVE
         log.info("NETWORK: REQ_ACTIVE %s", self.req)
         if self.node:
             self.node.handle(self)
@@ -204,6 +240,8 @@ class RequestInactiveEvent(Event):
 
     @override
     def invoke(self) -> None:
+        if self.req.state is RequestState.ACTIVE:
+            self.req.state = RequestState.EXPIRED
         log.info("NETWORK: REQ_INACTIVE %s", self.req)
         if self.node:
             self.node.handle(self)

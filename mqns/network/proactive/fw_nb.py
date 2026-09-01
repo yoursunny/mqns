@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, override
 
 from mqns.entity.memory import PathDirection
 from mqns.network.fw import FibPath, FibRequest, Forwarder, ForwarderNorthbound, fw_control_cmd_handler
@@ -11,6 +11,10 @@ if TYPE_CHECKING:
     from mqns.network.proactive.forwarder import ProactiveForwarder
 
 
+def to_fib_erase_delay(t_cohere: Time) -> Time:
+    return t_cohere * 4
+
+
 class ProactiveForwarderNorthbound(ForwarderNorthbound):
     """
     Northbound interface to communicate with ``ProactiveRoutingController``.
@@ -18,10 +22,11 @@ class ProactiveForwarderNorthbound(ForwarderNorthbound):
 
     mux: MuxScheme
 
+    @override
     def install(self, fw: Forwarder) -> None:
         super().install(fw)
         self.mux = cast("ProactiveForwarder", fw).mux
-        self._fib_erase_delay = self.memory.t_cohere * 4
+        self._fib_erase_delay = to_fib_erase_delay(self.memory.t_cohere)
 
     @fw_control_cmd_handler("PATH_INSERT")
     def handle_path_insert(self, msg: PathInsertMsg) -> None:

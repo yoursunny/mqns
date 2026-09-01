@@ -1,5 +1,5 @@
 """
-Test suite for ProactiveForwarder focused on swapping.
+Test suite for proactive forwarding focused on swapping.
 """
 
 import itertools
@@ -12,13 +12,7 @@ from mqns.entity.timer import Timer
 from mqns.models.delay import ConstantDelayModel
 from mqns.models.epr import Entanglement, MixedStateEntanglement
 from mqns.models.error import PerfectErrorModel
-from mqns.network.fw import (
-    Fib,
-    Forwarder,
-    MemoryEprTuple,
-    RoutingPathMulti,
-    RoutingPathStatic,
-)
+from mqns.network.fw import Fib, Forwarder, MemoryEprTuple, RoutingPathMulti, RoutingPathStatic
 from mqns.network.network import TimingModeSync
 from mqns.network.proactive import MuxSchemeBufferSpace, MuxSchemeDynamicEpr, MuxSchemeStatistical, ProactiveForwarder
 from mqns.network.protocol.consumer import Consumer, RequestCounters

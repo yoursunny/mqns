@@ -1,5 +1,5 @@
 """
-Test suite for ProactiveForwarder integrated with LinkLayer.
+Test suite for proactive forwarding integrated with LinkLayer.
 """
 
 import pytest
