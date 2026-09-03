@@ -62,7 +62,7 @@ from mqns.simulator import Simulator
 from mqns.utils import log, rng, seed_seq_env
 
 from examples_common.plotting import mpl, plt, plt_save
-from examples_common.topo_multiplexing import RX_QUBITS, TX_QUBITS, define_topo
+from examples_common.topo_multiplexing import define_topo
 
 log.set_default_level("CRITICAL")
 
@@ -84,6 +84,9 @@ class FlowDef:
         self.color = color
         self.idx = -1
 
+
+TX_QUBITS = 50
+RX_QUBITS = 32
 
 FLOWS = [
     FLOW_AK := FlowDef(1, "AEFJK", "tab:blue"),
@@ -174,7 +177,7 @@ def _mv_for_flow(flow: str, route: list[str], active_flows: set[str]) -> Multipl
 
 def build_network(mux: MuxSchemeInput, active_flows: Sequence[FlowDef], active_flows_set: set[str]) -> QuantumNetwork:
     b = NetworkBuilder()
-    define_topo(b)
+    define_topo(b, ch_capacity=(TX_QUBITS, RX_QUBITS))
 
     b.proactive_centralized(mux=mux)
 

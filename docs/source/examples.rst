@@ -28,6 +28,11 @@ linear_attempts example
 
 .. automodule:: linear_attempts
 
+mtg example
+-----------
+
+.. automodule:: mtg
+
 multi_request_single_path example
 ---------------------------------
 

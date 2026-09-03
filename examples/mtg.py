@@ -1,27 +1,33 @@
 """
 Demonstrate ``MatrixTrafficGenerator`` usage.
 
-1. Generate an empty traffic definition file:
+1. Generate an empty traffic definition file::
 
     python mtg.py --tm_gen >mtg.tm.toml
 
 2. Modify the traffic definition file.
+
    At least one traffic flow must have non-zero probability.
 
-3. Run the simulation with traffic definition file.
+3. Run the simulation with traffic definition file::
 
     python mtg.py --tm mtg.tm.toml --csv mtg.csv --sim_duration 10 --rate 10
 
 CSV output includes per-request statistics:
 
 * Request attributes: end-nodes, active period, desired EPR quantity.
+
 * Request state at end of simulation, which could be:
-  * REJECTED: Controller rejected request due to insufficient resources.
-  * EPR_COUNT_REACHED: Request is finished because desired EPR quantity is reached.
-  * EXPIRED: Request is finished because active period has ended.
-  * ACTIVE: Request is not yet finished when the simulation ended.
+
+  * **REJECTED**: Controller rejected request due to insufficient resources.
+  * **EPR_COUNT_REACHED**: Request is finished because desired EPR quantity is reached.
+  * **EXPIRED**: Request is finished because active period has ended.
+  * **ACTIVE**: Request is unfinished at end of simulation.
+
 * Consumed EPR quantity, average fidelity.
+
 * Latency since request arrival (start of active period) and first/last EPR delivery.
+
   * This includes ``CTRL_DELAY`` in Proactive-Centralized mode.
 """
 
@@ -29,7 +35,7 @@ import csv
 import itertools
 import sys
 import tomllib
-from typing import TypedDict, cast, override
+from typing import Literal, TypedDict, cast, override
 
 import tomli_w
 from tap import Tap
@@ -50,6 +56,9 @@ class Args(Tap):
     tm_gen: bool = False  # write empty traffic definition to stdout
     tm: str = ""  # network traffic definition file
     sim_duration: float = 1.0  # simulation duration in seconds
+    mode: Literal["PCA", "PCS", "RCS"] = "PCA"
+    sync_timing: list[float]
+    M: tuple[int, int] = (50, 32)  # channel capacity
     mux: MuxSchemeLiteral = "B"  # multiplexing scheme
     rate: float = 1.0  # request arrival rate (req/s)
     csv: str = ""  # save results as CSV file
@@ -93,8 +102,15 @@ def gen_tm() -> None:
 
 def build_network(args: Args) -> QuantumNetwork:
     b = NetworkBuilder()
-    define_topo(b)
-    b.proactive_centralized(mux=args.mux)
+    define_topo(b, ch_capacity=args.M)
+    match args.mode:
+        case "PCA":
+            b.proactive_centralized(mux=args.mux)
+        case "PCS":
+            b.proactive_centralized(mux=args.mux, timing=args.sync_timing)
+        case "RCS":
+            # XXX desired EPR count is unenforced
+            b.reactive_centralized(timing=args.sync_timing)
     return b.make_network()
 
 
@@ -115,7 +131,7 @@ def run_simulation(seed: int, args: Args, tm: NetTrafficDef) -> Result:
         epr_count=tm["epr_count"],
     )
 
-    s = Simulator(0, args.sim_duration, accuracy=1000000, install_to=(log, net, mtg))
+    s = Simulator(0, args.sim_duration, install_to=(log, net, mtg))
     s.run()
 
     return [(req, RequestCounters.of(net, req)) for req in net.requests]
