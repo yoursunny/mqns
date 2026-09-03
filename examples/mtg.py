@@ -14,7 +14,12 @@ Demonstrate ``MatrixTrafficGenerator`` usage.
 
 CSV output includes per-request statistics:
 
-* Request attributes: end-nodes, active period, requested EPR quantity.
+* Request attributes: end-nodes, active period, desired EPR quantity.
+* Request state at end of simulation, which could be:
+  * REJECTED: Controller rejected request due to insufficient resources.
+  * EPR_COUNT_REACHED: Request is finished because desired EPR quantity is reached.
+  * EXPIRED: Request is finished because active period has ended.
+  * ACTIVE: Request is not yet finished when the simulation ended.
 * Consumed EPR quantity, average fidelity.
 * Latency since request arrival (start of active period) and first/last EPR delivery.
   * This includes ``CTRL_DELAY`` in Proactive-Centralized mode.
@@ -127,6 +132,7 @@ def save_csv(args: Args, result: Result) -> None:
                 "active_since",
                 "active_until",
                 "req_epr_count",
+                "state",
                 "n_consumed",
                 "fid",
                 "lat_first",
@@ -145,6 +151,7 @@ def save_csv(args: Args, result: Result) -> None:
                     active_since,
                     active_until,
                     req.epr_count,
+                    req.state.name,
                     cnt.n_consumed,
                     cnt.consumed_avg_fidelity,
                     lat_first,

@@ -10,7 +10,7 @@ from mqns.network.fw.message import (
     validate_path_instructions,
 )
 from mqns.network.fw.routing import MultiplexingVectorInput, RoutingPath
-from mqns.network.network import RequestInactiveEvent
+from mqns.network.network import RequestInactiveEvent, RequestState
 
 
 class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
@@ -104,6 +104,10 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
             self.log_debug("reach_epr_count req=%s end_node=%s outcome=req-not-found", req_id, end_node)
             return
 
+        if req.epr_count_await is None:
+            self.log_debug("reach_epr_count req=%s end_node=%s outcome=epr-count-unrestricted", req_id, end_node)
+            return
+
         try:
             req.epr_count_await.remove(end_node)
         except KeyError:
@@ -116,6 +120,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
             )
             return
 
+        req.state = RequestState.EPR_COUNT_REACHED
         self.log_debug("reach_epr_count req=%s end_node=%s outcome=deactivate-request", req_id, end_node)
         self.simulator.sched(event := RequestInactiveEvent(self.node, req, t=self.simulator.tc))
         req.inactive_event.set(event)

@@ -1,5 +1,5 @@
 """
-Test suite for ProactiveForwarder integrated with LinkLayer.
+Test suite for proactive forwarding integrated with LinkLayer.
 """
 
 import pytest
@@ -9,7 +9,7 @@ from mqns.entity.qchannel import LinkArch, LinkArchAlways, LinkArchDimBk, LinkAr
 from mqns.entity.timer import Timer
 from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
 from mqns.network.fw import RoutingPathInitArgs, RoutingPathSingle, RoutingPathStatic, SwapSequenceInput
-from mqns.network.network import Request, TimingMode, TimingModeAsync, TimingModeSync
+from mqns.network.network import Request, RequestState, TimingMode, TimingModeAsync, TimingModeSync
 from mqns.network.proactive import MuxSchemeInput, MuxSchemeStatistical, ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
 from mqns.network.protocol.link_layer import LinkLayer
@@ -168,6 +168,7 @@ def test_rect3_epr_count(monkeypatch: pytest.MonkeyPatch, k_paths: int, n_reques
     print("cpacket_cnt", cpacket_cnt)
 
     for req in requests:
+        assert req.state is RequestState.EPR_COUNT_REACHED
         assert RequestCounters.of(net, req).n_consumed == req.epr_count
         for target in req.src, req.dst:
             assert cpacket_cnt[f"ctrl-{target}:PATH_INSERT"] == 1

@@ -97,7 +97,7 @@ class MatrixTrafficGenerator:
             array[src_i, dst_i] = prob
         return array
 
-    def install(self, simulator: Simulator):
+    def install(self, simulator: Simulator) -> None:
         """
         Install this traffic generator into a simulator.
         """
@@ -136,11 +136,11 @@ class MatrixTrafficGenerator:
             epr_count=self._epr_count,
         ).path(**self._rp_args)
 
-    def _sched_eager(self):
+    def _sched_eager(self) -> None:
         assert not self.simulator.is_continuous, "sched=eager is incompatible with continuous simulation"
         self.net.add_request(*self.iter())
 
-    def _sched_lazy(self, it: Iterator[Request]):
+    def _sched_lazy(self, it: Iterator[Request]) -> None:
         req = next(it, None)
         if not req:
             return
