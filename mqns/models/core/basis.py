@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Final, Literal
 
 import numpy as np
 
@@ -29,17 +29,17 @@ class Basis:
         assert s0.shape == (2, 1)
         assert s1.shape == (2, 1)
 
-        self.name = name
+        self.name: Final = name
         """Measurement basis name."""
-        self.observable = observable
+        self.observable: Final = observable
         """Pauli observable."""
-        self.s0 = s0
+        self.s0: Final = s0
         """Outcome 0."""
-        self.s1 = s1
+        self.s1: Final = s1
         """Outcome 1."""
-        self.m0 = Operator(s0 @ s0.conj().T, check_unitary=False)
+        self.m0: Final = Operator(s0 @ s0.conj().T, check_unitary=False)
         """Projection operator 0."""
-        self.m1 = Operator(s1 @ s1.conj().T, check_unitary=False)
+        self.m1: Final = Operator(s1 @ s1.conj().T, check_unitary=False)
         """Projection operator 1."""
 
     def __repr__(self) -> str:

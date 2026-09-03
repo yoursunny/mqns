@@ -10,6 +10,7 @@ import numpy as np
 ATOL = 1e-9
 """Absolute numerical tolerance for floating-point calculations."""
 
+
 type QubitState = np.ndarray[tuple[int, Literal[1]], np.dtype[np.complex128]]
 """Qubit state vector for N qubits, shape is (2**N, 1)."""
 
@@ -230,46 +231,51 @@ def qubit_rho_remove(rho: QubitRho, i: int, n: int) -> QubitRho:
     return normalize_qubit_rho(res, n - 1, maybe_zero=True)
 
 
-QUBIT_STATE_0 = build_qubit_state((1, 0))
+def _seal[A: np.ndarray](var: A) -> A:
+    var.flags.writeable = False
+    return var
+
+
+QUBIT_STATE_0 = _seal(build_qubit_state((1, 0)))
 """Single qubit state: ``|0>``."""
-QUBIT_STATE_1 = build_qubit_state((0, 1))
+QUBIT_STATE_1 = _seal(build_qubit_state((0, 1)))
 """Single qubit state: ``|1>``."""
-QUBIT_STATE_P = build_qubit_state((1, 1))
+QUBIT_STATE_P = _seal(build_qubit_state((1, 1)))
 """Single qubit state: ``|+>``."""
-QUBIT_STATE_N = build_qubit_state((1, -1))
+QUBIT_STATE_N = _seal(build_qubit_state((1, -1)))
 """Single qubit state: ``|->``."""
-QUBIT_STATE_R = build_qubit_state((1, 1j))
+QUBIT_STATE_R = _seal(build_qubit_state((1, 1j)))
 """Single qubit state: ``|R>``."""
-QUBIT_STATE_L = build_qubit_state((1, -1j))
+QUBIT_STATE_L = _seal(build_qubit_state((1, -1j)))
 """Single qubit state: ``|L>``."""
 
-QUBIT_RHO_0 = qubit_state_to_rho(QUBIT_STATE_0)
+QUBIT_RHO_0 = _seal(qubit_state_to_rho(QUBIT_STATE_0))
 """Density matrix of ``QUBIT_STATE_0``."""
-QUBIT_RHO_1 = qubit_state_to_rho(QUBIT_STATE_1)
+QUBIT_RHO_1 = _seal(qubit_state_to_rho(QUBIT_STATE_1))
 """Density matrix of ``QUBIT_STATE_1``."""
-QUBIT_RHO_P = qubit_state_to_rho(QUBIT_STATE_P)
+QUBIT_RHO_P = _seal(qubit_state_to_rho(QUBIT_STATE_P))
 """Density matrix of ``QUBIT_STATE_P``."""
-QUBIT_RHO_N = qubit_state_to_rho(QUBIT_STATE_N)
+QUBIT_RHO_N = _seal(qubit_state_to_rho(QUBIT_STATE_N))
 """Density matrix of ``QUBIT_STATE_N``."""
-QUBIT_RHO_R = qubit_state_to_rho(QUBIT_STATE_R)
+QUBIT_RHO_R = _seal(qubit_state_to_rho(QUBIT_STATE_R))
 """Density matrix of ``QUBIT_STATE_R``."""
-QUBIT_RHO_L = qubit_state_to_rho(QUBIT_STATE_L)
+QUBIT_RHO_L = _seal(qubit_state_to_rho(QUBIT_STATE_L))
 """Density matrix of ``QUBIT_STATE_L``."""
 
-BELL_STATE_PHI_P = build_qubit_state((1, 0, 0, 1), 2)
+BELL_STATE_PHI_P = _seal(build_qubit_state((1, 0, 0, 1), 2))
 """Two-qubit maximally entangled Bell state: ``|Φ+>`` i.e. ``(|00>+|11>)/sqrt(2)``."""
-BELL_STATE_PHI_N = build_qubit_state((1, 0, 0, -1), 2)
+BELL_STATE_PHI_N = _seal(build_qubit_state((1, 0, 0, -1), 2))
 """Two-qubit maximally entangled Bell state: ``|Φ->`` i.e. ``(|00>-|11>)/sqrt(2)``."""
-BELL_STATE_PSI_P = build_qubit_state((0, 1, 1, 0), 2)
+BELL_STATE_PSI_P = _seal(build_qubit_state((0, 1, 1, 0), 2))
 """Two-qubit maximally entangled Bell state: ``|Ψ+>`` i.e. ``(|01>+|10>)/sqrt(2)``."""
-BELL_STATE_PSI_N = build_qubit_state((0, 1, -1, 0), 2)
+BELL_STATE_PSI_N = _seal(build_qubit_state((0, 1, -1, 0), 2))
 """Two-qubit maximally entangled Bell state: ``|Ψ->`` i.e. ``(|01>-|10>)/sqrt(2)``."""
 
-BELL_RHO_PHI_P = qubit_state_to_rho(BELL_STATE_PHI_P, 2)
+BELL_RHO_PHI_P = _seal(qubit_state_to_rho(BELL_STATE_PHI_P, 2))
 """Density matrix of ``BELL_STATE_PHI_P``."""
-BELL_RHO_PHI_N = qubit_state_to_rho(BELL_STATE_PHI_N, 2)
+BELL_RHO_PHI_N = _seal(qubit_state_to_rho(BELL_STATE_PHI_N, 2))
 """Density matrix of ``BELL_STATE_PHI_N``."""
-BELL_RHO_PSI_P = qubit_state_to_rho(BELL_STATE_PSI_P, 2)
+BELL_RHO_PSI_P = _seal(qubit_state_to_rho(BELL_STATE_PSI_P, 2))
 """Density matrix of ``BELL_STATE_PSI_P``."""
-BELL_RHO_PSI_N = qubit_state_to_rho(BELL_STATE_PSI_N, 2)
+BELL_RHO_PSI_N = _seal(qubit_state_to_rho(BELL_STATE_PSI_N, 2))
 """Density matrix of ``BELL_STATE_PSI_N``."""

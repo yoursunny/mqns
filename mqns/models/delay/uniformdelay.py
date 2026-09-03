@@ -15,12 +15,13 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import override
+from typing import final, override
 
 from mqns.models.delay.delay import DelayModel
 from mqns.utils import rng
 
 
+@final
 class UniformDelayModel(DelayModel):
     """
     Random delay from uniform distribution ``X~U(min, max)``.
@@ -31,8 +32,8 @@ class UniformDelayModel(DelayModel):
         Constructor.
 
         Args:
-            min: minimum delay in seconds.
-            max: maximum delay in seconds.
+            min: Minimum delay in seconds.
+            max: Maximum delay in seconds.
         """
         super().__init__(name)
         assert max >= min

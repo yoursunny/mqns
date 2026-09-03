@@ -3,7 +3,7 @@ Definitions and constants for qubit operator.
 """
 
 import functools
-from typing import cast, final
+from typing import Final, cast, final
 
 import numpy as np
 
@@ -21,13 +21,15 @@ class Operator:
             n: number of qubits.
             check_unitary: if True, enforce the operator is unitary.
         """
-        self.n = n
+        self.n: Final = n
         """Number of qubits this operator can be used with."""
-        self.u = np.array(input, dtype=np.complex128)
+        self.u: Final = np.array(input, dtype=np.complex128)
         """Operator matrix."""
-        self.u_dagger = self.u.conj().T
+        self.u_dagger: Final = self.u.conj().T
         """Hermitian conjugate of the operator."""
 
+        self.u.flags.writeable = False
+        self.u_dagger.flags.writeable = False
         self._validate(check_unitary)
 
     def _validate(self, check_unitary: bool) -> None:
@@ -127,7 +129,7 @@ def OPERATOR_PHASE_SHIFT(theta: float):
     return Operator([[1, 0], [0, np.exp(1j * theta)]])
 
 
-_sqrt1_2 = 1 / np.sqrt(2)
+_sqrt1_2: float = 1 / np.sqrt(2)
 OPERATOR_H = Operator([[_sqrt1_2, _sqrt1_2], [_sqrt1_2, -_sqrt1_2]])
 """Hadamard operator."""
 

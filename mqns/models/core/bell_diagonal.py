@@ -29,6 +29,7 @@ def normalize_bell_diagonal_probv(probv: BellDiagonalProbV) -> BellDiagonalProbV
         probv.fill(0)
     else:
         probv /= total
+    probv.flags.writeable = False
     return probv
 
 
@@ -55,7 +56,7 @@ def bell_diagonal_probv_to_pauli_transfer_mat(probv: BellDiagonalProbV) -> Pauli
     * Applying Y swaps I<->Y and Z<->X.
     """
     i, z, x, y = probv
-    return np.array(
+    ptm = np.array(
         [
             [i, z, x, y],
             [z, i, y, x],
@@ -64,3 +65,5 @@ def bell_diagonal_probv_to_pauli_transfer_mat(probv: BellDiagonalProbV) -> Pauli
         ],
         dtype=np.float64,
     )
+    ptm.flags.writeable = False
+    return ptm

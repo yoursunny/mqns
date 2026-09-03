@@ -1,4 +1,4 @@
-from typing import override
+from typing import Final, override
 
 import numpy as np
 
@@ -16,7 +16,7 @@ class CoherentErrorModel(ErrorModel):
 
     def __init__(self, name="coherent", *, length=0.0, standard_lkm=50.0):
         super().__init__(name)
-        self.standard_lkm = standard_lkm
+        self.standard_lkm: Final = standard_lkm
         """Characteristic distance: the distance at which the maximum possible rotation angle reaches 45°."""
         self.set(length=length)
 

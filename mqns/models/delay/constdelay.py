@@ -15,11 +15,12 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import override
+from typing import final, override
 
 from mqns.models.delay.delay import DelayModel
 
 
+@final
 class ConstantDelayModel(DelayModel):
     """
     Constant delay.
@@ -30,7 +31,7 @@ class ConstantDelayModel(DelayModel):
         Constructor.
 
         Args:
-            delay: fixed delay in seconds.
+            delay: Fixed delay in seconds.
         """
         super().__init__(name)
         self._delay = delay
@@ -38,3 +39,18 @@ class ConstantDelayModel(DelayModel):
     @override
     def calculate(self) -> float:
         return self._delay
+
+    @staticmethod
+    def extract(d: DelayModel) -> float:
+        """
+        Extract constant delay.
+
+        Args:
+            d: Delay model, which must be ``ConstantDelayModel``.
+
+        Raises:
+            TypeError: ``d`` is not ``ConstantDelayModel``.
+        """
+        if type(d) is not ConstantDelayModel:
+            raise TypeError(f"this feature is only compatible with ConstantDelayModel, got {type(d)}")
+        return d._delay
