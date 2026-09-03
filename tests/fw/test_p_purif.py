@@ -1,5 +1,5 @@
 """
-Test suite for ProactiveForwarder focused on purification.
+Test suite for proactive forwarding focused on purification.
 """
 
 from collections.abc import Iterable, Mapping, Sequence

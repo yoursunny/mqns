@@ -1,5 +1,5 @@
 """
-Test suite for ReactiveForwarder focused on swapping.
+Test suite for reactive forwarding focused on swapping.
 """
 
 import pytest
