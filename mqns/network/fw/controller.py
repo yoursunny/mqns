@@ -53,13 +53,13 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         if rp.bufferspace_mv == "auto":
             rp.bufferspace_mv = self.mv_auto
 
-    def install_path(self, rp: RoutingPath, *, recompute=True, epr_count=-1) -> None:
+    def install_path(self, rp: RoutingPath, *, recompute: bool, epr_count=-1) -> None:
         """
         Compute routing path(s) and send PATH_INSERT commands to nodes.
 
         Args:
-            recompute: If False, allow reuse previously computed path instructions
-                       cached in ``rp``.
+            recompute: If True, always make ``rp`` re-compute path instructions.
+                       If False, allow reusing previously computed paths cached in ``rp``.
             epr_count: Desired EPR count to include in PATH_INSERT messages.
         """
         self.prepare_path(rp)
