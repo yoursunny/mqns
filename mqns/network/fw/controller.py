@@ -118,6 +118,10 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
             self.log_debug("reach_epr_count req=%s end_node=%s outcome=req-not-found", req_id, end_node)
             return
 
+        if req.epr_count_await is None:
+            self.log_debug("reach_epr_count req=%s end_node=%s outcome=epr-count-unrestricted", req_id, end_node)
+            return
+
         try:
             req.epr_count_await.remove(end_node)
         except KeyError:

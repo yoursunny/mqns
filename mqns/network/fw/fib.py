@@ -265,9 +265,10 @@ class FibRequest:
 
     def is_active(self, now: Time) -> bool:
         """
-        Determine if the request is active.
+        Determine if the request is active, subject to these conditions:
 
-        The condition is same as ``Request.is_active``.
+        * ``epr_count`` has not been reached.
+        * Time point ``t`` is within active period.
         """
         return now < self.active_until and self.epr_count_remain > 0
 

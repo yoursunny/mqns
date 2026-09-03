@@ -11,6 +11,7 @@ from mqns.network.network import (
     QuantumNetwork,
     RequestActiveEvent,
     RequestInactiveEvent,
+    RequestState,
     TimingModeSync,
     TimingPhase,
     TrafficMatrixMapping,
@@ -111,14 +112,14 @@ class RequestCheckApp(Application[Controller]):
         assert (req.src, req.dst) == ("A", "C")
         assert (cast(Time, req.active_until) - cast(Time, req.active_since)).sec == pytest.approx(0.1, abs=1e-6)
         assert req.epr_count == 2
-        assert req.is_active(event.t) is True
+        assert req.state is RequestState.ACTIVE
         self.enters.append(len(self.net.requests))
 
     @event_handler
     def handle_request_inactive(self, event: RequestInactiveEvent) -> None:
         req = event.req
         assert (req.src, req.dst) == ("A", "C")
-        assert req.is_active(event.t) is False
+        assert req.state is RequestState.EXPIRED
         self.exits += 1
 
 
