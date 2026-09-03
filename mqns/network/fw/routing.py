@@ -3,8 +3,9 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Iterator, Mapping, Sequence
 from itertools import pairwise
-from typing import Final, Literal, TypedDict, Unpack, override
+from typing import Any, Final, Literal, TypedDict, Unpack, override
 
+from mqns.entity.memory import QuantumMemory
 from mqns.network.fw.message import MultiplexingVector, PathInstructions
 from mqns.network.fw.swap_sequence import SwapSequenceInput, parse_swap_sequence
 from mqns.network.network import QuantumNetwork
@@ -91,6 +92,11 @@ class RoutingPath(ABC):
     """
 
     _computed_paths: list[PathInstructions] | None = None
+
+    ctrl_data: Any
+    """
+    Arbitrary data used by the controller.
+    """
 
     def __init__(self, src: str, dst: str, **kwargs: Unpack[RoutingPathInitArgs]):
         self.src = src
@@ -188,25 +194,32 @@ class RoutingPath(ABC):
 
 class RoutingPathStatic(RoutingPath):
     """
-    Define a static routing path for installing through RoutingController.
+    Define static routing path(s).
     """
 
     def __init__(
         self,
         route: Sequence[str],
+        *addl_routes: Sequence[str],
         **kwargs: Unpack[RoutingPathInitArgs],
     ):
         super().__init__(route[0], route[-1], **kwargs)
-        self.route = list(route)
+        self.routes = [list(route)]
+        for rt in addl_routes:
+            route = list(rt)
+            assert route[0] == self.src
+            assert route[-1] == self.dst
+            self.routes.append(route)
 
     @override
     def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
-        yield self._make_path_instructions(net, self.route, self.path_id)
+        for path_id, route in enumerate(self.routes, start=self.path_id):
+            yield self._make_path_instructions(net, route, path_id)
 
 
 class RoutingPathSingle(RoutingPath):
     """
-    Compute a single shortest path for installing through RoutingController.
+    Compute a single shortest path.
     """
 
     @override
@@ -218,10 +231,10 @@ class RoutingPathSingle(RoutingPath):
 
 class RoutingPathMulti(RoutingPath):
     """
-    Compute multiple shortest paths for installing through RoutingController.
+    Compute multiple shortest paths.
 
     This should be used with YenRouteAlgorithm in the QuantumNetwork.
-    The number of paths for each request is determined by the routing algorithm.
+    The quantity of paths is determined by the routing algorithm.
     """
 
     @override
@@ -253,8 +266,8 @@ class RoutingPathMulti(RoutingPath):
                     assert shared > 0
 
                     mv += (
-                        sum(1 for _ in node_a.memory.find(lambda *_: True, qchannel=ch)) // shared,
-                        sum(1 for _ in node_b.memory.find(lambda *_: True, qchannel=ch)) // shared,
+                        sum(1 for _ in node_a.memory.find(QuantumMemory.predicate_all, qchannel=ch)) // shared,
+                        sum(1 for _ in node_b.memory.find(QuantumMemory.predicate_all, qchannel=ch)) // shared,
                     )
 
             yield self._make_path_instructions(net, route.path, path_id, override_mv=mv)

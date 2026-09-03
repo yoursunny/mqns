@@ -20,7 +20,7 @@ from collections.abc import Iterable
 from typing import Final, Literal, NamedTuple, TypedDict, final, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
-from mqns.entity.memory import MemoryQubit, QubitState
+from mqns.entity.memory import MemoryQubit, QuantumMemory, QubitState
 from mqns.entity.node import Application, QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
@@ -402,7 +402,7 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
         # If the path is new, mark it as live.
         ac.live_paths.add(path_id)
         ap.delete_event.cancel()
-        addrs = list(q.addr for q, _ in self.memory.find(lambda *_: True, qchannel=ch))
+        addrs = [q.addr for q, _ in self.memory.find(QuantumMemory.predicate_all, qchannel=ch)]
         self.log_debug("PATH_ACTIVATE_%s %s.%s has-addrs=%s", PathActivateEvent.ROLE_STR[ac.is_primary], ac, ap, addrs)
 
         # Start the reservations if the network is in ASYNC timing mode.
