@@ -106,7 +106,7 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         __tracebackhide__ = True
         errors: list[str] = []
         for node in nodes:
-            for mq, data in node.memory.find(lambda *_: True):
+            for mq, data in node.memory.find(QuantumMemory.predicate_all):
                 if mq.state not in states:
                     errors.append(f"{node.name} {mq} has unexpected state {mq.state} | {data}")
                 if deallocated and mq.path_id is not None:
@@ -206,6 +206,14 @@ class QuantumMemory(EventDispatcherMixin, Entity):
     def count(self) -> int:
         """Return the quantity of stored qubits."""
         return self._usage
+
+    @staticmethod
+    def predicate_all(mq: MemoryQubit, qm: QuantumModel | None) -> bool:
+        """
+        A predicate for ``find()`` that accepts all qubits.
+        """
+        _ = mq, qm
+        return True
 
     @overload
     def find(
