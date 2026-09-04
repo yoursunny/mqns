@@ -387,6 +387,8 @@ class LinkLayer(ClassicCommandDispatcherMixin, Application[QNode]):
             self.channels[partner.name] = ac
 
             self._activate_channel(ac)
+        elif ac.is_primary is not event.is_primary:
+            raise RuntimeError(f"{event}: channel already activated with role={PathActivateEvent.ROLE_STR[ac.is_primary]}")
 
         # Find or insert the ActivePath record.
         ap = ac.paths.get(path_id)
