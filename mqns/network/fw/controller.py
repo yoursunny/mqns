@@ -1,4 +1,4 @@
-from typing import override
+from typing import Literal, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
 from mqns.entity.node import Application, Controller
@@ -29,6 +29,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         """
         super().__init__()
         self.mv_auto: MultiplexingVectorInput = mv_auto
+        self._channel_primary = set[tuple[str, str]]()
 
     @override
     def install(self, node) -> None:
@@ -38,7 +39,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         self._next_path_id = 0
 
         self.net.build_route()
-        self.route_ctx = _ComputeRoutesContext(self.net)
+        self.route_ctx = _ComputeRoutesContext(self)
 
     def prepare_path(self, rp: RoutingPath) -> None:
         """
@@ -56,6 +57,12 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
 
         if rp.bufferspace_mv == "auto":
             rp.bufferspace_mv = self.mv_auto
+
+    def _choose_ll_dir(self, a: str, b: str, /) -> Literal["R", "L"]:
+        if (b, a) in self._channel_primary:
+            return "L"
+        self._channel_primary.add((a, b))
+        return "R"
 
     def install_path(self, rp: RoutingPath, *, recompute: bool, epr_count=-1) -> None:
         """
@@ -145,7 +152,8 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
 
 
 class _ComputeRoutesContext:
-    def __init__(self, net: QuantumNetwork):
-        self.time_accuracy = net.simulator.accuracy
-        self.get_qchannel = net.get_qchannel
-        self.query_route = net.query_route
+    def __init__(self, ctrl: RoutingController):
+        self.time_accuracy = ctrl.net.simulator.accuracy
+        self.get_qchannel = ctrl.net.get_qchannel
+        self.query_route = ctrl.net.query_route
+        self.choose_ll_dir = ctrl._choose_ll_dir

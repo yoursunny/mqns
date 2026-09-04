@@ -59,6 +59,15 @@ class ComputeRoutesContext(Protocol):
 
     def query_route(self, src: str, dst: str, /) -> Sequence[RouteQueryResult[QNode]]: ...
 
+    def choose_ll_dir(self, a: str, b: str, /) -> Literal["R", "L"]:
+        """
+        Determine LinkLayer direction of a channel between ``a`` and ``b``.
+
+        Returns:
+            "R" makes ``a`` primary; "L" makes ``b`` primary.
+        """
+        ...
+
 
 class RoutingPath(ABC):
     """
@@ -163,6 +172,7 @@ class RoutingPath(ABC):
         inst: PathInstructions = {
             "path_id": path_id,
             "route": route,
+            "ll_dir": "".join(ctx.choose_ll_dir(a, b) for a, b in itertools.pairwise(route)),
             "swap": swap,
             "purif": self.purif,
         }

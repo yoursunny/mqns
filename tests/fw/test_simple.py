@@ -54,6 +54,13 @@ def test_path_validation():
     with pytest.raises(ValueError, match="route is empty"):
         validate_path_instructions({**inst_base, "route": []})
 
+    # ll_dir
+    validate_path_instructions({**inst_base, "ll_dir": "LR"})
+    with pytest.raises(ValueError, match="ll_dir is invalid or does not match route length"):
+        validate_path_instructions({**inst_base, "ll_dir": "RRR"})
+    with pytest.raises(ValueError, match="ll_dir is invalid or does not match route length"):
+        validate_path_instructions({**inst_base, "ll_dir": "DIR"})
+
     # bufferspace_mv
     validate_path_instructions({**inst_base, "bufferspace_mv": [1, 1] * 2}, bufferspace=True)
 
