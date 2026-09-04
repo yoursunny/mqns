@@ -3,9 +3,9 @@ from collections import defaultdict, deque
 from collections.abc import Iterator
 from typing import override
 
-from mqns.network.fw import RoutingPath
+from mqns.network.fw import ComputeRoutesContext, RoutingPath
 from mqns.network.fw.message import PathInstructions, QubitKeySequence
-from mqns.network.network import QuantumNetwork, Request
+from mqns.network.network import Request
 from mqns.network.reactive.message import LinkStateEntry
 
 
@@ -74,8 +74,8 @@ class ReactiveRoutingPath(RoutingPath):
         self.purif = {}
 
     @override
-    def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
+    def compute_paths(self, ctx: ComputeRoutesContext) -> Iterator[PathInstructions]:
         for path_id, (route, qubits) in enumerate(self.paths, start=self.path_id):
-            inst = self._make_path_instructions(net, route, path_id)
+            inst = self._make_inst(ctx, path_id, route)
             inst["reactive_qubits"] = qubits
             yield inst

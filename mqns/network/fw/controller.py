@@ -9,14 +9,17 @@ from mqns.network.fw.message import (
     PathReachEprCountMsg,
     validate_path_instructions,
 )
-from mqns.network.fw.routing import MultiplexingVectorInput, RoutingPath
-from mqns.network.network import RequestInactiveEvent, RequestState
+from mqns.network.fw.routing import ComputeRoutesContext, MultiplexingVectorInput, RoutingPath
+from mqns.network.network import QuantumNetwork, RequestInactiveEvent, RequestState
 
 
 class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
     """
     Centralized control plane that works with ``Forwarder`` subclass.
     """
+
+    net: QuantumNetwork
+    route_ctx: ComputeRoutesContext
 
     def __init__(self, *, mv_auto: MultiplexingVectorInput = "none"):
         """
@@ -35,6 +38,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         self._next_path_id = 0
 
         self.net.build_route()
+        self.route_ctx = _ComputeRoutesContext(self.net)
 
     def prepare_path(self, rp: RoutingPath) -> None:
         """
@@ -66,7 +70,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
 
         insts: list[PathInstructions] = []
         nodes = set[str]()
-        for inst in rp.list_paths(self.net, recompute=recompute):
+        for inst in rp.list_paths(self.route_ctx, recompute=recompute):
             self._next_path_id = max(self._next_path_id, inst["path_id"] + 1)
             validate_path_instructions(inst, bufferspace=None, reactive=None)
             insts.append(inst)
@@ -90,7 +94,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         assert rp.path_id >= 0
 
         nodes = set[str]()
-        for inst in rp.list_paths(self.net):
+        for inst in rp.list_paths(self.route_ctx, recompute=False):
             nodes.update(inst["route"])
 
         self._send_path_command(
@@ -138,3 +142,10 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         req.state = RequestState.EPR_COUNT_REACHED
         self.simulator.sched(event := RequestInactiveEvent(self.node, req, t=self.simulator.tc))
         req.inactive_event.set(event)
+
+
+class _ComputeRoutesContext:
+    def __init__(self, net: QuantumNetwork):
+        self.time_accuracy = net.simulator.accuracy
+        self.get_qchannel = net.get_qchannel
+        self.query_route = net.query_route
