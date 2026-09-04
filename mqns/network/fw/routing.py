@@ -3,12 +3,14 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Iterator, Mapping, Sequence
 from itertools import pairwise
-from typing import Any, Final, Literal, TypedDict, Unpack, override
+from typing import Any, Final, Literal, Protocol, TypedDict, Unpack, cast, override
 
 from mqns.entity.memory import QuantumMemory
+from mqns.entity.node import QNode
+from mqns.entity.qchannel import QuantumChannel
 from mqns.network.fw.message import MultiplexingVector, PathInstructions
 from mqns.network.fw.swap_sequence import SwapSequenceInput, parse_swap_sequence
-from mqns.network.network import QuantumNetwork
+from mqns.network.route import RouteQueryResult
 from mqns.simulator import Time
 from mqns.utils import log
 
@@ -43,6 +45,19 @@ class RoutingPathInitArgs(TypedDict, total=False):
     """Swap cut-off times in seconds."""
     purif: Mapping[str, int] | None
     """Purification scheme."""
+
+
+class ComputeRoutesContext(Protocol):
+    """
+    Contextual information for ``RoutingPath.compute_routes()``.
+    """
+
+    @property
+    def time_accuracy(self) -> int: ...
+
+    def get_qchannel(self, a: str, b: str, /) -> QuantumChannel: ...
+
+    def query_route(self, src: str, dst: str, /) -> Sequence[RouteQueryResult[QNode]]: ...
 
 
 class RoutingPath(ABC):
@@ -108,7 +123,7 @@ class RoutingPath(ABC):
         self.swap_cutoff = kwargs.get("swap_cutoff")
         self.purif = dict(kwargs.get("purif") or {})
 
-    def list_paths(self, net: QuantumNetwork, *, recompute=False) -> Sequence[PathInstructions]:
+    def list_paths(self, ctx: ComputeRoutesContext, *, recompute: bool) -> Sequence[PathInstructions]:
         """
         Compute and return a list of path instructions.
 
@@ -118,8 +133,6 @@ class RoutingPath(ABC):
         * ``self.req_id`` and ``self.path_id`` are assigned to non-negative values.
 
         Args:
-            net: The quantum network.
-                 ``net.build_route()`` must have been called prior to invoking this function.
             recompute: If False, use previously computed results if available.
 
         Returns:
@@ -128,30 +141,23 @@ class RoutingPath(ABC):
         assert self.req_id >= 0
         assert self.path_id >= 0
         if recompute or self._computed_paths is None:
-            self._computed_paths = list(self.compute_paths(net))
+            self._computed_paths = list(self.compute_paths(ctx))
         return self._computed_paths
 
     @abstractmethod
-    def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
+    def compute_paths(self, ctx: ComputeRoutesContext) -> Iterator[PathInstructions]:
         """
         Compute and yield one or more path instructions.
 
-        Args:
-            net: The quantum network.
-                 ``net.build_route()`` must have been called prior to invoking this function.
-
         Returns:
             A generator of path instructions.
-            The ``path_id`` field shall be overwritten by the caller.
         """
 
-    def _make_path_instructions(
+    def _make_inst(
         self,
-        net: QuantumNetwork,
-        route: list[str],
+        ctx: ComputeRoutesContext,
         path_id: int,
-        *,
-        override_mv: MultiplexingVector | None = None,
+        route: list[str],
     ) -> PathInstructions:
         swap = parse_swap_sequence(self.swap, route)
         inst: PathInstructions = {
@@ -162,17 +168,11 @@ class RoutingPath(ABC):
         }
 
         if self.swap_cutoff is not None:
-            accuracy = net.simulator.accuracy
-            inst["swap_cutoff"] = [-1 if t < 0 else Time.sec_to_slot(t, accuracy) for t in self.swap_cutoff]
-
-        mv = self._compute_mv(net, route) if override_mv is None else override_mv
-        if mv is not None:
-            inst["bufferspace_mv"] = mv
+            inst["swap_cutoff"] = [-1 if t < 0 else Time.sec_to_slot(t, ctx.time_accuracy) for t in self.swap_cutoff]
 
         return inst
 
-    def _compute_mv(self, net: QuantumNetwork, route: Sequence[str]) -> MultiplexingVector | None:
-        _ = net
+    def _compute_mv(self, route: Sequence[str]) -> MultiplexingVector | None:
         n_hops = len(route) - 1
         mv = self.bufferspace_mv
 
@@ -212,9 +212,12 @@ class RoutingPathStatic(RoutingPath):
             self.routes.append(route)
 
     @override
-    def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
+    def compute_paths(self, ctx: ComputeRoutesContext) -> Iterator[PathInstructions]:
         for path_id, route in enumerate(self.routes, start=self.path_id):
-            yield self._make_path_instructions(net, route, path_id)
+            inst = self._make_inst(ctx, path_id, route)
+            if mv := self._compute_mv(route):
+                inst["bufferspace_mv"] = mv
+            yield inst
 
 
 class RoutingPathSingle(RoutingPath):
@@ -223,10 +226,13 @@ class RoutingPathSingle(RoutingPath):
     """
 
     @override
-    def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
-        route = net.query_route(self.src, self.dst)[0]
+    def compute_paths(self, ctx: ComputeRoutesContext) -> Iterator[PathInstructions]:
+        route = ctx.query_route(self.src, self.dst)[0]
         log.debug("ROUTING: Computed path #%s: %s", self.path_id, route)
-        yield self._make_path_instructions(net, route.path, self.path_id)
+        inst = self._make_inst(ctx, self.path_id, route.path)
+        if mv := self._compute_mv(route.path):
+            inst["bufferspace_mv"] = mv
+        yield inst
 
 
 class RoutingPathMulti(RoutingPath):
@@ -238,36 +244,44 @@ class RoutingPathMulti(RoutingPath):
     """
 
     @override
-    def compute_paths(self, net: QuantumNetwork) -> Iterator[PathInstructions]:
+    def compute_paths(self, ctx: ComputeRoutesContext) -> Iterator[PathInstructions]:
         # Compute shortest paths.
         # Number of paths is configured in the routing algorithm.
-        routes = net.query_route(self.src, self.dst)
+        routes = ctx.query_route(self.src, self.dst)
 
         # Count how many paths share the same quantum channel.
         # Note that this only counts among paths generated by this RoutingPathMulti and would not
         # consider other RoutingPath(s) in the network.
-        qchannel_use_count = defaultdict[str, int](lambda: 0)
+        qchannel_use_count = defaultdict[QuantumChannel, int](lambda: 0)
         for route in routes:
             for name_a, name_b in itertools.pairwise(route.path):
-                ch = net.get_qchannel(name_a, name_b)
-                qchannel_use_count[ch.name] += 1
+                ch = ctx.get_qchannel(name_a, name_b)
+                qchannel_use_count[ch] += 1
 
         for path_id, route in enumerate(routes, start=self.path_id):
             log.debug("ROUTING: Computed path #%s: %s", path_id, route)
-
-            mv: MultiplexingVector | None = None
+            inst = self._make_inst(ctx, path_id, route.path)
 
             if self.bufferspace_mv == "max":
-                # For "max", equally divide the channel capacity by how many paths share the channel.
-                mv = []
-                for node_a, node_b in pairwise(route.nodes):
-                    ch = net.get_qchannel(node_a.name, node_b.name)
-                    shared = qchannel_use_count[ch.name]
-                    assert shared > 0
+                inst["bufferspace_mv"] = self._compute_mv_max(ctx, route, qchannel_use_count)
+            elif mv := self._compute_mv(route.path):
+                inst["bufferspace_mv"] = mv
 
-                    mv += (
-                        sum(1 for _ in node_a.memory.find(QuantumMemory.predicate_all, qchannel=ch)) // shared,
-                        sum(1 for _ in node_b.memory.find(QuantumMemory.predicate_all, qchannel=ch)) // shared,
-                    )
+            yield inst
 
-            yield self._make_path_instructions(net, route.path, path_id, override_mv=mv)
+    def _compute_mv_max(
+        self,
+        ctx: ComputeRoutesContext,
+        route: RouteQueryResult[QNode],
+        qchannel_use_count: Mapping[QuantumChannel, int],
+    ) -> MultiplexingVector:
+        # Equally divide the channel capacity by how many paths share the channel.
+        mv: MultiplexingVector = []
+        for node_a, node_b in pairwise(route.nodes):
+            ch = ctx.get_qchannel(node_a.name, node_b.name)
+            shared = cast(int, qchannel_use_count.get(ch))
+            mv += (
+                sum(1 for _ in node_a.memory.find(QuantumMemory.predicate_all, qchannel=ch)) // shared,
+                sum(1 for _ in node_b.memory.find(QuantumMemory.predicate_all, qchannel=ch)) // shared,
+            )
+        return mv

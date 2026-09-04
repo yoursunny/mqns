@@ -6,6 +6,7 @@ from mqns.network.fw.fw_module import ForwarderModule, fw_control_cmd_handler, f
 from mqns.network.fw.fw_nb import ForwarderNorthbound
 from mqns.network.fw.message import MultiplexingVector, QubitKeySequence, SwapSequence
 from mqns.network.fw.routing import (
+    ComputeRoutesContext,
     MultiplexingVectorInput,
     RoutingPath,
     RoutingPathInitArgs,
@@ -17,6 +18,7 @@ from mqns.network.fw.select import MemoryEprTuple
 from mqns.network.fw.swap_sequence import SwapPolicy, SwapSequenceInput, parse_swap_sequence
 
 __all__ = [
+    "ComputeRoutesContext",
     "CutoffScheme",
     "CutoffSchemeWaitTime",
     "CutoffSchemeWaitTimeCounters",
