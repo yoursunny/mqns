@@ -96,6 +96,7 @@ class ReactiveRoutingController(RoutingController):
         if req.rp:
             raise TypeError("ReactiveRoutingController disallows predefined RoutingPath in Request")
         req.rp = ReactiveRoutingPath(req)
+        self.prepare_path(req.rp)
         self._reqs[req.req_id] = req
 
     @event_handler
@@ -142,9 +143,7 @@ class ReactiveRoutingController(RoutingController):
                 if path_def is None:
                     continue
 
-                try:
-                    rp = satisfied[req.req_id]
-                except KeyError:
+                if (rp := satisfied.get(req.req_id, None)) is None:
                     rp = cast(ReactiveRoutingPath, req.rp)
                     rp.paths.clear()
                     satisfied[req.req_id] = rp
@@ -154,7 +153,7 @@ class ReactiveRoutingController(RoutingController):
                 this_round_satisfied = True
 
         for rp in satisfied.values():
-            self.install_path(rp)
+            self.install_path(rp, recompute=True)
 
     def _try_satisfy(self, req: Request) -> ReactiveRoutingPathDef | None:
         """
