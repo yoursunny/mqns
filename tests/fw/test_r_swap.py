@@ -54,7 +54,7 @@ def test_3_minimal(
     ctrl = unwrap(net.controller).get_app(ReactiveRoutingController)
     fwA, fwB, fwC = (node.get_app(ReactiveForwarder) for node in net.nodes)
 
-    net.add_request(Request("A-C", active_period=req_active).path(req_id=1))
+    net.add_request(req := Request("A-C", active_period=req_active))
     provide_entanglements(
         *((t, fwA, fwB) for t in etgAB),
         *((t, fwB, fwC) for t in etgBC),
@@ -71,6 +71,6 @@ def test_3_minimal(
         net,
         n_swapped=(0, cnt[1], 0),
     )
-    assert RequestCounters.of(net, 1, "A-C").n_consumed == cnt[1]
+    assert RequestCounters.of(net, req).n_consumed == cnt[1]
     assert cpacket_cnt["*-ctrl:LS"] == cnt[0]
     assert cpacket_cnt["ctrl-*:PATH_INSERT"] == cnt[2] * 3

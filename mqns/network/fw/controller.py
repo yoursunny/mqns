@@ -36,9 +36,12 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
 
         self.net.build_route()
 
-    def install_path(self, rp: RoutingPath, *, epr_count=-1) -> None:
+    def prepare_path(self, rp: RoutingPath) -> None:
         """
-        Compute routing path(s) and send PATH_INSERT commands to nodes.
+        Ensure ``rp`` is ready for path computation.
+
+        * Assign ``rp.req_id`` and ``rp.path_id`` if absent.
+        * Replace ``rp.bufferspace_mv="auto"`` with a concrete value.
         """
         if rp.req_id < 0:
             rp.req_id = self._next_req_id
@@ -50,9 +53,20 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         if rp.bufferspace_mv == "auto":
             rp.bufferspace_mv = self.mv_auto
 
+    def install_path(self, rp: RoutingPath, *, recompute: bool, epr_count=-1) -> None:
+        """
+        Compute routing path(s) and send PATH_INSERT commands to nodes.
+
+        Args:
+            recompute: If True, always make ``rp`` re-compute path instructions.
+                       If False, allow reusing previously computed paths cached in ``rp``.
+            epr_count: Desired EPR count to include in PATH_INSERT messages.
+        """
+        self.prepare_path(rp)
+
         insts: list[PathInstructions] = []
         nodes = set[str]()
-        for inst in rp.list_paths(self.net, recompute=True):
+        for inst in rp.list_paths(self.net, recompute=recompute):
             self._next_path_id = max(self._next_path_id, inst["path_id"] + 1)
             validate_path_instructions(inst, bufferspace=None, reactive=None)
             insts.append(inst)
@@ -120,7 +134,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
             )
             return
 
-        req.state = RequestState.EPR_COUNT_REACHED
         self.log_debug("reach_epr_count req=%s end_node=%s outcome=deactivate-request", req_id, end_node)
+        req.state = RequestState.EPR_COUNT_REACHED
         self.simulator.sched(event := RequestInactiveEvent(self.node, req, t=self.simulator.tc))
         req.inactive_event.set(event)
