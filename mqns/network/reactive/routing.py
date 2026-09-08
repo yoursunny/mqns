@@ -70,7 +70,6 @@ class ReactiveRoutingPath(RoutingPath):
         """List of computed paths with specific EPRs."""
 
         # Clear unsupported fields.
-        self.bufferspace_mv = "none"
         self.purif = {}
 
     @override

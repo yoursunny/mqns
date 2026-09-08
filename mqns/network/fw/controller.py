@@ -1,8 +1,10 @@
+from collections.abc import Sequence
 from typing import Literal, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
 from mqns.entity.node import Application, Controller
 from mqns.network.fw.message import (
+    MultiplexingVector,
     PathDeleteMsg,
     PathInsertMsg,
     PathInstructions,
@@ -21,14 +23,8 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
     net: QuantumNetwork
     route_ctx: ComputeRoutesContext
 
-    def __init__(self, *, mv_auto: MultiplexingVectorInput = "none"):
-        """
-        Args:
-            mv_auto: How to interpret ``RoutingPath(bufferspace_mv="auto")``.
-                     This should be set to ``max`` if forwarders use ``MuxSchemeBufferSpace``, otherwise ``none``.
-        """
+    def __init__(self):
         super().__init__()
-        self.mv_auto: MultiplexingVectorInput = mv_auto
         self._channel_primary = set[tuple[str, str]]()
 
     @override
@@ -46,7 +42,6 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         Ensure ``rp`` is ready for path computation.
 
         * Assign ``rp.req_id`` and ``rp.path_id`` if absent.
-        * Replace ``rp.bufferspace_mv="auto"`` with a concrete value.
         """
         if rp.req_id < 0:
             rp.req_id = self._next_req_id
@@ -55,14 +50,15 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         if rp.path_id < 0:
             rp.path_id = self._next_path_id
 
-        if rp.bufferspace_mv == "auto":
-            rp.bufferspace_mv = self.mv_auto
-
     def _choose_ll_dir(self, a: str, b: str, /) -> Literal["R", "L"]:
         if (b, a) in self._channel_primary:
             return "L"
         self._channel_primary.add((a, b))
         return "R"
+
+    def _compute_mv(self, route: Sequence[str], input: MultiplexingVectorInput) -> MultiplexingVector | None:
+        _ = route, input
+        return None
 
     def install_path(self, rp: RoutingPath, *, recompute: bool, epr_count=-1) -> None:
         """
@@ -157,3 +153,4 @@ class _ComputeRoutesContext:
         self.get_qchannel = ctrl.net.get_qchannel
         self.query_route = ctrl.net.query_route
         self.choose_ll_dir = ctrl._choose_ll_dir
+        self.compute_mv = ctrl._compute_mv

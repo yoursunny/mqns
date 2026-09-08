@@ -130,9 +130,6 @@ class PathDemands:
 
     def _add_node(self, node: str, neighbor: str, n: int) -> None:
         ncu = self.ru.nodes[node].channels[neighbor]
-        if n == 0:
-            n = ncu.n_qubits
-
         demand = self.demands.get(ncu, 0) + n
         if demand > ncu.unallocated_qubits:
             self.violations.add(ncu.name)

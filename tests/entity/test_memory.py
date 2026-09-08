@@ -71,7 +71,7 @@ def test_channel_qubit_assignment_and_search():
     assigned = mem.assign(scenario.qc, n=2)
     assert len(assigned) == 2
 
-    allocated = mem.allocate(scenario.qc, 7, PathDirection.R, n="all")
+    allocated = mem.allocate(scenario.qc, 7, PathDirection.R, n=2)
     assert len(allocated) == 2
 
     with pytest.raises(OverflowError, match="insufficient qubits"):

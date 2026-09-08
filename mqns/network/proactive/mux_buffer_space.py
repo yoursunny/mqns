@@ -95,9 +95,8 @@ class MuxSchemeBufferSpace(MuxSchemeFibBase):
     @override
     def install_path_adj(self, inst: PathInstructions, fp: FibPath, dir: PathDirection, ch: QuantumChannel) -> None:
         assert "bufferspace_mv" in inst
-        n_qubits = inst["bufferspace_mv"][2 * fp.own_idx + (-1 if dir == PathDirection.L else 0)]
-
-        n = "all" if n_qubits == 0 else n_qubits
+        idx = 2 * fp.own_idx + (-1 if dir is PathDirection.L else 0)
+        n = inst["bufferspace_mv"][idx]
         addrs = self.memory.allocate(ch, fp.path_id, dir, n=n)
         self.fw.log_debug("allocating path %s-%s qubits: %s", fp.path_id, dir.name, addrs)
 

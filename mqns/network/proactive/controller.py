@@ -16,9 +16,11 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import itertools
+from collections.abc import Sequence
 from typing import cast, override
 
-from mqns.network.fw import RoutingController, RoutingPathMulti, RoutingPathSingle
+from mqns.network.fw import MultiplexingVector, MultiplexingVectorInput, RoutingController, RoutingPathMulti, RoutingPathSingle
 from mqns.network.network import RequestActiveEvent, RequestInactiveEvent, RequestState
 from mqns.network.proactive.ctrl_ru import PathDemands, ResourceUtilization
 from mqns.network.proactive.mux_input import MuxSchemeInput, mux_scheme_is_buffer_space
@@ -44,8 +46,8 @@ class ProactiveRoutingController(RoutingController):
     """
 
     def __init__(self, *, mux: MuxSchemeInput):
+        super().__init__()
         self._is_buffer_space = mux_scheme_is_buffer_space(mux)
-        super().__init__(mv_auto="max" if self._is_buffer_space else "none")
 
     @override
     def install(self, node) -> None:
@@ -101,3 +103,22 @@ class ProactiveRoutingController(RoutingController):
         if self.ru is not None:
             demands = cast(PathDemands, rp.ctrl_data)
             demands.release()
+
+    @override
+    def _compute_mv(self, route: Sequence[str], input: MultiplexingVectorInput) -> MultiplexingVector | None:
+        if self.ru is None:
+            return None
+
+        if input in ("max", 0):
+            mv: MultiplexingVector = []
+            for a, b in itertools.pairwise(route):
+                for node, neighbor in (a, b), (b, a):
+                    ncu = self.ru.nodes[node].channels[neighbor]
+                    mv.append(ncu.n_qubits)
+            return mv
+
+        if isinstance(input, int):
+            assert input > 0
+            return [input, input] * (len(route) - 1)
+
+        return input

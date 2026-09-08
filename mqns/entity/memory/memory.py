@@ -114,7 +114,7 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         self.capacity: Final = kwargs.get("capacity", 1)
         """
         Memory capacity, i.e. how many qubits can be stored.
-        Each qubit has an address in `[0, capacity)`.
+        Each qubit has an address in ``[0, capacity)``.
         """
 
         self._t_cohere_input = kwargs.get("t_cohere", 1.0)
@@ -265,16 +265,16 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         path_id: int,
         path_direction: PathDirection,
         *,
-        n: int | Literal["all"] = 1,
+        n: int = 1,
     ) -> list[int]:
         """
         Allocate n qubits to a given path ID.
 
         Args:
-            ch: The quantum channel to which the memory qubit has been assigned.
-            path_id: The identifier of the entanglement path to which the memory qubit will be allocated.
-            path_direction: The end of the path to which the qubit allocated qubit points.
-            n: Desired quantity, or "all" for all remaining qubits assigned to the channel.
+            ch: Only consider qubits assigned to this quantum channel.
+            path_id: Allocate qubits to this path identifier, retrievable via ``MemoryQubit.path_id``.
+            path_direction: Allocate qubits to this path direction, retrievable via ``MemoryQubit.path_direction``.
+            n: Desired quantity.
 
         Returns:
             List of qubit addresses.
@@ -282,21 +282,15 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         Raises:
             OverflowError: insufficient unallocated qubits.
         """
-        iterable = self.find(lambda q, _: q.path_id is None, qchannel=ch)
-        if n == "all":
-            want_all = True
-        else:
-            want_all = False
-            iterable = itertools.islice(iterable, n)
+        qubits = list(itertools.islice(self.find(lambda q, _: q.path_id is None, qchannel=ch), n))
+        if len(qubits) != n:
+            raise OverflowError(f"{self}: insufficient qubits for allocate({ch},n={n})")
 
         addrs: list[int] = []
-        for qubit, _ in iterable:
-            qubit.path_id = path_id
-            qubit.path_direction = path_direction
-            addrs.append(qubit.addr)
-
-        if not want_all and len(addrs) != n:
-            raise OverflowError(f"{self}: insufficient qubits for allocate({ch},n={n})")
+        for mq, _ in qubits:
+            mq.path_id = path_id
+            mq.path_direction = path_direction
+            addrs.append(mq.addr)
         return addrs
 
     def deallocate(self, *addrs: int) -> None:

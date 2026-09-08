@@ -14,12 +14,10 @@ from mqns.network.route import RouteQueryResult
 from mqns.simulator import Time
 from mqns.utils import log
 
-type MultiplexingVectorInput = Literal["auto", "none", "max"] | int | MultiplexingVector
+type MultiplexingVectorInput = Literal["max"] | int | MultiplexingVector
 """
 Buffer-space multiplexing vector or how to generate them.
 
-* "auto": Equivalent to "max" if the network uses buffer-space multiplexing scheme, otherwise "none".
-* "none": Network is not using buffer-space multiplexing scheme.
 * "max": Allocate the maximum quantity of qubits per quantum channel, depending on channel capacity.
   * If multiple ``RoutingPath`` shares one channel, this would likely cause a conflict.
   * In ``RoutingPathMulti``, if the same channel is shared by multiple paths generated
@@ -38,7 +36,10 @@ class RoutingPathInitArgs(TypedDict, total=False):
     path_id: int
     """Path identifier for the first path, defaults to auto-assignment."""
     bufferspace_mv: MultiplexingVectorInput
-    """Buffer-space multiplexing vector or how to generate them, defaults to "auto"."""
+    """
+    Buffer-space multiplexing vector or how to generate them, defaults to "max".
+    This field has no effect if the network is not using buffer-space multiplexing scheme.
+    """
     swap: SwapSequenceInput
     """Swap sequence or swap policy, defaults to ASAP."""
     swap_cutoff: Sequence[float] | None
@@ -68,6 +69,8 @@ class ComputeRoutesContext(Protocol):
         """
         ...
 
+    def compute_mv(self, route: Sequence[str], input: MultiplexingVectorInput) -> MultiplexingVector | None: ...
+
 
 class RoutingPath(ABC):
     """
@@ -95,9 +98,9 @@ class RoutingPath(ABC):
     If there are multiple paths, subsequent paths are given consecutive ids.
     """
 
-    bufferspace_mv: MultiplexingVectorInput
+    bufferspace_mv: Final[MultiplexingVectorInput]
     """
-    Buffer-space multiplexing vector.
+    Buffer-space multiplexing vector or how to generate them.
     """
 
     swap: SwapSequenceInput
@@ -127,7 +130,7 @@ class RoutingPath(ABC):
         self.dst = dst
         self.req_id = kwargs.get("req_id", -1)
         self.path_id = kwargs.get("path_id", -1)
-        self.bufferspace_mv = kwargs.get("bufferspace_mv", "auto")
+        self.bufferspace_mv = kwargs.get("bufferspace_mv", "max")
         self.swap = kwargs.get("swap") or "asap"
         self.swap_cutoff = kwargs.get("swap_cutoff")
         self.purif = dict(kwargs.get("purif") or {})
@@ -138,7 +141,6 @@ class RoutingPath(ABC):
 
         Pre-conditions:
 
-        * ``self.bufferspace_mv`` is not "auto".
         * ``self.req_id`` and ``self.path_id`` are assigned to non-negative values.
 
         Args:
@@ -182,25 +184,6 @@ class RoutingPath(ABC):
 
         return inst
 
-    def _compute_mv(self, route: Sequence[str]) -> MultiplexingVector | None:
-        n_hops = len(route) - 1
-        mv = self.bufferspace_mv
-
-        if mv == "auto":
-            raise RuntimeError("bufferspace_mv=auto must be replaced by caller")
-
-        if mv == "none":
-            return None
-
-        if mv == "max":
-            mv = 0
-
-        if isinstance(mv, int):
-            assert mv >= 0
-            return [mv, mv] * n_hops
-
-        return mv
-
 
 class RoutingPathStatic(RoutingPath):
     """
@@ -225,7 +208,7 @@ class RoutingPathStatic(RoutingPath):
     def compute_paths(self, ctx: ComputeRoutesContext) -> Iterator[PathInstructions]:
         for path_id, route in enumerate(self.routes, start=self.path_id):
             inst = self._make_inst(ctx, path_id, route)
-            if mv := self._compute_mv(route):
+            if mv := ctx.compute_mv(route, self.bufferspace_mv):
                 inst["bufferspace_mv"] = mv
             yield inst
 
@@ -240,7 +223,7 @@ class RoutingPathSingle(RoutingPath):
         route = ctx.query_route(self.src, self.dst)[0]
         log.debug("ROUTING: Computed path #%s: %s", self.path_id, route)
         inst = self._make_inst(ctx, self.path_id, route.path)
-        if mv := self._compute_mv(route.path):
+        if mv := ctx.compute_mv(route.path, self.bufferspace_mv):
             inst["bufferspace_mv"] = mv
         yield inst
 
@@ -274,7 +257,7 @@ class RoutingPathMulti(RoutingPath):
 
             if self.bufferspace_mv == "max":
                 inst["bufferspace_mv"] = self._compute_mv_max(ctx, route, qchannel_use_count)
-            elif mv := self._compute_mv(route.path):
+            elif mv := ctx.compute_mv(route.path, self.bufferspace_mv):
                 inst["bufferspace_mv"] = mv
 
             yield inst
