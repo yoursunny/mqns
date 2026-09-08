@@ -50,7 +50,7 @@ class PathActivateEvent(Event):
             is_primary: Role of this LinkLayer instance.
                 This is ignored if the same channel is already activated.
         """
-        super().__init__(t, f"ch={qchannel.name}, node={node.name}, role={self.ROLE_STR[is_primary]}")
+        super().__init__(t, f"ch={qchannel.name}, path={path_id}, node={node.name}, role={self.ROLE_STR[is_primary]}")
         self.node = node
         self.qchannel = qchannel
         self.path_id = path_id
@@ -82,7 +82,7 @@ class PathDeactivateEvent(Event):
             path_id: Only consider qubits allocated to this path_id.
                 If ``None``, only consider unallocated qubits.
         """
-        super().__init__(t, f"ch={qchannel.name}, node={node.name}")
+        super().__init__(t, f"ch={qchannel.name}, path={path_id}, node={node.name}")
         self.node = node
         self.qchannel = qchannel
         self.path_id = path_id

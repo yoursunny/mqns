@@ -1,3 +1,4 @@
+import re
 from collections.abc import Sequence
 from typing import Literal, NotRequired, TypedDict
 
@@ -26,6 +27,19 @@ class PathInstructions(TypedDict):
     Path vector -- a list of node names, in the order they appear in the path.
 
     There must a quantum channel and a classical channel between each pair of adjacent nodes.
+    """
+
+    ll_dir: NotRequired[str]
+    """
+    LinkLayer direction -- determines the channel direction for LinkLayer activation.
+
+    This string shall have one character of either "R" or "L" per qchannel, i.e. ``len(route)-1`` length.
+
+    * "R" runs the channel left-to-right, with left node as primary and right node as secondary.
+    * "L" runs the channel right-to-left, with right node as primary and left node as secondary.
+
+    The controller must ensure every channel runs in a consistent direction across all commands.
+    Default is ``"R"*(len(route)-1)```, running every channel left-to-right.
     """
 
     bufferspace_mv: NotRequired[MultiplexingVector]
@@ -93,6 +107,9 @@ class PathInstructions(TypedDict):
     """
 
 
+_re_ll_dir = re.compile(r"[RL]*")
+
+
 def _check_purif_segment(segment_name: str, route: Sequence[str]) -> bool:
     try:
         idx0, idx1 = (route.index(node_name) for node_name in segment_name.split("-"))
@@ -123,6 +140,9 @@ def validate_path_instructions(
     if n == 0:
         raise ValueError("route is empty")
 
+    if "ll_dir" in inst and (len(ll_dir := inst["ll_dir"]) != n - 1 or _re_ll_dir.fullmatch(ll_dir) is None):
+        raise ValueError("ll_dir is invalid or does not match route length")
+
     if bufferspace not in (None, "bufferspace_mv" in inst):
         raise ValueError(f"bufferspace_mv must be {'present' if bufferspace else 'absent'}")
     if "bufferspace_mv" in inst and len(inst["bufferspace_mv"]) != 2 * (n - 1):
@@ -133,7 +153,7 @@ def validate_path_instructions(
     if "reactive_qubits" in inst and len(inst["reactive_qubits"]) != n - 1:
         raise ValueError("reactive_qubits does not match route length")
 
-    if len(inst["swap"]) != len(route):
+    if len(inst["swap"]) != n:
         raise ValueError("swapping order does not match route length")
 
     if "swap_cutoff" in inst and len(inst["swap_cutoff"]) != 2 * (n - 2):

@@ -1,5 +1,5 @@
 from collections.abc import Iterator, Mapping
-from typing import Literal, TypedDict, Unpack, cast
+from typing import TYPE_CHECKING, Literal, TypedDict, Unpack, cast
 
 import numpy as np
 
@@ -9,6 +9,9 @@ from mqns.network.network.network import QuantumNetwork
 from mqns.network.network.request import Request
 from mqns.simulator import Simulator, Time, func_to_event
 from mqns.utils import rng
+
+if TYPE_CHECKING:
+    from mqns.network.fw.routing import RoutingPathInitArgs
 
 type TrafficMatrixMapping = Mapping[NodePair, float]
 """
@@ -30,6 +33,11 @@ class MatrixTrafficGeneratorInitArgs(TypedDict, total=False):
       This is incompatible with continuous simulation.
     * "lazy": Schedule the first request, then schedule the next request
       upon the previous request's arrival. This is the default.
+    """
+
+    rp_args: "RoutingPathInitArgs"
+    """
+    Routing path arguments overrides.
     """
 
     rate: float
@@ -71,6 +79,7 @@ class MatrixTrafficGenerator:
         self.tm = TrafficMatrix(self._convert_tm_map(tm) if isinstance(tm, Mapping) else tm, len(net.nodes))
 
         self._sched = kwargs.get("sched", "lazy")
+        self._rp_args = kwargs.get("rp_args", {})
         self._scale = 1 / kwargs.get("rate", 1.0)
         self._duration = kwargs.get("duration", 1.0)
         self._epr_count = kwargs.get("epr_count", 1)
@@ -88,7 +97,7 @@ class MatrixTrafficGenerator:
             array[src_i, dst_i] = prob
         return array
 
-    def install(self, simulator: Simulator):
+    def install(self, simulator: Simulator) -> None:
         """
         Install this traffic generator into a simulator.
         """
@@ -125,13 +134,13 @@ class MatrixTrafficGenerator:
             (self.node_names[src], self.node_names[dst]),
             active_period=(t, t + self._duration),
             epr_count=self._epr_count,
-        )
+        ).path(**self._rp_args)
 
-    def _sched_eager(self):
+    def _sched_eager(self) -> None:
         assert not self.simulator.is_continuous, "sched=eager is incompatible with continuous simulation"
         self.net.add_request(*self.iter())
 
-    def _sched_lazy(self, it: Iterator[Request]):
+    def _sched_lazy(self, it: Iterator[Request]) -> None:
         req = next(it, None)
         if not req:
             return

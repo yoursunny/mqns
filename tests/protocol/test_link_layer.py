@@ -241,9 +241,7 @@ def test_multiple_paths():
     activate_path(0.1, 9.9, nl1, nl2, path_id=1, n=1)
     activate_path(0.1, 9.9, nl1, nl2, path_id=2, n=2)
     activate_path(0.1, 9.9, nl1, nl2, path_id=3, n=3)
-    activate_path(0.1, 9.9, nl2, nl1, path_id=4, n=4)
-    # Path 4 is requesting n2-n1 direction, but the channel is already activated in n1-n2 direction
-    # so that path 4 would retain the existing n1-n2 direction.
+    activate_path(0.1, 9.9, nl1, nl2, path_id=4, n=4)
 
     simulator.run()
 
@@ -252,8 +250,7 @@ def test_multiple_paths():
         print(ll.node.name, ll.cnt, f"path_entangle_cnts={path_entangle_cnts}")
         assert all(c > 0 for c in path_entangle_cnts)
 
-    # Given the channel is operating in n1-n2 direction for all paths,
-    # all attempts should be initiated by ll1.
+    # All attempts should be initiated by ll1.
     assert ll1.cnt.n_attempts > 0
     assert ll2.cnt.n_attempts == 0
 
