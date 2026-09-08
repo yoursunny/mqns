@@ -19,7 +19,6 @@
 from typing import TYPE_CHECKING, final, override
 
 from mqns.entity.memory.memory_qubit import MemoryQubit
-from mqns.entity.node import QNode
 from mqns.models.core import QuantumModel
 from mqns.simulator import Event, Time
 
@@ -47,84 +46,3 @@ class MemoryDecohereEvent(Event):
     @override
     def invoke(self) -> None:
         self.memory.handle(self)
-
-
-@final
-class MemoryReadRequestEvent(Event):
-    """``MemoryReadRequestEvent`` is the event that request a memory read"""
-
-    def __init__(
-        self,
-        memory: "QuantumMemory",
-        key: str,
-        *,
-        t: Time,
-        name: str | None = None,
-    ):
-        super().__init__(t, name)
-        self.memory = memory
-        self.key = key
-
-    @override
-    def invoke(self) -> None:
-        self.memory.handle(self)
-
-
-@final
-class MemoryReadResponseEvent(Event):
-    """``MemoryReadResponseEvent`` is the event that returns the memory read result"""
-
-    def __init__(
-        self,
-        node: QNode,
-        result: tuple[MemoryQubit, QuantumModel | None] | None,
-        *,
-        request: MemoryReadRequestEvent,
-        t: Time,
-        name: str | None = None,
-    ):
-        super().__init__(t, name)
-        self.node = node
-        self.result = result
-        self.request = request
-
-    @override
-    def invoke(self) -> None:
-        self.node.handle(self)
-
-
-@final
-class MemoryWriteRequestEvent(Event):
-    """``MemoryWriteRequestEvent`` is the event that request a memory write"""
-
-    def __init__(self, memory: "QuantumMemory", qubit: QuantumModel, *, t: Time, name: str | None = None):
-        super().__init__(t, name)
-        self.memory = memory
-        self.qubit = qubit
-
-    @override
-    def invoke(self) -> None:
-        self.memory.handle(self)
-
-
-@final
-class MemoryWriteResponseEvent(Event):
-    """``MemoryWriteResponseEvent`` is the event that returns the memory write result"""
-
-    def __init__(
-        self,
-        node: QNode,
-        result: MemoryQubit | None = None,
-        *,
-        request: MemoryWriteRequestEvent,
-        t: Time,
-        name: str | None = None,
-    ):
-        super().__init__(t, name)
-        self.node = node
-        self.result = result
-        self.request = request
-
-    @override
-    def invoke(self) -> None:
-        self.node.handle(self)

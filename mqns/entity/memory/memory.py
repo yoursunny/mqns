@@ -28,21 +28,14 @@
 import heapq
 import itertools
 from collections.abc import Callable, Container, Iterable, Iterator
-from typing import TYPE_CHECKING, Any, Literal, TypedDict, Unpack, overload, override
+from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict, Unpack, overload, override
 
 from mqns.entity.entity import Entity
-from mqns.entity.memory.event import (
-    MemoryDecohereEvent,
-    MemoryReadRequestEvent,
-    MemoryReadResponseEvent,
-    MemoryWriteRequestEvent,
-    MemoryWriteResponseEvent,
-)
+from mqns.entity.memory.event import MemoryDecohereEvent
 from mqns.entity.memory.memory_qubit import MemoryQubit, PathDirection, QubitState
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.core import QuantumModel
-from mqns.models.delay import DelayInput, parse_delay
 from mqns.models.epr import Entanglement
 from mqns.models.error import TimeDecayInput, parse_time_decay
 from mqns.simulator import EventDispatcherMixin, Simulator, event_handler
@@ -57,8 +50,6 @@ class QuantumMemoryInitKwargs(TypedDict, total=False):
 
     capacity: int
     """How many qubits can be stored in memory, must be positive, defaults to 1."""
-    delay: DelayInput
-    """Async read/write delay in seconds or a ``DelayModel``."""
     t_cohere: float
     """Memory decoherence time in seconds, defaults to 1."""
     time_decay: TimeDecayInput
@@ -68,12 +59,6 @@ class QuantumMemoryInitKwargs(TypedDict, total=False):
 class QuantumMemory(EventDispatcherMixin, Entity):
     """
     Quantum memory stores qubits or entangled pairs.
-
-    It has two modes:
-
-    * Synchronous mode, caller uses ``read`` and ``write`` functions to operate the memory without delay.
-      This mode is used by most applications in MQNS.
-    * Asynchronous mode, caller uses events to operate the memory asynchronously.
     """
 
     node: QNode
@@ -126,13 +111,11 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         """
         super().__init__(name=name)
 
-        self.capacity = kwargs.get("capacity", 1)
+        self.capacity: Final = kwargs.get("capacity", 1)
         """
         Memory capacity, i.e. how many qubits can be stored.
         Each qubit has an address in `[0, capacity)`.
         """
-        self.delay = parse_delay(kwargs.get("delay", 0))
-        """Async read/write delay."""
 
         self._t_cohere_input = kwargs.get("t_cohere", 1.0)
         self._time_decay_input = kwargs.get("time_decay")
@@ -143,7 +126,7 @@ class QuantumMemory(EventDispatcherMixin, Entity):
         ]
         self._usage = 0
 
-        self._by_qchannel = dict[QuantumChannel, list[int]]()
+        self._by_qchannel: dict[QuantumChannel, list[int]] = {}
         """
         Mapping from qchannel to assigned qubit addrs.
         Key is quantum channel assigned to qubits.
@@ -182,25 +165,6 @@ class QuantumMemory(EventDispatcherMixin, Entity):
 
         mq.state = QubitState.RELEASE
         self.node.handle(event)
-
-    @event_handler
-    def async_read(self, event: MemoryReadRequestEvent) -> None:
-        event.cancel()
-        result = self.read(event.key)
-        t = self.simulator.tc + self.delay.calculate()
-        self.simulator.sched(MemoryReadResponseEvent(self.node, result, request=event, t=t))
-
-    @event_handler
-    def async_write(self, event: MemoryWriteRequestEvent) -> None:
-        event.cancel()
-        qubit, _ = next(self.find(lambda _, v: v is None), (None, None))
-        if qubit is None:
-            raise MemoryError("memory is full")
-        if qubit.key is None:
-            qubit.key = getattr(event.qubit, "name", None)
-        self.write(qubit.addr, event.qubit)
-        t = self.simulator.tc + self.delay.calculate()
-        self.simulator.sched(MemoryWriteResponseEvent(self.node, qubit, request=event, t=t))
 
     @property
     def count(self) -> int:
@@ -244,6 +208,7 @@ class QuantumMemory(EventDispatcherMixin, Entity):
 
         Args:
             predicate: Callback function to accept or reject each qubit and associated data.
+                Use ``QuantumMemory.predicate_all`` to accept all qubits.
             qchannel: If set, only qubits assigned to specified quantum channel are considered.
             has: If set, only qubits with associated data of this type are considered.
         """
