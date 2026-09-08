@@ -1,6 +1,6 @@
 import itertools
 from collections import defaultdict, deque
-from collections.abc import Iterator
+from collections.abc import Sequence
 from typing import override
 
 from mqns.network.fw import ComputeRoutesContext, RoutingPath
@@ -69,12 +69,11 @@ class ReactiveRoutingPath(RoutingPath):
         self.paths: list[ReactiveRoutingPathDef] = []
         """List of computed paths with specific EPRs."""
 
-        # Clear unsupported fields.
-        self.purif = {}
-
     @override
-    def compute_paths(self, ctx: ComputeRoutesContext) -> Iterator[PathInstructions]:
+    def compute_paths(self, ctx: ComputeRoutesContext) -> Sequence[PathInstructions]:
+        insts: list[PathInstructions] = []
         for path_id, (route, qubits) in enumerate(self.paths, start=self.path_id):
             inst = self._make_inst(ctx, path_id, route)
             inst["reactive_qubits"] = qubits
-            yield inst
+            insts.append(inst)
+        return insts

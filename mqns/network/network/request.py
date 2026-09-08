@@ -181,11 +181,6 @@ class Request:
 
         The routing path will be inserted to the centralized controller at specified times.
         If the network does not have a centralized controller, this has no effect.
-
-        ``RoutingPath`` subclass is chosen based on network configuration:
-
-        * If the network uses Yen routing algorithm, ``RoutingPathMulti``.
-        * Otherwise, ``RoutingPathSingle``.
         """
 
     def path(self, rp: "RoutingPath|None" = None, /, **kwargs: Unpack["RoutingPathInitArgs"]) -> Self:

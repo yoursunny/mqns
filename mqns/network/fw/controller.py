@@ -4,7 +4,6 @@ from typing import Literal, override
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
 from mqns.entity.node import Application, Controller
 from mqns.network.fw.message import (
-    MultiplexingVector,
     PathDeleteMsg,
     PathInsertMsg,
     PathInstructions,
@@ -56,9 +55,8 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         self._channel_primary.add((a, b))
         return "R"
 
-    def _compute_mv(self, route: Sequence[str], input: MultiplexingVectorInput) -> MultiplexingVector | None:
-        _ = route, input
-        return None
+    def _populate_mv(self, insts: Sequence[PathInstructions], input: MultiplexingVectorInput) -> None:
+        _ = insts, input
 
     def install_path(self, rp: RoutingPath, *, recompute: bool, epr_count=-1) -> None:
         """
@@ -153,4 +151,4 @@ class _ComputeRoutesContext:
         self.get_qchannel = ctrl.net.get_qchannel
         self.query_route = ctrl.net.query_route
         self.choose_ll_dir = ctrl._choose_ll_dir
-        self.compute_mv = ctrl._compute_mv
+        self.populate_mv = ctrl._populate_mv

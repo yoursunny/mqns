@@ -8,7 +8,7 @@ from mqns.entity.memory import QuantumMemory
 from mqns.entity.qchannel import LinkArch, LinkArchAlways, LinkArchDimBk, LinkArchSr
 from mqns.entity.timer import Timer
 from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
-from mqns.network.fw import RoutingPathInitArgs, RoutingPathSingle, RoutingPathStatic, SwapSequenceInput
+from mqns.network.fw import RoutingPath, RoutingPathInitArgs, SwapSequenceInput
 from mqns.network.network import Request, RequestState, TimingMode, TimingModeAsync, TimingModeSync
 from mqns.network.proactive import MuxSchemeInput, MuxSchemeStatistical, ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
@@ -35,7 +35,7 @@ def test_4_swap(epr_type: type[Entanglement], timing: TimingMode, swap: SwapSequ
     )
     _, fwB, fwC, _ = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    net.add_request(rp := RoutingPathSingle("A", "D", swap=swap))
+    net.add_request(rp := RoutingPath("A", "D", swap=swap))
     simulator.run()
     print_node_counters(net)
 
@@ -74,12 +74,12 @@ def test_tree2_bidir(mux: MuxSchemeInput, swap: SwapSequenceInput, end_time: flo
     # Path 0 uses A-C or B-A-C segment in one direction.
     # Path 1 uses C-A or C-A-B segment in the opposite direction.
     rp_args = RoutingPathInitArgs(
-        bufferspace_mv=1 if mux == "B" else "none",
+        bufferspace_mv=1,
         swap=swap,
         swap_cutoff=[0.01, 0.01] * (route_len - 2),
     )
-    net.add_request(req0 := Request(RoutingPathStatic("DBACF"[-route_len:], **rp_args), active_period=(0.010, Time.MAX)))
-    net.add_request(req1 := Request(RoutingPathStatic("GCABE"[:route_len], **rp_args), active_period=(0.020, Time.MAX)))
+    net.add_request(req0 := Request(RoutingPath.static("DBACF"[-route_len:], **rp_args), active_period=(0.010, Time.MAX)))
+    net.add_request(req1 := Request(RoutingPath.static("GCABE"[:route_len], **rp_args), active_period=(0.020, Time.MAX)))
     simulator.run()
     print_node_counters(net)
 
@@ -118,8 +118,8 @@ def test_rect2_path_delete():
     timer = Timer("save_counters", start_time=0.500, end_time=9.501, step_time=1.000, trigger_func=save_counters)
     timer.install(simulator)
 
-    net.add_request(Request(RoutingPathStatic("ABD"), active_period=(2, 6)))
-    net.add_request(Request(RoutingPathStatic("ACD"), active_period=(4, 8)))
+    net.add_request(Request(RoutingPath.static("ABD"), active_period=(2, 6)))
+    net.add_request(Request(RoutingPath.static("ACD"), active_period=(4, 8)))
     simulator.run()
 
     assert len(counters) == 10

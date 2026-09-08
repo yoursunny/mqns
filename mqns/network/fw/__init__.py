@@ -10,9 +10,6 @@ from mqns.network.fw.routing import (
     MultiplexingVectorInput,
     RoutingPath,
     RoutingPathInitArgs,
-    RoutingPathMulti,
-    RoutingPathSingle,
-    RoutingPathStatic,
 )
 from mqns.network.fw.select import MemoryEprTuple
 from mqns.network.fw.swap_sequence import SwapPolicy, SwapSequenceInput, parse_swap_sequence
@@ -40,9 +37,6 @@ __all__ = [
     "RoutingController",
     "RoutingPath",
     "RoutingPathInitArgs",
-    "RoutingPathMulti",
-    "RoutingPathSingle",
-    "RoutingPathStatic",
     "SwapPolicy",
     "SwapSequence",
     "SwapSequenceInput",
