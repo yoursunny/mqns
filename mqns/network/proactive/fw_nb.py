@@ -3,8 +3,16 @@ from typing import TYPE_CHECKING, cast, override
 
 from mqns.entity.memory import PathDirection
 from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw import FibPath, FibRequest, Forwarder, ForwarderNorthbound, fw_control_cmd_handler
-from mqns.network.fw.message import PathDeleteMsg, PathInsertMsg, PathInstructions
+from mqns.network.fw import (
+    FibPath,
+    FibRequest,
+    Forwarder,
+    ForwarderNorthbound,
+    PathDeleteMsg,
+    PathInsertMsg,
+    PathInstructions,
+    fw_control_cmd_handler,
+)
 from mqns.network.proactive.mux import MuxScheme
 from mqns.network.protocol.event import PathActivateEvent, PathDeactivateEvent
 from mqns.simulator import Time

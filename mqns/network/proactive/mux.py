@@ -3,9 +3,7 @@ from abc import ABC, abstractmethod
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
-from mqns.network.fw.fib import FibPath
-from mqns.network.fw.fw_module import ForwarderModule
-from mqns.network.fw.message import PathInstructions
+from mqns.network.fw import FibPath, ForwarderModule, PathInstructions
 
 
 class MuxScheme(ForwarderModule, ABC):

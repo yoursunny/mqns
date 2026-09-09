@@ -3,12 +3,7 @@ from typing import Literal, NamedTuple, override
 
 from mqns.entity.cchannel import ClassicCommandDispatcherMixin, ClassicPacket, classic_cmd_handler
 from mqns.entity.node import Application, Controller, Node
-from mqns.network.fw.message import (
-    PathDeleteMsg,
-    PathInsertMsg,
-    PathInstructions,
-    PathReachEprCountMsg,
-)
+from mqns.network.fw.message import PathDeleteMsg, PathInsertMsg, PathInstructions, PathReachEprCountMsg
 from mqns.network.fw.routing import ComputeRoutesContext, RoutingPath
 from mqns.network.network import QuantumNetwork, Request, RequestInactiveEvent, RequestState
 
@@ -18,10 +13,10 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
     Centralized control plane that works with ``Forwarder`` subclass.
     """
 
-    class InsertedPathHandle(NamedTuple):
-        req_id: int
-        node_names: Sequence[str]
-        nodes: Sequence[Node]
+    type InsertedPathHandle = "_InsertedPathHandle"
+    """
+    Opaque handle returned by ``path_insert()`` that allows deleting the paths.
+    """
 
     net: QuantumNetwork
     route_ctx: ComputeRoutesContext
@@ -29,13 +24,13 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
     def __init__(self):
         super().__init__()
         self._channel_primary = set[tuple[str, str]]()
+        self._next_req_id = 0
+        self._next_path_id = 0
 
     @override
     def install(self, node) -> None:
         self._application_install(node, Controller)
         self.net = self.node.network
-        self._next_req_id = 0
-        self._next_path_id = 0
 
         self.net.build_route()
         self.route_ctx = _ComputeRoutesContext(self)
@@ -43,7 +38,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
     def prepare_path(self, req: Request) -> RoutingPath:
         """
         Ensure ``req.rp`` exists and is ready for path computation.
-        Assign ``rp.req_id`` and ``rp.path_id`` if absent.
+        Assign ``rp.req_id`` if absent.
         """
         if (rp := req.rp) is None:
             req.rp = rp = RoutingPath(req.src, req.dst, **req.rp_args)
@@ -51,9 +46,6 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
         if rp.req_id < 0:
             rp.req_id = self._next_req_id
         self._next_req_id = max(self._next_req_id, rp.req_id + 1)
-
-        if rp.path_id < 0:
-            rp.path_id = self._next_path_id
 
         return rp
 
@@ -69,21 +61,21 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
 
         Args:
             req_id: Request identifier.
-            insts: Path instructions.
+            insts: Path instructions. ``path_id`` is filled automatically.
 
         Returns:
             Opaque object that allows deleting the paths.
         """
         nodes = set[str]()
         for inst in insts:
-            self._next_path_id = max(self._next_path_id, inst["path_id"] + 1)
+            inst["path_id"] = self._next_path_id
+            self._next_path_id += 1
             nodes.update(inst["route"])
         node_names = sorted(nodes)
-
-        sbip = RoutingController.InsertedPathHandle(req_id, node_names, [self.net.get_node(n) for n in node_names])
+        iph = _InsertedPathHandle(req_id, node_names, [self.net.get_node(n) for n in node_names])
 
         self._send_path_command(
-            sbip,
+            iph,
             PathInsertMsg(
                 cmd="PATH_INSERT",
                 req_id=req_id,
@@ -92,7 +84,7 @@ class RoutingController(ClassicCommandDispatcherMixin, Application[Controller]):
             ),
         )
 
-        return sbip
+        return iph
 
     def path_delete(self, iph: InsertedPathHandle) -> None:
         """
@@ -153,3 +145,9 @@ class _ComputeRoutesContext:
         self.get_qchannel = ctrl.net.get_qchannel
         self.query_route = ctrl.net.query_route
         self.choose_ll_dir = ctrl._choose_ll_dir
+
+
+class _InsertedPathHandle(NamedTuple):
+    req_id: int
+    node_names: Sequence[str]
+    nodes: Sequence[Node]

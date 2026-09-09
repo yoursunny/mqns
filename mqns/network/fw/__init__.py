@@ -4,7 +4,15 @@ from mqns.network.fw.fib import Fib, FibPath, FibRequest
 from mqns.network.fw.forwarder import Forwarder, ForwarderCounters, ForwarderInitKwargs
 from mqns.network.fw.fw_module import ForwarderModule, fw_control_cmd_handler, fw_signaling_cmd_handler
 from mqns.network.fw.fw_nb import ForwarderNorthbound
-from mqns.network.fw.message import MultiplexingVector, QubitKeySequence, SwapSequence
+from mqns.network.fw.message import (
+    MultiplexingVector,
+    PathDeleteMsg,
+    PathInsertMsg,
+    PathInstructions,
+    QubitKeySequence,
+    SwapSequence,
+    validate_path_instructions,
+)
 from mqns.network.fw.routing import (
     ComputeRoutesContext,
     MultiplexingVectorInput,
@@ -33,6 +41,9 @@ __all__ = [
     "MultiplexingVector",
     "MultiplexingVectorInput",
     "parse_swap_sequence",
+    "PathDeleteMsg",
+    "PathInsertMsg",
+    "PathInstructions",
     "QubitKeySequence",
     "RoutingController",
     "RoutingPath",
@@ -40,6 +51,7 @@ __all__ = [
     "SwapPolicy",
     "SwapSequence",
     "SwapSequenceInput",
+    "validate_path_instructions",
 ]
 
 for name in __all__:
@@ -47,6 +59,9 @@ for name in __all__:
         "MemoryEprTuple",
         "MultiplexingVector",
         "MultiplexingVectorInput",
+        "PathDeleteMsg",
+        "PathInsertMsg",
+        "PathInstructions",
         "QubitKeySequence",
         "SwapPolicy",
         "SwapSequence",

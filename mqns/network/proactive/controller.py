@@ -21,8 +21,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from typing import cast, override
 
-from mqns.network.fw import MultiplexingVector, MultiplexingVectorInput, RoutingController
-from mqns.network.fw.message import PathInstructions
+from mqns.network.fw import MultiplexingVector, MultiplexingVectorInput, PathInstructions, RoutingController
 from mqns.network.network import RequestActiveEvent, RequestInactiveEvent, RequestState
 from mqns.network.proactive.ctrl_ru import PathDemands, ResourceUtilization
 from mqns.network.proactive.mux_input import MuxSchemeInput, mux_scheme_is_buffer_space

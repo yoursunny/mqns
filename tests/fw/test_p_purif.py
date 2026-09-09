@@ -156,7 +156,7 @@ def test_3_path_delete(
 
     net.add_request(
         Request(
-            RoutingPath.static("ABC", path_id=0, swap_cutoff=[cutoff, -1], purif=purif),
+            RoutingPath.static("ABC", swap_cutoff=[cutoff, -1], purif=purif),
             active_period=(Time.MIN, t_delete),
         )
     )

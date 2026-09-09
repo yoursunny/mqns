@@ -4,9 +4,7 @@ Test suite for simple data structure objects in forwarding.
 
 import pytest
 
-from mqns.network.fw import parse_swap_sequence
-from mqns.network.fw.fib import FibPath
-from mqns.network.fw.message import PathInstructions, validate_path_instructions
+from mqns.network.fw import FibPath, PathInstructions, parse_swap_sequence, validate_path_instructions
 
 
 def test_parse_swap_sequence():

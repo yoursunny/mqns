@@ -29,8 +29,6 @@ Buffer-space multiplexing vector or how to generate them.
 class RoutingPathInitArgs(TypedDict, total=False):
     req_id: int
     """Request identifier, defaults to auto-assignment."""
-    path_id: int
-    """Path identifier for the first path, defaults to auto-assignment."""
     static: Sequence[Sequence[str]]
     """
     One or more static routes.
@@ -95,12 +93,6 @@ class RoutingPath:
     Request identifier.
     """
 
-    path_id: int
-    """
-    Path identifier for the first path.
-    If there are multiple paths, subsequent paths are given consecutive ids.
-    """
-
     static_paths: list[list[str]] | None = None
     """
     Static paths.
@@ -141,7 +133,6 @@ class RoutingPath:
         self.src = src
         self.dst = dst
         self.req_id = kwargs.get("req_id", -1)
-        self.path_id = kwargs.get("path_id", -1)
         self.bufferspace_mv = kwargs.get("bufferspace_mv", "max")
         self.swap = kwargs.get("swap") or "asap"
         self.swap_cutoff = kwargs.get("swap_cutoff")
@@ -172,13 +163,13 @@ class RoutingPath:
 
         Pre-conditions:
 
-        * ``self.req_id`` and ``self.path_id`` are assigned to non-negative values.
+        * ``self.req_id`` is assigned to non-negative values.
 
         Returns:
-            List of path instructions.
+            List of path instructions with ``route``, ``ll_dir``, ``swap``, ``swap_cutoff``, ``purif`` fields filled.
+            The ``RoutingController`` subclass must overwrite ``path_id`` and populate other fields.
         """
         assert self.req_id >= 0
-        assert self.path_id >= 0
 
         # Compute shortest paths.
         if self.static_paths:
@@ -188,27 +179,18 @@ class RoutingPath:
             paths = [route.path for route in routes]
 
         insts: list[PathInstructions] = []
-        for path_id, path in enumerate(paths, start=self.path_id):
-            insts.append(self._make_inst(ctx, path_id, path))
+        for path in paths:
+            inst: PathInstructions = {
+                "path_id": -1,
+                "route": path,
+                "ll_dir": "".join(ctx.choose_ll_dir(a, b) for a, b in itertools.pairwise(path)),
+                "swap": parse_swap_sequence(self.swap, path),
+                "purif": self.purif,
+            }
+
+            if self.swap_cutoff:
+                inst["swap_cutoff"] = [-1 if t < 0 else Time.sec_to_slot(t, ctx.time_accuracy) for t in self.swap_cutoff]
+
+            insts.append(inst)
 
         return insts
-
-    def _make_inst(
-        self,
-        ctx: ComputeRoutesContext,
-        path_id: int,
-        route: list[str],
-    ) -> PathInstructions:
-        swap = parse_swap_sequence(self.swap, route)
-        inst: PathInstructions = {
-            "path_id": path_id,
-            "route": route,
-            "ll_dir": "".join(ctx.choose_ll_dir(a, b) for a, b in itertools.pairwise(route)),
-            "swap": swap,
-            "purif": self.purif,
-        }
-
-        if self.swap_cutoff is not None:
-            inst["swap_cutoff"] = [-1 if t < 0 else Time.sec_to_slot(t, ctx.time_accuracy) for t in self.swap_cutoff]
-
-        return inst

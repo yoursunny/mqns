@@ -5,7 +5,7 @@ from typing import Final
 from mqns.entity.memory import QuantumMemory
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw.message import PathInstructions
+from mqns.network.fw import PathInstructions
 from mqns.network.network import QuantumNetwork
 from mqns.network.proactive.fw_nb import to_fib_erase_delay
 from mqns.simulator import Simulator, Time, func_to_event

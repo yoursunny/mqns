@@ -19,8 +19,7 @@ from collections import defaultdict
 from typing import cast, override
 
 from mqns.entity.cchannel import ClassicPacket, classic_cmd_handler
-from mqns.network.fw import RoutingController
-from mqns.network.fw.message import PathInstructions
+from mqns.network.fw import PathInstructions, RoutingController
 from mqns.network.network import (
     Request,
     RequestActiveEvent,
@@ -163,7 +162,5 @@ class ReactiveRoutingController(RoutingController):
                 continue
 
             inst["reactive_qubits"] = qubits
-            inst["path_id"] = self.next_path_id
-            self.next_path_id += 1
             return inst
         return None
