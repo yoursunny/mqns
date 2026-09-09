@@ -33,7 +33,8 @@ import numpy as np
 import pandas as pd
 from tap import Tap
 
-from mqns.network.builder import CTRL_DELAY, LINK_ARCH_MAP, LinkArchLiteral, NetworkBuilder
+from mqns.entity.qchannel import LINK_ARCH_MAP, LinkArchLiteral
+from mqns.network.builder import CTRL_DELAY, NetworkBuilder
 from mqns.network.protocol.link_layer import LinkLayer
 from mqns.simulator import Simulator
 from mqns.utils import log, rng, seed_seq_env

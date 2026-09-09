@@ -44,9 +44,11 @@ import pandas as pd
 from tap import Tap
 
 from mqns.entity.base_channel import default_light_speed
+from mqns.entity.qchannel import LinkArchLiteral
+from mqns.models.epr import EprTypeLiteral
 from mqns.models.error import TimeDecayInput
 from mqns.models.error.input import ErrorModelInputBasic, ErrorModelInputLength
-from mqns.network.builder import CTRL_DELAY, EprTypeLiteral, LinkArchLiteral, NetworkBuilder, tap_configure
+from mqns.network.builder import CTRL_DELAY, NetworkBuilder, tap_configure
 from mqns.network.fw import CutoffSchemeWaitTime
 from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters

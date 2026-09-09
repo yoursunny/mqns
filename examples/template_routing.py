@@ -49,10 +49,7 @@ import numpy as np
 from tap import Tap
 
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
-from mqns.network.fw import (
-    MultiplexingVector,
-    RoutingPath,
-)
+from mqns.network.fw import MultiplexingVector, RoutingPath
 from mqns.network.network import QuantumNetwork
 from mqns.network.network.timing import TimingModeSync
 from mqns.network.proactive import MuxScheme, MuxSchemeBufferSpace, MuxSchemeStatistical

@@ -82,8 +82,6 @@ class ReactiveRoutingController(RoutingController):
         Key: request identifier.
         """
 
-        self.next_path_id = 0
-
     @override
     def install(self, node):
         super().install(node)

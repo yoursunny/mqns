@@ -1,28 +1,16 @@
 import itertools
 from collections.abc import Sequence
-from typing import Literal, NotRequired, Self, TypedDict, Unpack, cast, overload
+from typing import NotRequired, Self, TypedDict, Unpack, overload
 
 from tap import Tap
 
 from mqns.entity.memory import QuantumMemoryInitKwargs
 from mqns.entity.node import Application, NodePair, QNode, split_node_pair
-from mqns.entity.qchannel import (
-    LinkArch,
-    LinkArchDimBk,
-    LinkArchDimBkSeq,
-    LinkArchDimDual,
-    LinkArchSim,
-    LinkArchSr,
-    QuantumChannel,
-)
-from mqns.models.epr import Entanglement, MixedStateEntanglement, WernerStateEntanglement
+from mqns.entity.qchannel import LINK_ARCH_MAP, LinkArchInput, LinkArchLiteral, QuantumChannel
+from mqns.models.epr import EPR_TYPE_MAP, EprTypeInput, EprTypeLiteral
 from mqns.models.error import TimeDecayInput
 from mqns.models.error.input import ErrorModelInputBasic, ErrorModelInputLength, ErrorModelInputTime
-from mqns.network.fw import (
-    ForwarderInitKwargs,
-    RoutingPath,
-    RoutingPathInitArgs,
-)
+from mqns.network.fw import ForwarderInitKwargs, RoutingPath, RoutingPathInitArgs
 from mqns.network.network import QuantumNetwork, Request, TimingMode, TimingModeAsync, TimingModeSync
 from mqns.network.proactive import (
     MUX_SCHEME_MAP,
@@ -38,28 +26,6 @@ from mqns.network.reactive import ReactiveForwarder, ReactiveRoutingController
 from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm
 from mqns.network.topology import ClassicTopology, Topology
 from mqns.network.topology.customtopo import CustomTopology, Topo, TopoController, TopoQChannel, TopoQNode
-
-type EprTypeLiteral = Literal["W", "M"]
-"""
-String representation of commonly used entanglement models.
-"""
-EPR_TYPE_MAP: dict[EprTypeLiteral, type[Entanglement]] = {
-    "W": WernerStateEntanglement,
-    "M": MixedStateEntanglement,
-}
-
-type LinkArchLiteral = Literal["DIM-BK", "DIM-BK-SeQUeNCe", "DIM-dual", "SR", "SIM"]
-"""
-String representation of commonly used link architectures.
-"""
-LINK_ARCH_MAP: dict[LinkArchLiteral, type[LinkArch]] = {
-    "DIM-BK": LinkArchDimBk,
-    "DIM-BK-SeQUeNCe": LinkArchDimBkSeq,
-    "DIM-dual": LinkArchDimDual,
-    "SR": LinkArchSr,
-    "SIM": LinkArchSim,
-}
-type LinkArchDef = LinkArch | type[LinkArch] | LinkArchLiteral
 
 
 def tap_configure(tap: Tap) -> None:
@@ -145,7 +111,7 @@ class ChannelArgs(TypedDict, total=False):
     Channel capacity, defaults to ``1``.
     An integer applies to both sides; a tuple applies to ``(left,right)`` sides.
     """
-    link_arch: LinkArchDef
+    link_arch: LinkArchInput
     """
     Link architecture, defaults to ``LinkArchDimBkSeq``.
     """
@@ -239,7 +205,7 @@ class NetworkBuilder:
         self,
         *,
         route: RouteAlgorithm[QNode, QuantumChannel] = DijkstraRouteAlgorithm(),
-        epr_type: type[Entanglement] | EprTypeLiteral = "W",
+        epr_type: EprTypeInput = "W",
     ):
         """
         Constructor.
@@ -250,7 +216,7 @@ class NetworkBuilder:
         """
 
         self.route = route
-        self.epr_type = epr_type if isinstance(epr_type, type) else EPR_TYPE_MAP[epr_type]
+        self.epr_type = epr_type
 
         self.qnodes: list[TopoQNode] = []
         self.qnode_by_name: dict[str, TopoQNode] = {}
@@ -303,10 +269,6 @@ class NetworkBuilder:
         caps: int | tuple[int, int] = capacity or d.get("ch_capacity", 1)
         cap1, cap2 = (caps, caps) if isinstance(caps, int) else caps
 
-        la = d.get("link_arch", LinkArchDimBkSeq)
-        la = LINK_ARCH_MAP.get(cast(LinkArchLiteral, la), cast(LinkArch | type[LinkArch], la))
-        la = la() if callable(la) else la
-
         self._add_qnode(node1)
         self._add_qnode(node2)
         self._inc_memory(node1, cap1)
@@ -320,7 +282,7 @@ class NetworkBuilder:
                 "capacity2": cap2,
                 "parameters": {
                     "length": d.get("ch_length", 1.0) if length is None else length,
-                    "link_arch": la,
+                    "link_arch": d.get("link_arch"),
                     "alpha": d.get("fiber_alpha", 0.2),
                     "init_fidelity": d.get("init_fidelity", 0.99),
                     "transfer_error": d.get("fiber_error", "DEPOLAR:0.01"),
@@ -497,8 +459,6 @@ class NetworkBuilder:
     def reactive_centralized(self, **kwargs: Unpack[AppsForwarderArgs]) -> Self:
         """
         Choose reactive forwarding with centralized control.
-
-        ``.request()`` method only accepts src-dst nodes, but does not support ``RoutingPath``.
         """
         self._assert_can_add_apps()
         self._extract_apps_common_args(kwargs)
