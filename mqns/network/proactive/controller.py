@@ -21,13 +21,12 @@ from collections import defaultdict
 from collections.abc import Sequence
 from typing import cast, override
 
-from mqns.network.fw import MultiplexingVector, MultiplexingVectorInput, RoutingController, RoutingPath
+from mqns.network.fw import MultiplexingVector, MultiplexingVectorInput, RoutingController
 from mqns.network.fw.message import PathInstructions
 from mqns.network.network import RequestActiveEvent, RequestInactiveEvent, RequestState
 from mqns.network.proactive.ctrl_ru import PathDemands, ResourceUtilization
 from mqns.network.proactive.mux_input import MuxSchemeInput, mux_scheme_is_buffer_space
 from mqns.simulator import event_handler
-from mqns.utils import unwrap
 
 
 class ProactiveRoutingController(RoutingController):
@@ -59,30 +58,32 @@ class ProactiveRoutingController(RoutingController):
     @event_handler
     def handle_request_active(self, event: RequestActiveEvent) -> None:
         req = event.req
+        req.ctrl_data = ctrl_data = _CtrlData()
 
-        # Construct RoutingPath for the request.
-        if (rp := req.rp) is None:
-            req.rp = rp = RoutingPath(req.src, req.dst, **req.rp_args)
+        # Construct RoutingPath and compute paths.
+        rp = self.prepare_path(req)
+        insts = rp.compute_paths(self.route_ctx)
 
-        self.prepare_path(rp)
-        paths = rp.list_paths(self.route_ctx, recompute=True)
+        # If the network uses buffer-space multiplexing scheme:
+        # - Populate MultiplexingVector in each PathInstructions.
+        # - Gather resource demands from MultiplexingVector.
+        if self.ru:
+            self._populate_mv(insts, rp.bufferspace_mv)
 
-        # If the network uses buffer-space multiplexing scheme, gather the resource demands of the computed paths.
-        if self.ru is not None:
-            demands = self.ru.gather_demands(paths)
+            demands = self.ru.gather_demands(insts)
 
             # If there are insufficient resources, reject the request.
             if demands.has_violation:
                 req.state = RequestState.REJECTED
-                self.log_debug("REQ_REJECT req_id=%s reason=no-resource | %s | %s | %s", req.req_id, self.ru, demands, paths)
+                self.log_debug("REQ_REJECT req_id=%s reason=no-resource | %s | %s | %s", req.req_id, self.ru, demands, insts)
                 return
 
             # If there are sufficient resources, commit these resources.
             demands.commit()
-            rp.ctrl_data = demands
+            ctrl_data.demands = demands
 
         # Send PATH_INSERT.
-        self.install_path(rp, recompute=False, epr_count=req.epr_count)
+        ctrl_data.iph = self.path_insert(rp.req_id, insts, epr_count=req.epr_count)
 
     @event_handler
     def handle_request_inactive(self, event: RequestInactiveEvent) -> None:
@@ -93,19 +94,14 @@ class ProactiveRoutingController(RoutingController):
             return
 
         # Send PATH_DELETE.
-        rp = unwrap(req.rp)
-        self.uninstall_path(rp)
+        ctrl_data: _CtrlData = req.ctrl_data
+        self.path_delete(ctrl_data.iph)
 
         # If the network uses buffer-space multiplexing scheme, release the committed resources after fib_erase_delay.
-        if self.ru is not None:
-            demands = cast(PathDemands, rp.ctrl_data)
-            demands.release()
+        if self.ru:
+            ctrl_data.demands.release()
 
-    @override
     def _populate_mv(self, insts: Sequence[PathInstructions], input: MultiplexingVectorInput) -> None:
-        if self.ru is None:
-            return
-
         if len(insts) > 1 and input == "max":
             self._mv_divide(insts)
             return
@@ -146,3 +142,8 @@ class ProactiveRoutingController(RoutingController):
             return [input, input] * (len(route) - 1)
 
         return input
+
+
+class _CtrlData:
+    iph: RoutingController.InsertedPathHandle
+    demands: PathDemands

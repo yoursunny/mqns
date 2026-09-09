@@ -1,6 +1,6 @@
 import itertools
 from collections.abc import Mapping, Sequence
-from typing import Any, Final, Literal, Protocol, TypedDict, Unpack
+from typing import Final, Literal, Protocol, TypedDict, Unpack
 
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
@@ -8,7 +8,6 @@ from mqns.network.fw.message import MultiplexingVector, PathInstructions
 from mqns.network.fw.swap_sequence import SwapSequenceInput, parse_swap_sequence
 from mqns.network.route import RouteQueryResult
 from mqns.simulator import Time
-from mqns.utils import log
 
 type MultiplexingVectorInput = Literal["max"] | int | MultiplexingVector
 """
@@ -71,8 +70,6 @@ class ComputeRoutesContext(Protocol):
         """
         ...
 
-    def populate_mv(self, insts: Sequence[PathInstructions], input: MultiplexingVectorInput) -> None: ...
-
 
 class RoutingPath:
     """
@@ -133,11 +130,6 @@ class RoutingPath:
 
     _computed_paths: Sequence[PathInstructions] | None = None
 
-    ctrl_data: Any
-    """
-    Arbitrary data used by the controller.
-    """
-
     def __init__(self, src: str, dst: str, /, **kwargs: Unpack[RoutingPathInitArgs]):
         """
         Constructor.
@@ -174,7 +166,7 @@ class RoutingPath:
         kwargs["static"] = paths
         return RoutingPath(paths[0][0], paths[0][-1], **kwargs)
 
-    def list_paths(self, ctx: ComputeRoutesContext, *, recompute: bool) -> Sequence[PathInstructions]:
+    def compute_paths(self, ctx: ComputeRoutesContext) -> list[PathInstructions]:
         """
         Compute and return a list of path instructions.
 
@@ -182,25 +174,11 @@ class RoutingPath:
 
         * ``self.req_id`` and ``self.path_id`` are assigned to non-negative values.
 
-        Args:
-            recompute: If False, use previously computed results if available.
-
-        Returns:
-            A list of path instructions.
-        """
-        assert self.req_id >= 0
-        assert self.path_id >= 0
-        if recompute or self._computed_paths is None:
-            self._computed_paths = self.compute_paths(ctx)
-        return self._computed_paths
-
-    def compute_paths(self, ctx: ComputeRoutesContext) -> Sequence[PathInstructions]:
-        """
-        Compute path instructions.
-
         Returns:
             List of path instructions.
         """
+        assert self.req_id >= 0
+        assert self.path_id >= 0
 
         # Compute shortest paths.
         if self.static_paths:
@@ -211,10 +189,8 @@ class RoutingPath:
 
         insts: list[PathInstructions] = []
         for path_id, path in enumerate(paths, start=self.path_id):
-            log.debug("ROUTING: Computed path #%s: %s", path_id, path)
             insts.append(self._make_inst(ctx, path_id, path))
 
-        ctx.populate_mv(insts, self.bufferspace_mv)
         return insts
 
     def _make_inst(

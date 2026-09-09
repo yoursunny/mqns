@@ -15,10 +15,12 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from collections import defaultdict
 from typing import cast, override
 
 from mqns.entity.cchannel import ClassicPacket, classic_cmd_handler
 from mqns.network.fw import RoutingController
+from mqns.network.fw.message import PathInstructions
 from mqns.network.network import (
     Request,
     RequestActiveEvent,
@@ -27,10 +29,10 @@ from mqns.network.network import (
     TimingPhase,
     sync_phase_handler,
 )
+from mqns.network.reactive.ctrl_tls import TopoLinkState
 from mqns.network.reactive.message import LinkStateMsg
-from mqns.network.reactive.routing import ReactiveRoutingPath, ReactiveRoutingPathDef, TopoLinkState
 from mqns.simulator import event_handler, func_to_event
-from mqns.utils import json_encodable
+from mqns.utils import json_encodable, unwrap_cast
 
 
 @json_encodable
@@ -81,6 +83,8 @@ class ReactiveRoutingController(RoutingController):
         Key: request identifier.
         """
 
+        self.next_path_id = 0
+
     @override
     def install(self, node):
         super().install(node)
@@ -93,10 +97,7 @@ class ReactiveRoutingController(RoutingController):
     @event_handler
     def handle_request_active(self, event: RequestActiveEvent) -> None:
         req = event.req
-        if req.rp:
-            raise TypeError("ReactiveRoutingController disallows predefined RoutingPath in Request")
-        req.rp = ReactiveRoutingPath(req)
-        self.prepare_path(req.rp)
+        self.prepare_path(req)
         self._reqs[req.req_id] = req
 
     @event_handler
@@ -134,35 +135,35 @@ class ReactiveRoutingController(RoutingController):
         Attempt to satisfy each active request with available entanglements.
         Repeat multiple rounds until no more requests can be satisfied.
         """
-        satisfied: dict[int, ReactiveRoutingPath] = {}
+        satisfied = defaultdict[int, list[PathInstructions]](list)
         this_round_satisfied = True
         while this_round_satisfied:
             this_round_satisfied = False
             for req in self._reqs.values():
-                path_def = self._try_satisfy(req)
-                if path_def is None:
+                inst = self._try_satisfy(req)
+                if not inst:
                     continue
 
-                if (rp := satisfied.get(req.req_id, None)) is None:
-                    rp = cast(ReactiveRoutingPath, req.rp)
-                    rp.paths.clear()
-                    satisfied[req.req_id] = rp
-
-                rp.paths.append(path_def)
+                satisfied[req.req_id].append(inst)
                 self.cnt.n_satisfy += 1
                 this_round_satisfied = True
 
-        for rp in satisfied.values():
-            self.install_path(rp, recompute=True)
+        for req_id, insts in satisfied.items():
+            self.path_insert(req_id, insts)
 
-    def _try_satisfy(self, req: Request) -> ReactiveRoutingPathDef | None:
+    def _try_satisfy(self, req: Request) -> PathInstructions | None:
         """
         Attempt to satisfy an active request with available entanglements.
         If the routing algorithm returns multiple routes, they will be tried in order.
         """
-        routes = self.net.query_route(req.src, req.dst, error_on_empty=False)
-        for route in routes:
-            if (qubits := self._tls.try_consume(route.path)) is None:
+        insts = unwrap_cast(req.rp).compute_paths(self.route_ctx)
+        for inst in insts:
+            qubits = self._tls.try_consume(inst["route"])
+            if not qubits:
                 continue
-            return route.path, qubits
+
+            inst["reactive_qubits"] = qubits
+            inst["path_id"] = self.next_path_id
+            self.next_path_id += 1
+            return inst
         return None
