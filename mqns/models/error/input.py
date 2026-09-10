@@ -53,8 +53,6 @@ _STR_ERROR_TYPES: dict[str, ErrorModelConstructor] = {
     "DISSIPATION": DissipationErrorModel,
 }
 
-_STR_PARSE_ERROR = f"unrecognized ErrorModelInput string: PERFECT | {'{'}{'|'.join(_STR_ERROR_TYPES)}{'}'}"
-
 
 type ParseErrorStrSetter = Callable[[ErrorModel, float], Any]
 
@@ -70,7 +68,9 @@ def _parse_error_str(input: Sequence[str], value_desc: str, set_onto: ParseError
             m = _STR_ERROR_TYPES[token]()
             value = float(next(it))
         except (KeyError, StopIteration, ValueError):
-            raise ValueError(f"{_STR_PARSE_ERROR}:{value_desc}(float)")
+            raise ValueError(
+                f"unrecognized ErrorModelInput string: PERFECT | {{{'|'.join(_STR_ERROR_TYPES)}}}:{value_desc}(float)"
+            )
 
         set_onto(m, value)
         yield m
@@ -81,10 +81,10 @@ def parse_error_str(input: str, value_desc: str, set_onto: ParseErrorStrSetter) 
     Parse error model from string input.
 
     Args:
-        input: input string, a sequence of tokens delimited by ``:``, where each token
+        input: Input string, a sequence of tokens delimited by ``:``, where each token
                either identifies an error model type or is a float value.
-        value_desc: description of each float value.
-        set_onto: callback function to save the float value onto constructed ``ErrorModel``.
+        value_desc: Description of each float value.
+        set_onto: Callback function to save the float value onto constructed ``ErrorModel``.
 
     Returns:
         ErrorModel, either singular subclass or ``ChainErrorModel``.
@@ -115,15 +115,17 @@ type ErrorModelInputLength = ErrorModelInput[ErrorModelDictLength]
 
 
 def parse_error(
-    input: ErrorModelInputBasic | ErrorModelInputTime | ErrorModelInputLength, dflt: ErrorModelConstructor, dflt_t: float
+    input: ErrorModelInputBasic | ErrorModelInputTime | ErrorModelInputLength,
+    dflt: ErrorModelConstructor,
+    dflt_t: float,
 ) -> ErrorModel:
     """
     Parse error model input.
 
     Args:
-        input: input parameter.
-        dflt: default ``ErrorModel`` subclass type.
-        dflt_t: default ``t`` or ``length`` parameter; -1 if time/length based decay is unsupported.
+        input: Input parameter.
+        dflt: Default ``ErrorModel`` subclass type.
+        dflt_t: Default ``t`` or ``length`` parameter; -1 if time/length based decay is unsupported.
 
     The input parameter could be one of:
 

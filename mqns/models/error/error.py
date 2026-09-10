@@ -46,7 +46,7 @@ class ErrorModel(ABC):
         Set survival probability.
 
         Args:
-            p_survival: survival probability.
+            p_survival: Survival probability.
         """
 
     @overload
@@ -55,7 +55,7 @@ class ErrorModel(ABC):
         Set error probability.
 
         Args:
-            p_error: error probability.
+            p_error: Error probability.
         """
 
     @overload
@@ -64,8 +64,8 @@ class ErrorModel(ABC):
         Set time based decay.
 
         Args:
-            t: duration stored in memory, in seconds.
-            rate: decoherence rate in Hz; ``None`` to reuse last value.
+            t: Duration stored in memory, in seconds.
+            rate: Decoherence rate in Hz; ``None`` to reuse last value.
 
         It's possible to use other time units, as long as ``t`` and ``rate`` are inverse of each other.
         """
@@ -76,8 +76,8 @@ class ErrorModel(ABC):
         Set length based decay.
 
         Args:
-            length: distance traversed in channel, in km.
-            rate: decoherence rate in ``km^-1``; ``None`` to reuse last value.
+            length: Distance traversed in channel, in km.
+            rate: Decoherence rate in ``km^-1``; ``None`` to reuse last value.
 
         It's possible to use other length units, as long as ``length`` and ``rate`` are inverse of each other.
         """
