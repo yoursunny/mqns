@@ -5,8 +5,7 @@ from typing import TYPE_CHECKING, Literal, override
 from mqns.entity.memory import MemoryQubit, PathDirection, QubitState
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import Entanglement
-from mqns.network.fw import FibPath
-from mqns.network.fw.message import PathInstructions, validate_path_instructions
+from mqns.network.fw import FibPath, PathInstructions, validate_path_instructions
 from mqns.network.fw.select import (
     MemoryEprTuple,
     call_select,

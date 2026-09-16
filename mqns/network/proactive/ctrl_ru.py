@@ -5,7 +5,7 @@ from typing import Final
 from mqns.entity.memory import QuantumMemory
 from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
-from mqns.network.fw.message import PathInstructions
+from mqns.network.fw import PathInstructions
 from mqns.network.network import QuantumNetwork
 from mqns.network.proactive.fw_nb import to_fib_erase_delay
 from mqns.simulator import Simulator, Time, func_to_event
@@ -130,9 +130,6 @@ class PathDemands:
 
     def _add_node(self, node: str, neighbor: str, n: int) -> None:
         ncu = self.ru.nodes[node].channels[neighbor]
-        if n == 0:
-            n = ncu.n_qubits
-
         demand = self.demands.get(ncu, 0) + n
         if demand > ncu.unallocated_qubits:
             self.violations.add(ncu.name)

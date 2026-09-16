@@ -145,8 +145,11 @@ def validate_path_instructions(
 
     if bufferspace not in (None, "bufferspace_mv" in inst):
         raise ValueError(f"bufferspace_mv must be {'present' if bufferspace else 'absent'}")
-    if "bufferspace_mv" in inst and len(inst["bufferspace_mv"]) != 2 * (n - 1):
-        raise ValueError("bufferspace_mv does not match route length")
+    if "bufferspace_mv" in inst:
+        if len(inst["bufferspace_mv"]) != 2 * (n - 1):
+            raise ValueError("bufferspace_mv does not match route length")
+        if min(inst["bufferspace_mv"]) <= 0:
+            raise ValueError("bufferspace_mv must be positive")
 
     if reactive not in (None, "reactive_qubits" in inst):
         raise ValueError(f"reactive_qubits must be {'present' if reactive else 'absent'}")

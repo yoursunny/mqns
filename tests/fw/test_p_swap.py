@@ -12,7 +12,7 @@ from mqns.entity.timer import Timer
 from mqns.models.delay import ConstantDelayModel
 from mqns.models.epr import Entanglement, MixedStateEntanglement
 from mqns.models.error import PerfectErrorModel
-from mqns.network.fw import Fib, Forwarder, MemoryEprTuple, RoutingPathMulti, RoutingPathStatic
+from mqns.network.fw import Fib, FibPath, Forwarder, MemoryEprTuple, RoutingPath
 from mqns.network.network import TimingModeSync
 from mqns.network.proactive import MuxSchemeBufferSpace, MuxSchemeDynamicEpr, MuxSchemeStatistical, ProactiveForwarder
 from mqns.network.protocol.consumer import Consumer, RequestCounters
@@ -36,17 +36,18 @@ def test_3_disabled():
     net, simulator = build_linear_network(3, fw={"p_swap": 1.0})
     fwA, fwB, fwC = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    net.add_request(rp := RoutingPathStatic("ABC", swap=[0, 0, 0]))
+    net.add_request(rp := RoutingPath.static("ABC", swap=[0, 0, 0]))
 
     def check_fib_entries():
-        for fw in (fwA, fwB, fwC):
-            fp = fw.fib.get_path(rp.path_id)
+        for fw in fwA, fwB, fwC:
+            fr = fw.fib.get_req(rp.req_id)
+            assert len(fr.paths) == 1
+            fp = fr.paths[0]
             assert fp.own_is_end_node
 
     simulator.sched(func_to_event(simulator.time(sec=2.0), check_fib_entries))
     provide_entanglements(
-        (1.001, fwA, fwB),
-        (1.002, fwB, fwC),
+        ((1.001, 1.002), (fwA, fwB, fwC)),
     )
     simulator.run()
     print_node_counters(net)
@@ -80,7 +81,7 @@ def test_3_ssq(ssq: MuxSchemeBufferSpace.SelectSwapQubit | None, addrs: list[int
     )
     fwA, fwB, fwC = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    net.add_request(RoutingPathStatic("ABC"))
+    net.add_request(RoutingPath.static("ABC"))
     provide_entanglements(
         (1.000, fwA, fwB),  # decohere at 1.090
         (1.001, fwA, fwB),  # decohere at 1.091
@@ -133,7 +134,7 @@ def test_3_decohere(swap_delay: float, n_consumed: int):
     net, simulator = build_linear_network(3, t_cohere=0.002, fw={"p_swap": 1.0, "swap_delay": swap_delay}, end_time=2)
     fwA, fwB, fwC = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    net.add_request(rp := RoutingPathStatic("ABC"))
+    net.add_request(rp := RoutingPath.static("ABC"))
     provide_entanglements(
         (1, fwA, fwB),
         (1, fwB, fwC),
@@ -181,7 +182,7 @@ def test_3_waittime(etg_sec: tuple[float, float], swap_delay: float, n_consumed:
     net, simulator = build_linear_network(3, t_cohere=0.006, fw={"p_swap": 1.0, "swap_delay": swap_delay}, end_time=1.010)
     fwA, fwB, fwC = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    net.add_request(rp := RoutingPathStatic("ABC", swap_cutoff=[0.002, 0.004]))
+    net.add_request(rp := RoutingPath.static("ABC", swap_cutoff=[0.002, 0.004]))
     provide_entanglements(
         (etg_sec[0], fwA, fwB),
         (etg_sec[1], fwB, fwC),
@@ -235,7 +236,7 @@ def test_4_sync(t_ext: float, expected: tuple[int, int, int, int]):
     net, simulator = build_linear_network(4, t_cohere=0.015000, fw={"p_swap": 1.0}, timing=timing, end_time=0.029999)
     fwA, fwB, fwC, fwD = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    net.add_request(rp := RoutingPathStatic("ABCD", swap=[2, 0, 1, 2]))
+    net.add_request(rp := RoutingPath.static("ABCD", swap=[2, 0, 1, 2]))
     provide_entanglements(
         ([0.001000] * 3, (fwA, fwB, fwC, fwD)),
     )
@@ -256,7 +257,7 @@ def test_4_asap(ps3: int, etg_ms: tuple[int, int, int]):
     fwA, fwB, fwC, fwD = (node.get_app(ProactiveForwarder) for node in net.nodes)
     fwC.swap.ps = ps3
 
-    net.add_request(rp := RoutingPathStatic("ABCD"))
+    net.add_request(rp := RoutingPath.static("ABCD"))
     provide_entanglements(
         (etg_ms, (fwA, fwB, fwC, fwD)),
         transform_t=lambda ms: 1 + ms / 1000,
@@ -369,7 +370,7 @@ def test_4_delayed(
     timer = Timer("save_counters", start_time=1.018, end_time=1.088, step_time=0.010, trigger_func=save_counter)
     timer.install(simulator)
 
-    net.add_request(rp := RoutingPathStatic("ABCD"))
+    net.add_request(rp := RoutingPath.static("ABCD"))
     provide_entanglements(
         (1.000, fwA, fwB),
         (1.000, fwC, fwD),
@@ -428,7 +429,7 @@ def test_4_decohere(swap_delay: float, n_consumed: int):
     net, simulator = build_linear_network(4, t_cohere=0.003, fw={"p_swap": 1.0, "swap_delay": swap_delay}, end_time=2)
     fwA, fwB, fwC, fwD = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    net.add_request(rp := RoutingPathStatic("ABCD"))
+    net.add_request(rp := RoutingPath.static("ABCD"))
     provide_entanglements(
         ([1.000] * 3, (fwA, fwB, fwC, fwD)),
     )
@@ -455,7 +456,7 @@ def test_5_asap(
     fwA, fwB, fwC, fwD, fwE = (node.get_app(ProactiveForwarder) for node in net.nodes)
     fwC.swap.ps = ps3
 
-    net.add_request(rp := RoutingPathStatic("ABCDE"))
+    net.add_request(rp := RoutingPath.static("ABCDE"))
     provide_entanglements(
         (etg_ms, (fwA, fwB, fwC, fwD, fwE)),
         transform_t=lambda ms: 1 + ms / 1000,
@@ -487,7 +488,7 @@ def test_5_sequential(swap: Sequence[int], su_lower: Sequence[int], etg_ms: tupl
     net, simulator = build_linear_network(5, fw={"p_swap": 1.0})
     fwA, fwB, fwC, fwD, fwE = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    net.add_request(rp := RoutingPathStatic("ABCDE", swap=swap))
+    net.add_request(rp := RoutingPath.static("ABCDE", swap=swap))
     provide_entanglements(
         (etg_ms, (fwA, fwB, fwC, fwD, fwE)),
         transform_t=lambda ms: 1 + ms / 1000,
@@ -562,7 +563,7 @@ def test_5_decohere(
     fwA, fwB, fwC, fwD, fwE = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
     swap_cutoff = None if cutoffD is None else [-1, -1, -1, -1, cutoffD, cutoffD]
-    net.add_request(rp := RoutingPathStatic("ABCDE", swap_cutoff=swap_cutoff))
+    net.add_request(rp := RoutingPath.static("ABCDE", swap_cutoff=swap_cutoff))
     provide_entanglements(
         (etg_ms, (fwA, fwB, fwC, fwD, fwE)),
         transform_t=lambda ms: 1 + ms / 1000,
@@ -591,10 +592,11 @@ def test_rect2_multipath(has_etg: tuple[int, int, int, int], n_swapped: tuple[in
     net, simulator = build_grid_network(k_paths=2, fw={"p_swap": 1.0})
     fwA, fwB, fwC, fwD = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    net.add_request(rp := RoutingPathMulti("A", "D"))
+    net.add_request(rp := RoutingPath("A", "D"))
 
     def check_fib_entries():
-        routes = {"-".join(fwA.fib.get_path(path_id).route) for path_id in (rp.path_id, rp.path_id + 1)}
+        fr = fwA.fib.get_req(rp.req_id)
+        routes = {"-".join(fp.route) for fp in fr.paths}
         assert routes == {"A-B-D", "A-C-D"}
 
     simulator.sched(func_to_event(simulator.time(sec=2.0), check_fib_entries))
@@ -632,16 +634,16 @@ def test_rect2_multipath(has_etg: tuple[int, int, int, int], n_swapped: tuple[in
 def test_tree2_dynepr(t_edge_etg: float, selected_path: tuple[int, int], n_consumed: tuple[int, int]):
     """Test MuxSchemeDynamicEpr in tree (height=2) topology."""
 
-    def select_path(path_ids: list[int], epr: Entanglement, fib: Fib) -> int:
-        _ = fib
+    def select_path(path_ids: list[int], epr: Entanglement, fib: Fib) -> int | FibPath:
         if len(path_ids) != 2:
-            chosen = path_ids[0]
-        elif epr.src is fwB.node:  # B-A
-            chosen = (rp0.path_id, rp1.path_id)[selected_path[0]]
+            return path_ids[0]
+
+        if epr.dst is fwA.node:  # B-A
+            req_id = (rp0.req_id, rp1.req_id)[selected_path[0]]
         else:  # A-C
             assert epr.src is fwA.node
-            chosen = (rp0.path_id, rp1.path_id)[selected_path[1]]
-        return chosen
+            req_id = (rp0.req_id, rp1.req_id)[selected_path[1]]
+        return fib.get_req(req_id).paths[0]
 
     net, simulator = build_tree_network(
         fw={"p_swap": 1.0},
@@ -651,8 +653,8 @@ def test_tree2_dynepr(t_edge_etg: float, selected_path: tuple[int, int], n_consu
     )
     fwA, fwB, fwC, fwD, fwE, fwF, fwG = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    net.add_request(rp0 := RoutingPathStatic("DBACF"))
-    net.add_request(rp1 := RoutingPathStatic("EBACG"))
+    net.add_request(rp0 := RoutingPath.static("DBACF"))
+    net.add_request(rp1 := RoutingPath.static("EBACG"))
 
     provide_entanglements(
         (t_edge_etg, fwD, fwB),
@@ -733,8 +735,8 @@ def test_tree2_statistical(
     )
     fwA, fwB, fwC, fwD, fwE, fwF, fwG = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
-    net.add_request(rp0 := RoutingPathStatic("DBACF"))
-    net.add_request(rp1 := RoutingPathStatic("EBACG"))
+    net.add_request(rp0 := RoutingPath.static("DBACF"))
+    net.add_request(rp1 := RoutingPath.static("EBACG"))
 
     edges = ((fwD, fwB), (fwE, fwB), (fwB, fwA), (fwA, fwC), (fwC, fwF), (fwC, fwG))
     provide_entanglements(
@@ -822,8 +824,8 @@ def test_tree3_statistical(
     )
     fws = {node.name: node.get_app(ProactiveForwarder) for node in net.nodes}
 
-    net.add_request(rp0 := RoutingPathStatic(path0))
-    net.add_request(rp1 := RoutingPathStatic(path1))
+    net.add_request(rp0 := RoutingPath.static(path0))
+    net.add_request(rp1 := RoutingPath.static(path1))
 
     def expand_etgs():
         for t, edges in enumerate(etgs.split(":")):

@@ -4,7 +4,8 @@ from typing import Literal, NamedTuple, override
 
 from tap import Tap
 
-from mqns.network.builder import EprTypeLiteral, NetworkBuilder, tap_configure
+from mqns.models.epr import EprTypeLiteral
+from mqns.network.builder import NetworkBuilder, tap_configure
 from mqns.network.fw import Forwarder, ForwarderCounters
 from mqns.network.protocol.classicbridge import ClassicBridge
 from mqns.network.protocol.consumer import RequestCounters

@@ -7,7 +7,7 @@ from collections.abc import Iterable, Mapping, Sequence
 import pytest
 
 from mqns.entity.memory import MemoryQubit, PathDirection, QuantumMemory, QubitState
-from mqns.network.fw import RoutingPathStatic
+from mqns.network.fw import RoutingPath
 from mqns.network.network import Request
 from mqns.network.proactive import ProactiveForwarder
 from mqns.network.protocol.consumer import RequestCounters
@@ -62,7 +62,7 @@ def test_link_rounds(monkeypatch: pytest.MonkeyPatch, n_rounds: int, purif_succe
     fwA = net.get_node("A").get_app(ProactiveForwarder)
     fwB = net.get_node("B").get_app(ProactiveForwarder)
 
-    net.add_request(rp := RoutingPathStatic("AB", swap=[0, 0], purif={"A-B": n_rounds}))
+    net.add_request(rp := RoutingPath.static("AB", swap=[0, 0], purif={"A-B": n_rounds}))
     provide_entanglements(*((1.001 + i / 1000, fwA, fwB) for i in range(n_etg)))
     force_purify_outcome(monkeypatch, *(True if i > 0 else False for i in purif_success))
     simulator.run()
@@ -156,7 +156,7 @@ def test_3_path_delete(
 
     net.add_request(
         Request(
-            RoutingPathStatic("ABC", path_id=0, swap_cutoff=[cutoff, -1], purif=purif),
+            RoutingPath.static("ABC", swap_cutoff=[cutoff, -1], purif=purif),
             active_period=(Time.MIN, t_delete),
         )
     )
@@ -197,7 +197,7 @@ def test_4_l2r(monkeypatch: pytest.MonkeyPatch):
     fwA, fwB, fwC, fwD = (node.get_app(ProactiveForwarder) for node in net.nodes)
 
     net.add_request(
-        rp := RoutingPathStatic(
+        rp := RoutingPath.static(
             "ABCD",
             swap=[2, 0, 1, 2],
             purif={"A-B": 1, "B-C": 1, "C-D": 1, "A-C": 1, "A-D": 1},

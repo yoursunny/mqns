@@ -2,7 +2,7 @@ import math
 from typing import cast
 
 from mqns.entity.base_channel import default_light_speed
-from mqns.network.fw.message import SwapSequence
+from mqns.network.fw import SwapSequence
 
 
 def compute_vora_swap_sequence(

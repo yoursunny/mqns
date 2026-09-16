@@ -25,14 +25,12 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import copy
 from collections.abc import Sequence
-from typing import Unpack, final, override
+from typing import Final, Unpack, final, override
 
 from mqns.entity.base_channel import BaseChannel, BaseChannelInitKwargs, calc_transmission_prob
 from mqns.entity.node import QNode
-from mqns.entity.qchannel.link_arch import LinkArch
-from mqns.entity.qchannel.link_arch_dim import LinkArchDimBkSeq
+from mqns.entity.qchannel.link_arch_input import LinkArchInput, parse_link_arch
 from mqns.models.core import QuantumModel
 from mqns.models.epr import Entanglement
 from mqns.models.error import DepolarErrorModel
@@ -41,7 +39,7 @@ from mqns.simulator import Event, Time
 
 
 class QuantumChannelInitKwargs(BaseChannelInitKwargs, total=False):
-    link_arch: LinkArch
+    link_arch: LinkArchInput
     """Link architecture model."""
     alpha: float
     """
@@ -95,9 +93,8 @@ class QuantumChannel(BaseChannel[QNode]):
     def __init__(self, name: str, **kwargs: Unpack[QuantumChannelInitKwargs]):
         super().__init__(name, **kwargs)
 
-        link_arch = kwargs.get("link_arch", None)
-        self.link_arch = copy.deepcopy(link_arch) if link_arch else LinkArchDimBkSeq()
-        """Link architecture model (separate instance per channel)."""
+        self.link_arch: Final = parse_link_arch(kwargs.get("link_arch", None))
+        """Link architecture model."""
 
         self.alpha = kwargs.get("alpha", 0.0)
         assert self.alpha >= 0

@@ -2,8 +2,16 @@ from typing import Final, cast
 
 from mqns.entity.memory import MemoryQubit
 from mqns.entity.node import QNode
-from mqns.network.fw import FibPath, FibRequest, ForwarderNorthbound, fw_control_cmd_handler
-from mqns.network.fw.message import PathInsertMsg, PathInstructions, QubitKeySequence, validate_path_instructions
+from mqns.network.fw import (
+    FibPath,
+    FibRequest,
+    ForwarderNorthbound,
+    PathInsertMsg,
+    PathInstructions,
+    QubitKeySequence,
+    fw_control_cmd_handler,
+    validate_path_instructions,
+)
 from mqns.network.reactive.fw_plan import ReactivePlanner
 from mqns.network.reactive.message import LinkStateEntry, LinkStateMsg
 from mqns.simulator import Time

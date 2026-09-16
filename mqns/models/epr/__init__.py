@@ -17,6 +17,7 @@
 
 from mqns.models.epr.bell import BellStateEntanglement
 from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
+from mqns.models.epr.input import EPR_TYPE_MAP, EprTypeInput, EprTypeLiteral, parse_epr_type
 from mqns.models.epr.mixed import MixedStateEntanglement
 from mqns.models.epr.werner import WernerStateEntanglement
 
@@ -24,9 +25,19 @@ __all__ = [
     "BellStateEntanglement",
     "Entanglement",
     "EntanglementInitKwargs",
+    "EPR_TYPE_MAP",
+    "EprTypeInput",
+    "EprTypeLiteral",
     "MixedStateEntanglement",
+    "parse_epr_type",
     "WernerStateEntanglement",
 ]
 
 for name in __all__:
+    if name in (
+        "EPR_TYPE_MAP",
+        "EprTypeInput",
+        "EprTypeLiteral",
+    ):
+        continue
     globals()[name].__module__ = __name__

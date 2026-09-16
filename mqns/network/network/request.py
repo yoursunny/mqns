@@ -1,6 +1,6 @@
 from collections.abc import MutableSet
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Final, Self, TypedDict, Unpack, cast, final, overload, override
+from typing import TYPE_CHECKING, Any, Final, Self, TypedDict, Unpack, cast, final, overload, override
 
 from mqns.entity.node import Controller, NodePair, split_node_pair
 from mqns.simulator import Event, EventHandleSlot, Time
@@ -128,6 +128,9 @@ class Request:
     rp_args: "RoutingPathInitArgs"
     """Routing path parameters specified by scenario and used by controller."""
 
+    ctrl_data: Any
+    """Arbitrary data used by the controller."""
+
     @overload
     def __init__(self, np: NodePair, /, **kwargs: Unpack[RequestInitArgs]):
         """
@@ -181,11 +184,6 @@ class Request:
 
         The routing path will be inserted to the centralized controller at specified times.
         If the network does not have a centralized controller, this has no effect.
-
-        ``RoutingPath`` subclass is chosen based on network configuration:
-
-        * If the network uses Yen routing algorithm, ``RoutingPathMulti``.
-        * Otherwise, ``RoutingPathSingle``.
         """
 
     def path(self, rp: "RoutingPath|None" = None, /, **kwargs: Unpack["RoutingPathInitArgs"]) -> Self:

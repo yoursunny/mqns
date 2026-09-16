@@ -15,7 +15,7 @@ from mqns.models.core.operator import OPERATOR_PAULI_I, OPERATOR_PAULI_X, OPERAT
 from mqns.models.core.state import ATOL
 from mqns.models.error.error import ErrorModel
 
-OP_IZXY = [OPERATOR_PAULI_I, OPERATOR_PAULI_Z, OPERATOR_PAULI_X, OPERATOR_PAULI_Y]
+_OP_IZXY = OPERATOR_PAULI_I, OPERATOR_PAULI_Z, OPERATOR_PAULI_X, OPERATOR_PAULI_Y
 
 
 class PauliErrorModelBase(ErrorModel):
@@ -71,10 +71,10 @@ class PauliErrorModel(PauliErrorModelBase):
         Constructor.
 
         Args:
-            name: name of this error model.
-            z: relative weight of Z-gate noise component.
-            x: relative weight of X-gate noise component.
-            y: relative weight of Y-gate noise component.
+            name: Name of this error model.
+            z: Relative weight of Z-gate noise component.
+            x: Relative weight of X-gate noise component.
+            y: Relative weight of Y-gate noise component.
         """
         super().__init__(name)
 
@@ -109,7 +109,7 @@ class PauliErrorModel(PauliErrorModelBase):
         """
         ops: list[Operator] = []
         prob: list[float] = []
-        for o, p in zip(OP_IZXY, cast(Iterable[float], self.probv), strict=True):
+        for o, p in zip(_OP_IZXY, cast(Iterable[np.float64], self.probv), strict=True):
             if p > 0:
                 ops.append(o)
                 prob.append(p)

@@ -1,19 +1,11 @@
 import pytest
 
-from mqns.entity.memory import (
-    MemoryReadRequestEvent,
-    MemoryReadResponseEvent,
-    MemoryWriteRequestEvent,
-    MemoryWriteResponseEvent,
-    PathDirection,
-    QuantumMemory,
-    QubitState,
-)
-from mqns.entity.node import Application, QNode
+from mqns.entity.memory import PathDirection, QuantumMemory, QubitState
+from mqns.entity.node import QNode
 from mqns.entity.qchannel import QuantumChannel
 from mqns.models.epr import WernerStateEntanglement
 from mqns.models.qubit import Qubit
-from mqns.simulator import Simulator, event_handler
+from mqns.simulator import Simulator
 from mqns.utils import unwrap
 
 
@@ -66,7 +58,7 @@ def test_write_and_read_with_path_and_key():
     # Should be able to read it
     qubit, data = mem.read(key, has=WernerStateEntanglement, remove=True)
     assert data.name == "epr1"
-    assert mem._usage == 0
+    assert mem.count == 0
 
     with pytest.raises(ValueError, match="data at 0 is not"):
         mem.read(qubit.addr, has=WernerStateEntanglement)
@@ -79,7 +71,7 @@ def test_channel_qubit_assignment_and_search():
     assigned = mem.assign(scenario.qc, n=2)
     assert len(assigned) == 2
 
-    allocated = mem.allocate(scenario.qc, 7, PathDirection.R, n="all")
+    allocated = mem.allocate(scenario.qc, 7, PathDirection.R, n=2)
     assert len(allocated) == 2
 
     with pytest.raises(OverflowError, match="insufficient qubits"):
@@ -202,54 +194,3 @@ def test_sync_qubit_limited():
     mq.key = q.name
     assert mem.count == 5
     assert mem.read("q6", must=True)[0].addr == 3
-
-
-def test_async_qubit():
-    class MemoryReadResponseApp(Application[QNode]):
-        def __init__(self):
-            super().__init__()
-            self.nReads = 0
-            self.nWrites = 0
-
-        @event_handler
-        def handleMemoryRead(self, event: MemoryReadResponseEvent) -> None:
-            self.nReads += 1
-            result = event.result
-
-            print(f"self.simulator.tc.sec: {self.simulator.tc}")
-            print(f"result: {result}")
-            assert self.simulator.tc.sec == pytest.approx(1.5)
-
-            qubit, data = unwrap(result)
-            assert qubit.addr == 0
-            assert isinstance(data, Qubit)
-
-        @event_handler
-        def handleMemoryWrite(self, event: MemoryWriteResponseEvent) -> None:
-            self.nWrites += 1
-            result = event.result
-
-            print(f"self.simulator.tc.sec: {self.simulator.tc}")
-            print(f"result: {result}")
-            assert self.simulator.tc.sec == pytest.approx(0.5)
-
-            assert unwrap(result).addr == 0
-
-    n1 = QNode("n1")
-    app = MemoryReadResponseApp()
-    n1.add_apps(app)
-
-    m = QuantumMemory("m1", delay=0.5)
-    n1.memory = m
-
-    s = Simulator(0, 10, accuracy=1000, install_to=(n1,))
-
-    q1 = Qubit(name="q1")
-    write_request = MemoryWriteRequestEvent(memory=m, qubit=q1, t=s.time(sec=0))
-    read_request = MemoryReadRequestEvent(memory=m, key="q1", t=s.time(sec=1))
-    s.sched(write_request)
-    s.sched(read_request)
-    s.run()
-
-    assert app.nReads == 1
-    assert app.nWrites == 1

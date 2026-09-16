@@ -334,7 +334,7 @@ def test_chain():
     assert pytest.raises(TypeError, lambda: chain.p_survival)
     assert pytest.raises(TypeError, lambda: chain.p_error)
 
-    assert chain.errors == [e0, e1]
+    assert list(chain.errors) == [e0, e1]
     assert e0.p_survival == pytest.approx(0.9, abs=1e-6)
     assert e1.p_survival == pytest.approx(0.9, abs=1e-6)
 

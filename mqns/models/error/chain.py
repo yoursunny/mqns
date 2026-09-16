@@ -1,5 +1,5 @@
-from collections.abc import Iterable
-from typing import Self, override
+from collections.abc import Iterable, Sequence
+from typing import Final, Self, override
 
 from mqns.models.error.error import ErrorModel
 
@@ -20,9 +20,9 @@ class ChainErrorModel(ErrorModel):
         Constructor:
 
         Args:
-            errors: list of error models applied in sequential order.
+            errors: List of error models applied in sequential order.
         """
-        self.errors = list(errors)
+        self.errors: Final[Sequence[ErrorModel]] = tuple(errors)
         super().__init__("CHAIN(" + ",".join(m.name for m in self.errors) + ")")
 
     @property

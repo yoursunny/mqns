@@ -27,7 +27,7 @@ How to use it:
 
 2) (Optional) Customize routing + multiplexing:
    Edit the corresponding entry in the `SCENARIOS` dict:
-     - `install_paths`: what the controller installs (RoutingPathSingle / RoutingPathStatic / RoutingPathMulti)
+     - `install_paths`: what the controller installs (RoutingPath)
      - `mux`: which multiplexing scheme is used (Statistical or Buffer-Space here)
      - `route_algorithm`: which routing algorithm is used (Dijkstra or Yen)
      - `measured_sources`: which source nodes to read counters from for reporting
@@ -49,13 +49,7 @@ import numpy as np
 from tap import Tap
 
 from mqns.network.builder import CTRL_DELAY, NetworkBuilder
-from mqns.network.fw import (
-    MultiplexingVector,
-    RoutingPath,
-    RoutingPathMulti,
-    RoutingPathSingle,
-    RoutingPathStatic,
-)
+from mqns.network.fw import MultiplexingVector, RoutingPath
 from mqns.network.network import QuantumNetwork
 from mqns.network.network.timing import TimingModeSync
 from mqns.network.proactive import MuxScheme, MuxSchemeBufferSpace, MuxSchemeStatistical
@@ -144,8 +138,8 @@ CAP_DEFAULT = 2
 #
 # Notes:
 # - Statistical mux: best-effort, no manual allocation.
-# - Buffer-space mux: you can pass explicit MultiplexingVectors in RoutingPathStatic.
-# - Single-request multipath: uses RoutingPathMulti + YenRouteAlgorithm.
+# - Buffer-space mux: you can pass explicit MultiplexingVectors in RoutingPath.
+# - Single-request multipath: uses YenRouteAlgorithm.
 # =============================================================================
 @dataclass(frozen=True)
 class Scenario:
@@ -191,7 +185,7 @@ SCENARIOS: dict[str, Scenario] = {
     # ------------------------------------------------------------
     "one_flow_buffer_space_single": Scenario(
         # let routing algorithm compute paths
-        install_paths=[RoutingPathSingle("S1", "D1", swap=SWAPPING_POLICY)],
+        install_paths=[RoutingPath("S1", "D1", swap=SWAPPING_POLICY)],
         mux=_mux_buffer_space(),
         route_algorithm=DijkstraRouteAlgorithm(),
         measured_sources=["S1"],
@@ -204,8 +198,8 @@ SCENARIOS: dict[str, Scenario] = {
     "two_flows_statistical_single": Scenario(
         # let routing algorithm compute paths
         install_paths=[
-            RoutingPathSingle("S1", "D1", swap=SWAPPING_POLICY),
-            RoutingPathSingle("S2", "D2", swap=SWAPPING_POLICY),
+            RoutingPath("S1", "D1", swap=SWAPPING_POLICY),
+            RoutingPath("S2", "D2", swap=SWAPPING_POLICY),
         ],
         mux=_mux_statistical(),
         route_algorithm=DijkstraRouteAlgorithm(),
@@ -219,8 +213,8 @@ SCENARIOS: dict[str, Scenario] = {
     "two_flows_buffer_space_single": Scenario(
         # manually set paths + qubit allocation
         install_paths=[
-            RoutingPathStatic(ROUTE_S1_D1, bufferspace_mv=_mv_two_flows_equal_share(ROUTE_S1_D1), swap=SWAPPING_POLICY),
-            RoutingPathStatic(ROUTE_S2_D2, bufferspace_mv=_mv_two_flows_equal_share(ROUTE_S2_D2), swap=SWAPPING_POLICY),
+            RoutingPath.static(ROUTE_S1_D1, bufferspace_mv=_mv_two_flows_equal_share(ROUTE_S1_D1), swap=SWAPPING_POLICY),
+            RoutingPath.static(ROUTE_S2_D2, bufferspace_mv=_mv_two_flows_equal_share(ROUTE_S2_D2), swap=SWAPPING_POLICY),
         ],
         mux=_mux_buffer_space(),
         route_algorithm=DijkstraRouteAlgorithm(),
@@ -233,7 +227,7 @@ SCENARIOS: dict[str, Scenario] = {
     # Only compatible with buffer-space multuplexing. The qubits are divided among all paths that share the qchannel.
     # ------------------------------------------------------------
     "single_request_multipath": Scenario(
-        install_paths=[RoutingPathMulti("S1", "D1", swap=SWAPPING_POLICY)],
+        install_paths=[RoutingPath("S1", "D1", swap=SWAPPING_POLICY)],
         mux=_mux_buffer_space(),
         route_algorithm=YenRouteAlgorithm(k_paths=2),  # number of paths. Default is 3.
         measured_sources=["S1"],

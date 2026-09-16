@@ -32,7 +32,7 @@ from mqns.entity.base_channel import BaseChannel
 from mqns.entity.cchannel import ClassicChannel
 from mqns.entity.node import Controller, Node, QNode
 from mqns.entity.qchannel import QuantumChannel
-from mqns.models.epr import Entanglement, WernerStateEntanglement
+from mqns.models.epr import Entanglement, EprTypeInput, parse_epr_type
 from mqns.network.network.request import Request, RequestActiveEvent, RequestInactiveEvent
 from mqns.network.network.timing import TimingMode, TimingModeAsync
 from mqns.network.route import DijkstraRouteAlgorithm, RouteAlgorithm, RouteQueryResult
@@ -61,7 +61,7 @@ def _get_channel[C: BaseChannel](d: dict[tuple[str, str], C], a: str, b: str) ->
 
 
 class QuantumNetwork:
-    """QuantumNetwork includes quantum nodes, quantum and classical channels, arranged in a given topology"""
+    """QuantumNetwork includes quantum nodes, quantum and classical channels, arranged in a given topology."""
 
     timing: Final[TimingMode]
     """Network-wide application timing mode."""
@@ -76,7 +76,7 @@ class QuantumNetwork:
         classic_topo: ClassicTopology | None = None,
         route: RouteAlgorithm[QNode, QuantumChannel] | None = None,
         timing: TimingMode = TimingModeAsync(),
-        epr_type: type[Entanglement] = WernerStateEntanglement,
+        epr_type: EprTypeInput = None,
     ):
         """
         Args:
@@ -86,10 +86,10 @@ class QuantumNetwork:
             timing: Network-wide application timing mode.
             epr_type: Network-wide entanglement type.
         """
-        assert getattr(epr_type, "__final__", False) is True, f"entanglement type {epr_type} must be marked @final"
-
         self.timing = timing
-        self.epr_type = epr_type
+        self.epr_type = parse_epr_type(epr_type)
+        assert getattr(self.epr_type, "__final__", False) is True, f"entanglement type {epr_type} must be marked @final"
+
         self._controller: Controller | None = None
         self._nodes: dict[str, QNode] = {}
         self._qchannels: dict[tuple[str, str], QuantumChannel] = {}
