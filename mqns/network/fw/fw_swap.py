@@ -1,8 +1,7 @@
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING, ClassVar, NamedTuple, cast, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from mqns.entity.memory import MemoryQubit, QubitState
-from mqns.entity.node import QNode
 from mqns.models.core import QuantumModel
 from mqns.models.delay import DelayModel
 from mqns.models.epr import Entanglement
@@ -15,12 +14,6 @@ from mqns.utils import unwrap, unwrap_cast
 
 if TYPE_CHECKING:
     from mqns.network.fw.forwarder import Forwarder
-
-
-def _intersect_path_ids(a: Iterable[int] | None, b: Iterable[int]) -> list[int]:
-    if a is None:
-        return sorted(b)
-    return sorted(i for i in a if i in b)
 
 
 class _SwapArm(NamedTuple):
@@ -105,7 +98,7 @@ class _SwapTask:
     rc_paths: list[int] | None = None
     """Possible path IDs for rightward classical signaling."""
     q_paths: list[int] | None = None
-    """Possible path IDs for the entanglement."""
+    """Possible path IDs for the entanglement (sorted)."""
 
     l_sent = False
     """Is the left same-rank peer or higher-rank neighbor heralded?"""
@@ -141,8 +134,8 @@ class _SwapTask:
         self.o_started = True
         self.lc_paths = unwrap_cast(la.mq.epr_path_ids)
         self.rc_paths = unwrap_cast(ra.mq.epr_path_ids)
-        self.q_paths = _intersect_path_ids(self.q_paths, self.lc_paths)
-        self.q_paths = _intersect_path_ids(self.q_paths, self.rc_paths)
+        self._update_q_paths(self.lc_paths)
+        self._update_q_paths(self.rc_paths)
 
         # Choose a SwapGroup based on chosen swap arms.
         # If own node is leftmost/rightmost in the SwapGroup, we won't hear from left/right peer.
@@ -196,13 +189,13 @@ class _SwapTask:
             Heralding instructions, if any.
         """
         self._update_expiry(su.expiry)
+        self._update_q_paths(su.q_paths)
 
         sg = self.sg
         if su.swapper == sg.l_adj:  # Message came from left peer.
             self.l_complete = True
             self.lb_key = su.p_key
             self.la_key = su.o_key
-            self.q_paths = _intersect_path_ids(self.q_paths, su.q_paths)
             if su.expiry == 0:
                 # Left peer does not need to hear about the failure they just told us.
                 self.l_sent = True
@@ -210,7 +203,6 @@ class _SwapTask:
             self.r_complete = True
             self.rb_key = su.p_key
             self.ra_key = su.o_key
-            self.q_paths = _intersect_path_ids(self.q_paths, su.q_paths)
             if su.expiry == 0:
                 # Right peer does not need to hear about the failure they just told us.
                 self.r_sent = True
@@ -225,6 +217,13 @@ class _SwapTask:
             self.expiry = expiry
         else:
             self.expiry = min(self.expiry, expiry)
+
+    def _update_q_paths(self, input: Iterable[int]) -> None:
+        if self.q_paths is None:
+            self.q_paths = sorted(input)
+        else:
+            # Intersect q_paths with the input.
+            self.q_paths = [i for i in self.q_paths if i in input]
 
     def _pivot_sg(self) -> None:
         """
@@ -320,7 +319,7 @@ class _SwapTaskExpireEvent(Event):
         self.task = task
 
     @override
-    def invoke(self):
+    def invoke(self) -> None:
         self.task.proc._expire_task(self)
 
     def __repr__(self) -> str:
@@ -383,7 +382,7 @@ class ForwarderSwapProc(ForwarderModule):
         * Value: SwapTask instance.
         """
 
-    def install(self, fw: "Forwarder"):
+    def install(self, fw: "Forwarder") -> None:
         super().install(fw)
 
         if not self.simulator.is_continuous:
@@ -450,7 +449,7 @@ class ForwarderSwapProc(ForwarderModule):
             h.su["path_id"] = fp.path_id
             self.send_msg(self.network.get_node(h.dest), h.su, fp)
 
-    def start(self, mq0: MemoryQubit, mq1: MemoryQubit, fp: FibPath):
+    def start(self, mq0: MemoryQubit, mq1: MemoryQubit, fp: FibPath) -> None:
         """
         Start swapping between two memory qubits.
 
@@ -513,7 +512,7 @@ class ForwarderSwapProc(ForwarderModule):
             task_saved.append(f"task_by_qubit[{arm.o_key}]")
         return task_saved
 
-    def _s_finish(self, arms: Sequence[_SwapArm], fp: FibPath, error_t: Time, task_via_event: _SwapTask):
+    def _s_finish(self, arms: Sequence[_SwapArm], fp: FibPath, error_t: Time, task_via_event: _SwapTask) -> None:
         """
         Complete swapping between two memory qubits.
 
@@ -593,14 +592,14 @@ class ForwarderSwapProc(ForwarderModule):
 
         deposit_at: list[str] = []
         assert new_epr.orig_eprs
-        for attr, key_i in ("src", 0), ("dst", 1):
-            target = cast(QNode, getattr(new_epr, attr))
+        for target_attr, key_i in (new_epr.src, 0), (new_epr.dst, 1):
+            target = unwrap_cast(target_attr)
             key = new_epr.mem_keys[key_i]
             target.get_app(type(self.fw)).swap.remote_swapped[key] = new_epr
             deposit_at.append(f"{target.name}.remote_swapped[{key}]")
         self.log_debug("physical deposit at %s", ", ".join(deposit_at))
 
-    def pop_waiting_su(self, qubit: MemoryQubit):
+    def pop_waiting_su(self, qubit: MemoryQubit) -> None:
         """
         Invoked by ``Forwarder.qubit_is_entangled()`` after QubitEntangledEvent to process buffered SWAP_UPDATE.
 
@@ -799,7 +798,7 @@ class ForwarderSwapProc(ForwarderModule):
         t += self.memory.t_cohere  # delay deletion so that incoming messages can be replied to
         self.simulator.sched(_SwapTaskExpireEvent(task, t=t))
 
-    def _expire_task(self, event: _SwapTaskExpireEvent):
+    def _expire_task(self, event: _SwapTaskExpireEvent) -> None:
         task = event.task
         deleted_from: list[str] = []
         for key in task.la_key, task.ra_key:
