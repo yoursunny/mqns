@@ -19,7 +19,7 @@
 import itertools
 from collections import defaultdict
 from collections.abc import Sequence
-from typing import Final, override
+from typing import Final, cast, override
 
 from mqns.network.fw import MultiplexingVector, MultiplexingVectorInput, PathInstructions, RoutingController
 from mqns.network.network import Request, RequestActiveEvent, RequestInactiveEvent, RequestState
@@ -34,8 +34,28 @@ class ProactiveRoutingController(RoutingController):
     Centralized control plane for proactive routing.
     Works with ``ProactiveForwarder`` on quantum nodes.
 
-    This controller is compatible with both SYNC and SYNC timing modes.
+    This controller is compatible with both ASYNC and SYNC timing modes.
     It can automatically pick up requests added through ``QuantumNetwork``.
+
+    **Resource Admission and Blocking Policy**
+
+    When the network uses buffer-space multiplexing scheme, the controller tracks available qubit
+    resources on each node, and only accepts a request if it does not cause a resource violation.
+    If a request cannot be accepted immediately due to lack of resources:
+
+    * The controller, by default, rejects the request.
+    * If ``drq_cap`` is set to a positive integer, up to ``drq_cap`` requests may be placed in
+      a *deferred request queue*. Whenever a previous request is finished, the controller checks
+      whether the newly available resources would allow some deferred requests can be accepted.
+
+    The ``RoutingPath`` in a request may compute multiple possible paths and its ``multipath`` attribute
+    indicates whether the resource demands are additive or alternative:
+
+    * For ``multipath="all"``, the request must use all paths concurrently.
+      The controller may accept the request only if there are sufficient resources for all computed paths.
+    * For ``multipath="any"``, the request only uses one path.
+      The controller chooses the first path for which there are sufficient resources, and ignores other paths.
+      In other words, if the primary path has insufficient resources, the request could be rerouted onto a secondary path.
     """
 
     ru: ResourceUtilization | None = None
@@ -90,42 +110,48 @@ class ProactiveRoutingController(RoutingController):
 
         # If the network does not use buffer-space multiplexing scheme, accept the request.
         if not self.ru:
-            return self._req_accept(req)
+            if rp.multipath == "any":
+                ctrl_data.insts = insts[:1]
+            self._req_accept(req)
+            return
 
         # If the network uses buffer-space multiplexing scheme:
         # - Populate MultiplexingVector in each PathInstructions.
         # - Gather resource demands from MultiplexingVector.
         self._populate_mv(insts, rp.bufferspace_mv)
-        ctrl_data.demands = demands = self.ru.gather_demands(insts)
+        match rp.multipath:
+            case "all":
+                ctrl_data.demands = self.ru.gather_demands(insts)
+            case "any":
+                ctrl_data.demands = [self.ru.gather_demands([inst]) for inst in insts]
 
         # If there are sufficient resources, accept the request.
-        if not demands.find_violations():
-            return self._req_accept(req)
+        if self._req_accept(req):
+            return
 
         # If the deferred request queue is full, reject the request.
         if (drq_len := len(self.drq)) >= self.drq_cap:
             req.state = RequestState.REJECTED
             self.log_debug(
-                "REQ_REJECT req_id=%s reason=no-resource drq-len=%s | %s | %s | %s", req_id, drq_len, self.ru, demands, insts
+                "REQ_REJECT req_id=%s reason=no-resource drq-len=%s | %s | %s | %s",
+                req_id,
+                drq_len,
+                self.ru,
+                ctrl_data.demands,
+                insts,
             )
         # Otherwise, enqueue the request.
         else:
             req.state = RequestState.DEFERRED
             self.drq[req_id] = req
             self.log_debug(
-                "REQ_DEFER req_id=%s reason=no-resource drq-len=%s | %s | %s | %s", req_id, drq_len, self.ru, demands, insts
+                "REQ_DEFER req_id=%s reason=no-resource drq-len=%s | %s | %s | %s",
+                req_id,
+                drq_len,
+                self.ru,
+                ctrl_data.demands,
+                insts,
             )
-
-    def _req_accept(self, req: Request) -> None:
-        ctrl_data: _CtrlData = req.ctrl_data
-
-        # If the network uses buffer-space multiplexing scheme, commit the resources.
-        if self.ru:
-            ctrl_data.demands.commit()
-
-        # Send PATH_INSERT.
-        ctrl_data.iph = self.path_insert(req.req_id, ctrl_data.insts, epr_count=req.epr_count)
-        ctrl_data.insts.clear()  # no longer needed
 
     @event_handler
     def handle_request_inactive(self, event: RequestInactiveEvent) -> None:
@@ -148,19 +174,44 @@ class ProactiveRoutingController(RoutingController):
 
         # If the network uses buffer-space multiplexing scheme, release the committed resources after fib_erase_delay.
         if self.ru:
-            ctrl_data.demands.release(cb_after=self._drq_retry)
+            cast(PathDemands, ctrl_data.demands).release(cb_after=self._req_drq_retry)
 
-    def _drq_retry(self) -> None:
+    def _req_accept(self, req: Request) -> bool:
+        ctrl_data: _CtrlData = req.ctrl_data
+        insts: list[PathInstructions] | None = None
+
+        # If the network uses buffer-space multiplexing scheme, commit the resources.
+        if self.ru:
+            # The RoutingPath has multipath=all, must have resources for every PathInstructions.
+            if type(demands := ctrl_data.demands) is PathDemands:
+                if demands.commit():
+                    insts = ctrl_data.insts
+            # The RoutingPath has multipath=any, pick one PathInstructions with sufficient resources.
+            else:
+                for inst, demands in zip(ctrl_data.insts, cast(list[PathDemands], ctrl_data.demands), strict=True):
+                    if demands.commit():
+                        insts = [inst]
+                        ctrl_data.demands = demands
+                        break
+            if not insts:
+                return False
+        else:
+            insts = ctrl_data.insts
+
+        # Send PATH_INSERT.
+        ctrl_data.iph = self.path_insert(req.req_id, insts, epr_count=req.epr_count)
+        ctrl_data.insts.clear()  # no longer needed
+        return True
+
+    def _req_drq_retry(self) -> None:
         """
         Retry deferred requests, called after any resource is freed.
         """
         accepted: list[int] = []
         for req_id, req in self.drq.items():
-            ctrl_data: _CtrlData = req.ctrl_data
-            if not ctrl_data.demands.find_violations():
+            if self._req_accept(req):
                 req.state = RequestState.ACTIVE
                 accepted.append(req_id)
-                self._req_accept(req)
         for req_id in accepted:
             del self.drq[req_id]
 
@@ -209,5 +260,5 @@ class ProactiveRoutingController(RoutingController):
 
 class _CtrlData:
     insts: list[PathInstructions]
-    demands: PathDemands
+    demands: PathDemands | list[PathDemands]
     iph: RoutingController.InsertedPathHandle

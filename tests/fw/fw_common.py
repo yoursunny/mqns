@@ -215,7 +215,7 @@ def build_grid_network(
         C---D
 
     Args:
-        shape: Grid shape, width and height.
+        shape: Grid shape, rows and columns.
         k_paths: If positive, use ``YenRouteAlgorithm``; otherwise, use ``DijkstraRouteAlgorithm``.
     """
     topo = GridTopology(

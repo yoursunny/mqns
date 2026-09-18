@@ -1,6 +1,6 @@
 import itertools
 from collections.abc import Callable, Iterable, Mapping, Set
-from typing import Final
+from typing import Final, final
 
 from mqns.entity.memory import QuantumMemory
 from mqns.entity.node import QNode
@@ -104,6 +104,7 @@ class ResourceUtilization:
         return demands
 
 
+@final
 class PathDemands:
     """
     Track the resource demands for one or more paths.
@@ -137,21 +138,24 @@ class PathDemands:
         """
         Determine whether committing these paths would cause resource violations.
         """
-        self.violations = {ncu.name for ncu, demand in self.demands.items() if demand > ncu.unallocated_qubits}
         return len(self.violations) > 0
 
-    def commit(self) -> None:
+    def commit(self) -> bool:
         """
-        Commit the resources for these paths.
+        Commit the resources for these paths, if possible.
 
-        Pre-conditions:
-
-        * ``find_violations()`` was called and returned no violations.
+        Returns:
+            True if there are sufficient resources and they have been committed.
+            False if there are resource violations, which may be retrieved via ``.violations``.
         """
-        assert not self.violations, "PathDemands has resource violations"
+        self.violations = {ncu.name for ncu, demand in self.demands.items() if demand > ncu.unallocated_qubits}
+        if len(self.violations) > 0:
+            return False
+
         for ncu, demand in self.demands.items():
             ncu.unallocated_qubits -= demand
             self.max_t_cohere = max(self.max_t_cohere, ncu.nu.t_cohere)
+        return True
 
     def release(self, *, cb_after: Callable[[], None]) -> None:
         """
@@ -161,7 +165,7 @@ class PathDemands:
 
         Pre-conditions:
 
-        * The resources was committed, i.e. ``commit()`` was called.
+        * The resources was committed, i.e. ``commit()`` returned True.
         """
         assert self.max_t_cohere is not Time.MIN, "PathDemands was not committed"
         simulator = self.ru.simulator
