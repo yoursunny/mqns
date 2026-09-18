@@ -94,7 +94,7 @@ def test_mtg_eager(tm: TrafficMatrixInput | TrafficMatrixMapping, src_dst: NodeP
         assert (req.src, req.dst) == src_dst
 
     for req0, req1 in itertools.pairwise(net.requests):
-        assert cast(Time, req0.active_since) <= cast(Time, req1.active_until)
+        assert req0.active_since <= req1.active_until
 
 
 class RequestCheckApp(Application[Controller]):

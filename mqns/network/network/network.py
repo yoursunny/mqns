@@ -259,8 +259,8 @@ class QuantumNetwork:
                 self._install_request(req)
 
     def _install_request(self, req: Request) -> None:
-        req.active_since = Time.from_time_or_sec(req.active_since, accuracy=self.simulator.accuracy)
-        req.active_until = Time.from_time_or_sec(req.active_until, accuracy=self.simulator.accuracy)
+        req.active_since = Time.from_time_or_sec(req._active_since_input, accuracy=self.simulator.accuracy)
+        req.active_until = Time.from_time_or_sec(req._active_until_input, accuracy=self.simulator.accuracy)
 
         t_enter = self.simulator.tc if req.active_since is Time.MIN else req.active_since
         self.simulator.sched(RequestActiveEvent(self.controller, req, t=t_enter))
