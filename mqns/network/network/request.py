@@ -59,6 +59,12 @@ class RequestState(Enum):
     This includes the time before ``active_since``.
     """
 
+    DEFERRED = auto()
+    """
+    Request is received but not yet accepted by the controller because the network has insufficient resources.
+    If resources become available, it would be accepted.
+    """
+
     REJECTED = auto()
     """
     Request is rejected by the controller because the network has insufficient resources.
