@@ -19,10 +19,12 @@ from mqns.models.epr.bell import BellStateEntanglement
 from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
 from mqns.models.epr.input import EPR_TYPE_MAP, EprTypeInput, EprTypeLiteral, parse_epr_type
 from mqns.models.epr.mixed import MixedStateEntanglement
+from mqns.models.epr.qubit_pair import EntangledQubitPair
 from mqns.models.epr.werner import WernerStateEntanglement
 
 __all__ = [
     "BellStateEntanglement",
+    "EntangledQubitPair",
     "Entanglement",
     "EntanglementInitKwargs",
     "EPR_TYPE_MAP",

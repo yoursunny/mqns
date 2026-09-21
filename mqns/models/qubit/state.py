@@ -106,7 +106,7 @@ class QState:
             except ValueError:
                 raise RuntimeError("qubit not in state")
 
-        self.rho = qubit_rho_remove(self.rho, idx, self.num)
+        self.rho = qubit_rho_remove(self.rho, [idx], self.num)
         self.qubits.remove(qubit)
 
         qubit.state = QState([qubit], state=state)
