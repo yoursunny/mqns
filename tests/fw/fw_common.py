@@ -11,7 +11,7 @@ from mqns.entity.memory import QubitState
 from mqns.entity.node import Application, Controller, Node, QNode
 from mqns.entity.qchannel import LinkArchAlways, LinkArchDimBk, QuantumChannelInitKwargs
 from mqns.models.epr import Entanglement, WernerStateEntanglement
-from mqns.network.fw import Forwarder, ForwarderInitKwargs, RoutingController
+from mqns.network.fw import Forwarder, ForwarderInitKwargs
 from mqns.network.fw.fw_swap import ForwarderSwapProc
 from mqns.network.network import QuantumNetwork, TimingMode, TimingModeAsync, TimingPhase, sync_phase_handler
 from mqns.network.proactive import (
@@ -74,9 +74,9 @@ class BuildNetworkArgs(TypedDict, total=False):
     ch_capacity: int  # quantum channel capacity, defaults to 1
     qchannel_args: QuantumChannelInitKwargs
     cchannel_args: ClassicChannelInitKwargs
-    ctrl: RoutingController  # replacing controller application
     fw: ForwarderInitKwargs  # forwarder parameters (`p_swap` defaults to 0.5)
-    mux: MuxSchemeInput  # multiplexing scheme for proactive forwarder
+    mux: MuxSchemeInput  # multiplexing scheme for proactive forwarder/controller
+    drq_cap: int  # proactive controller deferred request queue capacity
     swap_table_leak_tol: int  # ForwarderSwapProc memory leak tolerance
     end_time: float  # simulation end time, defaults to 10.0 seconds
     timing: TimingMode  # network timing mode, defaults to ASYNC
@@ -126,12 +126,11 @@ def _build_network_finish(
 
     ch_capacity = d.get("ch_capacity", 1)
 
-    if (ctrl := d.get("ctrl")) is None:
-        match d.get("mode", "P"):
-            case "P":
-                ctrl = ProactiveRoutingController(mux=d.get("mux"))
-            case "R":
-                ctrl = ReactiveRoutingController()
+    match d.get("mode", "P"):
+        case "P":
+            ctrl = ProactiveRoutingController(mux=d.get("mux"), drq_cap=d.get("drq_cap", 0))
+        case "R":
+            ctrl = ReactiveRoutingController()
     topo.controller = Controller("ctrl", apps=[ctrl])
 
     net = QuantumNetwork(
@@ -216,7 +215,7 @@ def build_grid_network(
         C---D
 
     Args:
-        shape: Grid shape, width and height.
+        shape: Grid shape, rows and columns.
         k_paths: If positive, use ``YenRouteAlgorithm``; otherwise, use ``DijkstraRouteAlgorithm``.
     """
     topo = GridTopology(

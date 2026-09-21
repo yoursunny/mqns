@@ -1,6 +1,6 @@
 import itertools
-from collections.abc import Iterable, Mapping
-from typing import Final
+from collections.abc import Callable, Iterable, Mapping, Set
+from typing import Final, final
 
 from mqns.entity.memory import QuantumMemory
 from mqns.entity.node import QNode
@@ -104,15 +104,17 @@ class ResourceUtilization:
         return demands
 
 
+@final
 class PathDemands:
     """
     Track the resource demands for one or more paths.
     """
 
+    violations: Set[str] = frozenset(["#UNKNOWN"])
+
     def __init__(self, ru: ResourceUtilization):
         self.ru: Final = ru
         self.demands: Final[dict[NodeChannelUtilization, int]] = {}
-        self.violations: Final = set[str]()
         self.max_t_cohere = Time.MIN
 
     def __repr__(self) -> str:
@@ -130,32 +132,32 @@ class PathDemands:
 
     def _add_node(self, node: str, neighbor: str, n: int) -> None:
         ncu = self.ru.nodes[node].channels[neighbor]
-        demand = self.demands.get(ncu, 0) + n
-        if demand > ncu.unallocated_qubits:
-            self.violations.add(ncu.name)
-        self.demands[ncu] = demand
+        self.demands[ncu] = self.demands.get(ncu, 0) + n
 
-    @property
-    def has_violation(self) -> bool:
+    def find_violations(self) -> bool:
         """
-        Return whether committing these paths would cause resource violations.
+        Determine whether committing these paths would cause resource violations.
         """
         return len(self.violations) > 0
 
-    def commit(self) -> None:
+    def commit(self) -> bool:
         """
-        Commit the resources for these paths.
+        Commit the resources for these paths, if possible.
 
-        Pre-conditions:
-
-        * There is no resource violations, i.e. ``has_violation is False``.
+        Returns:
+            True if there are sufficient resources and they have been committed.
+            False if there are resource violations, which may be retrieved via ``.violations``.
         """
-        assert not self.has_violation, "PathDemands has resource violations"
+        self.violations = {ncu.name for ncu, demand in self.demands.items() if demand > ncu.unallocated_qubits}
+        if len(self.violations) > 0:
+            return False
+
         for ncu, demand in self.demands.items():
             ncu.unallocated_qubits -= demand
             self.max_t_cohere = max(self.max_t_cohere, ncu.nu.t_cohere)
+        return True
 
-    def release(self) -> None:
+    def release(self, *, cb_after: Callable[[], None]) -> None:
         """
         Release the resources for these paths.
 
@@ -163,13 +165,14 @@ class PathDemands:
 
         Pre-conditions:
 
-        * The resources was committed, i.e. ``commit()`` was called.
+        * The resources was committed, i.e. ``commit()`` returned True.
         """
         assert self.max_t_cohere is not Time.MIN, "PathDemands was not committed"
         simulator = self.ru.simulator
         fib_erase_delay = to_fib_erase_delay(self.max_t_cohere)
-        simulator.sched(func_to_event(simulator.tc + fib_erase_delay, self._revert))
+        simulator.sched(func_to_event(simulator.tc + fib_erase_delay, self._revert, cb_after))
 
-    def _revert(self) -> None:
+    def _revert(self, cb_after: Callable[[], None]) -> None:
         for ncu, demand in self.demands.items():
             ncu.unallocated_qubits += demand
+        cb_after()

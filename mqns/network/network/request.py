@@ -59,6 +59,12 @@ class RequestState(Enum):
     This includes the time before ``active_since``.
     """
 
+    DEFERRED = auto()
+    """
+    Request is received but not yet accepted by the controller because the network has insufficient resources.
+    If resources become available, it would be accepted.
+    """
+
     REJECTED = auto()
     """
     Request is rejected by the controller because the network has insufficient resources.
@@ -91,15 +97,15 @@ class Request:
     state: RequestState = RequestState.NEW
     """Request state."""
 
-    active_since: Time | float
+    active_since: Time = Time.SENTINEL
     """
     Active period lower bound (inclusive), ``Time.MIN`` means no restriction.
-    This field is guaranteed to be ``Time`` after the request is added to a network and a simulator is installed.
+    This field is defined after the request is added to a network and a simulator is installed.
     """
-    active_until: Time | float
+    active_until: Time = Time.SENTINEL
     """
     Active period upper bound (exclusive), ``Time.MAX`` means no restriction.
-    This field is guaranteed to be ``Time`` after the request is added to a network and a simulator is installed.
+    This field is defined after the request is added to a network and a simulator is installed.
     """
     inactive_event: Final[EventHandleSlot["RequestInactiveEvent"]]
     """
@@ -153,7 +159,7 @@ class Request:
             self.rp = arg1
             self.src, self.dst = self.rp.src, self.rp.dst
 
-        self.active_since, self.active_until = kwargs.get("active_period", (Time.MIN, Time.MAX))
+        self._active_since_input, self._active_until_input = kwargs.get("active_period", (Time.MIN, Time.MAX))
 
         self.epr_count = kwargs.get("epr_count", -1)
         if self.epr_count > 0:
@@ -201,7 +207,13 @@ class Request:
         return self.rp.req_id if self.rp else self.rp_args.get("req_id", -1)
 
     def __repr__(self) -> str:
-        tokens = [f"{self.src}-{self.dst}", self.state.name, f"active_period={self.active_since}-{self.active_until}"]
+        tokens = [
+            f"{self.src}-{self.dst}",
+            self.state.name,
+            f"active_period="
+            f"{self._active_since_input if self.active_since is Time.SENTINEL else self.active_since}-"
+            f"{self._active_until_input if self.active_until is Time.SENTINEL else self.active_until}",
+        ]
         if self.epr_count > 0:
             tokens.append(f"epr_count={self.epr_count}")
         return f"Request({', '.join(tokens)})"

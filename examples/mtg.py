@@ -42,9 +42,9 @@ from tap import Tap
 
 from mqns.network.builder import NetworkBuilder, tap_configure
 from mqns.network.network import MatrixTrafficGenerator, QuantumNetwork, Request, TrafficMatrixMapping
-from mqns.network.proactive import MuxSchemeLiteral, mux_scheme_is_buffer_space
+from mqns.network.proactive import MuxSchemeLiteral
 from mqns.network.protocol.consumer import RequestCounters
-from mqns.simulator import Simulator, Time
+from mqns.simulator import Simulator
 from mqns.utils import log, rng, seed_env
 
 from examples_common.topo_multiplexing import END_NODES, define_topo
@@ -125,7 +125,7 @@ def run_simulation(seed: int, args: Args, tm: NetTrafficDef) -> Result:
         net,
         cast(TrafficMatrixMapping, tm["matrix"]),
         sched="eager",
-        rp_args={"bufferspace_mv": 1 if mux_scheme_is_buffer_space(args.mux) else "none"},
+        rp_args={"bufferspace_mv": 1},
         rate=args.rate,
         duration=tm["duration"],
         epr_count=tm["epr_count"],
@@ -156,16 +156,14 @@ def save_csv(args: Args, result: Result) -> None:
             )
         )
         for req, cnt in result:
-            active_since = cast(Time, req.active_since)
-            active_until = cast(Time, req.active_until)
-            lat_first, lat_last = cnt.get_latency(active_since)
+            lat_first, lat_last = cnt.get_latency(req.active_since)
             w.writerow(
                 (
                     req.req_id,
                     req.src,
                     req.dst,
-                    active_since,
-                    active_until,
+                    req.active_since,
+                    req.active_until,
                     req.epr_count,
                     req.state.name,
                     cnt.n_consumed,

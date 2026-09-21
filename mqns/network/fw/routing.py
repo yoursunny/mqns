@@ -9,6 +9,19 @@ from mqns.network.fw.swap_sequence import SwapSequenceInput, parse_swap_sequence
 from mqns.network.route import RouteQueryResult
 from mqns.simulator import Time
 
+type MultipathOption = Literal["all", "any"]
+"""
+How to use multiple static or computed routes, defaults to "all".
+
+* "all": All routes are installed, each under a separate ``path_id``.
+         Each route can complete swaps and deliver entanglements for the request.
+         If there are insufficient network resources for all of the routes,
+         the request would be deferred or rejected.
+* "any": Only one route is installed, depending on available network resources.
+         If there are insufficient network resources for any of the routes,
+         the request would be deferred or rejected.
+"""
+
 type MultiplexingVectorInput = Literal["max"] | int | MultiplexingVector
 """
 Buffer-space multiplexing vector or how to generate them.
@@ -29,10 +42,9 @@ Buffer-space multiplexing vector or how to generate them.
 class RoutingPathInitArgs(TypedDict, total=False):
     req_id: int
     """Request identifier, defaults to auto-assignment."""
-    static: Sequence[Sequence[str]]
+    multipath: MultipathOption
     """
-    One or more static routes.
-    If present, routing algorithm is not queried.
+    How to use multiple routes, defaults to "all".
     """
     bufferspace_mv: MultiplexingVectorInput
     """
@@ -99,6 +111,11 @@ class RoutingPath:
     If non-empty, routing algorithm is not queried.
     """
 
+    multipath: Final[MultipathOption]
+    """
+    How to use multiple routes, defaults to "all".
+    """
+
     bufferspace_mv: Final[MultiplexingVectorInput]
     """
     Buffer-space multiplexing vector or how to generate them.
@@ -120,8 +137,6 @@ class RoutingPath:
     Purification scheme.
     """
 
-    _computed_paths: Sequence[PathInstructions] | None = None
-
     def __init__(self, src: str, dst: str, /, **kwargs: Unpack[RoutingPathInitArgs]):
         """
         Constructor.
@@ -133,18 +148,11 @@ class RoutingPath:
         self.src = src
         self.dst = dst
         self.req_id = kwargs.get("req_id", -1)
+        self.multipath = kwargs.get("multipath", "all")
         self.bufferspace_mv = kwargs.get("bufferspace_mv", "max")
         self.swap = kwargs.get("swap") or "asap"
         self.swap_cutoff = kwargs.get("swap_cutoff")
         self.purif = dict(kwargs.get("purif") or {})
-
-        if static_paths := kwargs.get("static"):
-            self.static_paths = []
-            for p in static_paths:
-                path = list(p)
-                assert path[0] == self.src
-                assert path[-1] == self.dst
-                self.static_paths.append(path)
 
     @staticmethod
     def static(*paths: Sequence[str], **kwargs: Unpack[RoutingPathInitArgs]) -> "RoutingPath":
@@ -154,8 +162,14 @@ class RoutingPath:
         ``src`` and ``dst`` are automatically extracted from the given paths.
         All paths must have the same two end nodes.
         """
-        kwargs["static"] = paths
-        return RoutingPath(paths[0][0], paths[0][-1], **kwargs)
+        rp = RoutingPath(paths[0][0], paths[0][-1], **kwargs)
+        rp.static_paths = []
+        for p in paths:
+            path = list(p)
+            assert path[0] == rp.src
+            assert path[-1] == rp.dst
+            rp.static_paths.append(path)
+        return rp
 
     def compute_paths(self, ctx: ComputeRoutesContext) -> list[PathInstructions]:
         """
@@ -163,7 +177,7 @@ class RoutingPath:
 
         Pre-conditions:
 
-        * ``self.req_id`` is assigned to non-negative values.
+        * ``self.req_id`` is assigned to a non-negative value.
 
         Returns:
             List of path instructions with ``route``, ``ll_dir``, ``swap``, ``swap_cutoff``, ``purif`` fields filled.
