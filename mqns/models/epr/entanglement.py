@@ -28,11 +28,12 @@
 import hashlib
 from abc import abstractmethod
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Self, TypedDict, Unpack, cast
+from enum import Enum, auto
+from typing import TYPE_CHECKING, Any, Self, TypedDict, Unpack, cast
 
 import numpy as np
 
-from mqns.models.core import QuantumModel
+from mqns.models.core import BASIS_Z, Basis, QuantumModel
 from mqns.models.core.state import QUBIT_STATE_P, QubitRho, build_qubit_state, qubit_state_to_rho
 from mqns.models.error import ErrorModel, PerfectErrorModel, TimeDecayFunc, time_decay_nop
 from mqns.models.qubit import QState, Qubit
@@ -58,6 +59,11 @@ class EntanglementInitKwargs(TypedDict, total=False):
     dst: "QNode|None"
     mem_keys: tuple[str | None, str | None]
     store_decays: tuple[TimeDecayFunc | None, TimeDecayFunc | None]
+
+
+class PurifProtocol(Enum):
+    BBPSSW = auto()
+    DEJMPS = auto()
 
 
 class Entanglement(QuantumModel):
@@ -230,7 +236,7 @@ class Entanglement(QuantumModel):
         assert epr0.dst is epr1.src  # it's okay for src and dst to be None
 
         orig_eprs: list[E] = []
-        for epr in (epr0, epr1):
+        for epr in epr0, epr1:
             epr.apply_store_decays(now)
             if epr.orig_eprs:
                 orig_eprs.extend(cast(list[E], epr.orig_eprs))
@@ -271,14 +277,23 @@ class Entanglement(QuantumModel):
         Subclass implementation should calculate the fidelity of new entanglement.
         """
 
-    def purify(self, epr1: Self, *, now: Time) -> bool:
+    def purify(
+        self,
+        epr1: Self,
+        *,
+        now: Time,
+        protocol: PurifProtocol = PurifProtocol.BBPSSW,
+        basis: Basis = BASIS_Z,
+    ) -> bool:
         """
         Perform purification on ``self`` consuming ``epr1``.
 
         Args:
-            self: kept entanglement.
-            epr1: consumed entanglement.
-            now: current timestamp.
+            self: Kept entanglement.
+            epr1: Consumed entanglement.
+            now: Current timestamp.
+            protocol: Distillation protocol, either BBPSSW or DEJMPS.
+            basis: Measurement basis, either ``BASIS_Z`` or ``BASIS_X``.
 
         Returns:
             Whether successful.
@@ -290,8 +305,10 @@ class Entanglement(QuantumModel):
         if self.is_decohered or epr1.is_decohered:
             return False
 
-        _ = now
-        ok = self._do_purify(epr1)
+        for epr in self, epr1:
+            epr.apply_store_decays(now)
+
+        ok = self._do_purify(epr1, protocol, basis)
 
         if not ok:
             self.is_decohered = True
@@ -300,7 +317,7 @@ class Entanglement(QuantumModel):
         return ok
 
     @abstractmethod
-    def _do_purify(self, epr1) -> bool:
+    def _do_purify(self, epr1: Any, protocol: PurifProtocol, basis: Basis) -> bool:
         pass
 
     def to_qubits(self) -> tuple[Qubit, Qubit]:

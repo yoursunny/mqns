@@ -2,8 +2,9 @@ from typing import Unpack, overload, override
 
 import numpy as np
 
+from mqns.models.core import BASIS_X, BASIS_Z, Basis
 from mqns.models.core.state import qubit_rho_remove
-from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
+from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs, PurifProtocol
 from mqns.models.error import PauliErrorModel, PerfectErrorModel
 from mqns.models.qubit import QState, Qubit
 from mqns.models.qubit.gate import CNOT, H
@@ -124,7 +125,11 @@ class EntangledQubitPair(Entanglement):
         return EntangledQubitPair(epr0.q0, q3, **kwargs)
 
     @override
-    def _do_purify(self, epr1: "EntangledQubitPair") -> bool:
+    def _do_purify(self, epr1: "EntangledQubitPair", protocol: PurifProtocol, basis: Basis) -> bool:
+        if basis not in (BASIS_Z, BASIS_X):
+            raise NotImplementedError()
+
+        _ = epr1
         raise NotImplementedError()
 
     @override

@@ -96,8 +96,8 @@ def test_swap_decohered_inputs(monkeypatch: pytest.MonkeyPatch):
 
 def test_purify_success(monkeypatch: pytest.MonkeyPatch):
     now = Time(0, accuracy=1000000)
-    e1 = WernerStateEntanglement(fidelity=0.85)
-    e2 = WernerStateEntanglement(fidelity=0.85)
+    e1 = WernerStateEntanglement(fidelity=0.85, fidelity_time=now)
+    e2 = WernerStateEntanglement(fidelity=0.85, fidelity_time=now)
 
     monkeypatch.setattr(rng, "random", lambda: 0.1)
     assert e1.purify(e2, now=now) is True
@@ -109,8 +109,8 @@ def test_purify_success(monkeypatch: pytest.MonkeyPatch):
 
 def test_purify_failure(monkeypatch: pytest.MonkeyPatch):
     now = Time(0, accuracy=1000000)
-    e1 = WernerStateEntanglement(fidelity=0.5)
-    e2 = WernerStateEntanglement(fidelity=0.5)
+    e1 = WernerStateEntanglement(fidelity=0.5, fidelity_time=now)
+    e2 = WernerStateEntanglement(fidelity=0.5, fidelity_time=now)
 
     monkeypatch.setattr(rng, "random", lambda: 0.99)
     assert e1.purify(e2, now=now) is False

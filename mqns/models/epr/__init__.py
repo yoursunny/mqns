@@ -16,7 +16,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from mqns.models.epr.bell import BellStateEntanglement
-from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
+from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs, PurifProtocol
 from mqns.models.epr.input import EPR_TYPE_MAP, EprTypeInput, EprTypeLiteral, parse_epr_type
 from mqns.models.epr.mixed import MixedStateEntanglement
 from mqns.models.epr.qubit_pair import EntangledQubitPair
@@ -32,6 +32,7 @@ __all__ = [
     "EprTypeLiteral",
     "MixedStateEntanglement",
     "parse_epr_type",
+    "PurifProtocol",
     "WernerStateEntanglement",
 ]
 

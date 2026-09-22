@@ -17,7 +17,8 @@
 
 from typing import Unpack, final, override
 
-from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
+from mqns.models.core import Basis
+from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs, PurifProtocol
 
 
 @final
@@ -41,8 +42,8 @@ class BellStateEntanglement(Entanglement):
         return BellStateEntanglement(**kwargs)
 
     @override
-    def _do_purify(self, epr1: "BellStateEntanglement") -> bool:
-        _ = epr1
+    def _do_purify(self, epr1: "BellStateEntanglement", protocol: PurifProtocol, basis: Basis) -> bool:
+        _ = epr1, protocol, basis
         return True
 
     @override

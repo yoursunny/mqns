@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from typing import Unpack, final, overload, override
 
+from mqns.models.core import BASIS_Z, Basis
 from mqns.models.core.bell_diagonal import (
     BellDiagonalProbV,
     bell_diagonal_probv_to_pauli_transfer_mat,
@@ -16,7 +17,7 @@ from mqns.models.core.state import (
     QubitRho,
     check_qubit_rho,
 )
-from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
+from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs, PurifProtocol
 from mqns.utils import rng
 
 _probv_1 = make_bell_diagonal_probv(1, 0, 0, 0)
@@ -114,10 +115,13 @@ class MixedStateEntanglement(Entanglement):
         return MixedStateEntanglement(probv=bell_diagonal_probv_to_pauli_transfer_mat(epr0.probv) @ epr1.probv, **kwargs)
 
     @override
-    def _do_purify(self, epr1: "MixedStateEntanglement") -> bool:
+    def _do_purify(self, epr1: "MixedStateEntanglement", protocol: PurifProtocol, basis: Basis) -> bool:
         """
         Perform distillation using BBPSSW protocol.
         """
+        if protocol is not PurifProtocol.DEJMPS or basis is not BASIS_Z:
+            raise NotImplementedError()
+
         i0, z0, x0, y0 = self.probv
         i1, z1, x1, y1 = epr1.probv
         p_succ = (i0 + y0) * (i1 + y1) + (z0 + x0) * (x1 + z1)

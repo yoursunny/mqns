@@ -31,8 +31,9 @@ from typing import Unpack, final, overload, override
 
 import numpy as np
 
+from mqns.models.core import Basis
 from mqns.models.core.state import BELL_RHO_PHI_P, QubitRho, check_qubit_rho
-from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs
+from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs, PurifProtocol
 from mqns.utils import rng
 
 
@@ -83,10 +84,12 @@ class WernerStateEntanglement(Entanglement):
         return WernerStateEntanglement(w=epr0.w * epr1.w, **kwargs)
 
     @override
-    def _do_purify(self, epr1: "WernerStateEntanglement") -> bool:
+    def _do_purify(self, epr1: "WernerStateEntanglement", protocol: PurifProtocol, basis: Basis) -> bool:
         """
         Perform distillation using Bennett 96 protocol and estimate lower bound.
         """
+        _ = basis, protocol
+
         fmin = min(self.fidelity, epr1.fidelity)
         expr1 = fmin**2 + 5 / 9 * (1 - fmin) ** 2 + 2 / 3 * fmin * (1 - fmin)
 
