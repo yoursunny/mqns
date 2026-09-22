@@ -1,7 +1,7 @@
 from collections.abc import Iterable
 from typing import Unpack, final, overload, override
 
-from mqns.models.core import BASIS_Z, Basis
+from mqns.models.core import BASIS_X, BASIS_Z, Basis
 from mqns.models.core.bell_diagonal import (
     BellDiagonalProbV,
     bell_diagonal_probv_to_pauli_transfer_mat,
@@ -119,24 +119,41 @@ class MixedStateEntanglement(Entanglement):
         """
         Perform distillation using BBPSSW protocol.
         """
-        if protocol is not PurifProtocol.DEJMPS or basis is not BASIS_Z:
-            raise NotImplementedError()
+        if basis not in (BASIS_Z, BASIS_X):
+            raise ValueError(f"cannot purify in {basis.name} basis")
 
         i0, z0, x0, y0 = self.probv
         i1, z1, x1, y1 = epr1.probv
-        p_succ = (i0 + y0) * (i1 + y1) + (z0 + x0) * (x1 + z1)
+
+        if protocol is PurifProtocol.BBPSSW:
+            p_succ = (i0 + z0) * (i1 + z1) + (x0 + y0) * (x1 + y1)
+            if basis is BASIS_Z:
+                new_i = i0 * i1 + z0 * z1
+                new_z = z0 * i1 + i0 * z1
+                new_x = x0 * x1 + y0 * y1
+                new_y = x0 * y1 + y0 * x1
+            else:
+                new_i = i0 * i1 + x0 * x1
+                new_z = z0 * z1 + y0 * y1
+                new_x = x0 * i1 + i0 * x1
+                new_y = z0 * y1 + y0 * z1
+        elif protocol is PurifProtocol.DEJMPS:
+            p_succ = (i0 + y0) * (i1 + y1) + (z0 + x0) * (x1 + z1)
+            new_i = i0 * i1 + y0 * y1
+            new_y = i0 * y1 + y0 * i1
+            if basis is BASIS_Z:
+                new_z = z0 * z1 + x0 * x1
+                new_x = z0 * x1 + x0 * z1
+            else:
+                new_z = x0 * z1 + z0 * x1
+                new_x = x0 * x1 + z0 * z1
+        else:
+            raise ValueError(f"cannot purify with {protocol} protocol")
+
         if p_succ <= ATOL or rng.random() > p_succ:
             return False
 
-        self.set_probv(
-            make_bell_diagonal_probv(
-                i0 * i1 + y0 * y1,
-                z0 * z1 + x0 * x1,
-                z0 * x1 + x0 * z1,
-                i0 * y1 + y0 * i1,
-            ),
-            normalize=False,
-        )
+        self.set_probv(make_bell_diagonal_probv(new_i, new_z, new_x, new_y), normalize=False)
         return True
 
     @override

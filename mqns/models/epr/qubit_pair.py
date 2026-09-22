@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from typing import Unpack, overload, override
 
 import numpy as np
@@ -7,7 +8,7 @@ from mqns.models.core.state import qubit_rho_remove
 from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs, PurifProtocol
 from mqns.models.error import PauliErrorModel, PerfectErrorModel
 from mqns.models.qubit import QState, Qubit
-from mqns.models.qubit.gate import CNOT, H
+from mqns.models.qubit.gate import CNOT, RX, H
 
 
 class EntangledQubitPair(Entanglement):
@@ -126,11 +127,44 @@ class EntangledQubitPair(Entanglement):
 
     @override
     def _do_purify(self, epr1: "EntangledQubitPair", protocol: PurifProtocol, basis: Basis) -> bool:
-        if basis not in (BASIS_Z, BASIS_X):
-            raise NotImplementedError()
+        # Rotate to X-basis if specified.
+        if basis is BASIS_X:
+            H(self.q0)
+            H(self.q1)
+            H(epr1.q0)
+            H(epr1.q1)
+        elif basis is not BASIS_Z:
+            raise ValueError(f"cannot purify in {basis.name} basis")
 
-        _ = epr1
-        raise NotImplementedError()
+        # Apply protocol-specific pre-rotations.
+        if protocol is PurifProtocol.BBPSSW:
+            pass
+        elif protocol is PurifProtocol.DEJMPS:
+            RX(self.q0, np.pi / 2)
+            RX(self.q1, -np.pi / 2)
+            RX(epr1.q0, np.pi / 2)
+            RX(epr1.q1, -np.pi / 2)
+        else:
+            raise ValueError(f"cannot purify with {protocol} protocol")
+
+        # Bilateral CNOT.
+        CNOT(self.q0, epr1.q0)
+        CNOT(self.q1, epr1.q1)
+
+        # Apply protocol-specific post-rotations to the kept pair.
+        if protocol is PurifProtocol.DEJMPS:
+            RX(self.q0, -np.pi / 2)
+            RX(self.q1, np.pi / 2)
+
+        # Rotate back from X-basis for kept pair.
+        if basis is BASIS_X:
+            H(self.q0)
+            H(self.q1)
+
+        # Measure the consumed pair to determine whether success.
+        m0 = epr1.q0.measure()
+        m1 = epr1.q1.measure()
+        return m0 == m1
 
     @override
     def apply_error(self, error) -> None:
@@ -145,3 +179,10 @@ class EntangledQubitPair(Entanglement):
             return super().to_qubits()
         self.is_decohered = True  # detaching the qubits
         return self.q0, self.q1
+
+    @override
+    def _describe_fidelity(self) -> Iterable[str]:
+        state = self.q0.state
+        yield f"rho={state.rho}"
+        yield f"idx0={state.qubits.index(self.q0)}"
+        yield f"idx1={state.qubits.index(self.q1)}"
