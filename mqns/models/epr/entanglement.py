@@ -33,11 +33,10 @@ from typing import TYPE_CHECKING, Self, TypedDict, Unpack, cast
 import numpy as np
 
 from mqns.models.core import QuantumModel
-from mqns.models.core.operator import OPERATOR_PAULI_I, Operator
 from mqns.models.core.state import QUBIT_STATE_P, QubitRho, build_qubit_state, qubit_state_to_rho
 from mqns.models.error import ErrorModel, PerfectErrorModel, TimeDecayFunc, time_decay_nop
 from mqns.models.qubit import QState, Qubit
-from mqns.models.qubit.gate import CNOT, H, U, X, Y, Z
+from mqns.models.qubit.gate import CNOT, H, X, Z
 from mqns.simulator import Time
 from mqns.utils import AutoIncrementIdentifier, rng
 
@@ -307,7 +306,7 @@ class Entanglement(QuantumModel):
     def to_qubits(self) -> tuple[Qubit, Qubit]:
         """
         Transport the entanglement into a pair of qubits based on the fidelity.
-        Maximally entanglement returns ``|Φ+>`` state.
+        Maximal entanglement returns ``|Φ+>`` state.
 
         Returns:
             A tuple of two qubits.
@@ -315,7 +314,7 @@ class Entanglement(QuantumModel):
         if self.is_decohered:
             q0 = Qubit(QUBIT_STATE_P, name="q0")
             q1 = Qubit(QUBIT_STATE_P, name="q1")
-            return (q0, q1)
+            return q0, q1
 
         q0 = Qubit(name="q0")
         q1 = Qubit(name="q1")
@@ -324,7 +323,7 @@ class Entanglement(QuantumModel):
         q1.state = qs
 
         self.is_decohered = True
-        return (q0, q1)
+        return q0, q1
 
     def _to_qubits_rho(self) -> QubitRho:
         a = np.sqrt(self.fidelity / 2)
@@ -334,21 +333,34 @@ class Entanglement(QuantumModel):
 
     def teleportation(self, qubit: Qubit) -> Qubit:
         """
-        Use ``self`` and ``qubit`` to perform teleportation.
+        Teleport the state of ``qubit`` to the remote half of this entangled pair.
+
+        Args:
+            qubit: The qubit whose state is to be teleported.
+                   It shall be co-located with the first qubit in ``self.to_qubits()``.
+
+        Post-condition and return value:
+
+        * ``qubit`` is consumed.
+        * The entanglement is consumed / decohered.
+        * Returned qubit has same state as input ``qubit``.
+          It is co-located with the second qubit from ``self.to_qubits()``.
         """
+        q0 = qubit
         q1, q2 = self.to_qubits()
-        CNOT(qubit, q1)
-        H(qubit)
-        c0 = qubit.measure()
-        c1 = q1.measure()
-        if c1 == 1 and c0 == 0:
+
+        # Perform Bell state measurement on the local half.
+        CNOT(q0, q1)
+        H(q0)
+        m0 = q0.measure()
+        m1 = q1.measure()
+
+        # Apply Pauli corrections on the remote half.
+        if m1 == 1:
             X(q2)
-        elif c1 == 0 and c0 == 1:
+        if m0 == 1:
             Z(q2)
-        elif c1 == 1 and c0 == 1:
-            Y(q2)
-            U(q2, Operator(np.complex128(1j) * OPERATOR_PAULI_I.u, 1))
-        self.is_decohered = True
+
         return q2
 
     def __repr__(self) -> str:
