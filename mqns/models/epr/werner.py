@@ -51,10 +51,12 @@ _w_1 = _fidelity_to_w(1.0)
 
 @final
 class WernerStateEntanglement(Entanglement):
-    """A pair of entangled qubits in Werner State with a hidden-variable."""
+    """
+    Werner state entanglement model.
+    """
 
     @overload
-    def __init__(self, *, fidelity: float = 1.0, **kwargs: Unpack[EntanglementInitKwargs]):
+    def __init__(self, *, fidelity=1.0, **kwargs: Unpack[EntanglementInitKwargs]):
         """Construct with fidelity."""
 
     @overload
@@ -85,9 +87,6 @@ class WernerStateEntanglement(Entanglement):
 
     @override
     def _do_purify(self, epr1: "WernerStateEntanglement", protocol: PurifProtocol, basis: Basis) -> bool:
-        """
-        Perform distillation using Bennett 96 protocol and estimate lower bound.
-        """
         _ = basis, protocol  # Note: DEJMPS on isotropic Werner states yields identical math to BBPSSW
 
         f0 = self.fidelity

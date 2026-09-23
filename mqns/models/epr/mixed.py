@@ -25,7 +25,9 @@ _probv_1 = make_bell_diagonal_probv(1, 0, 0, 0)
 
 @final
 class MixedStateEntanglement(Entanglement):
-    """A pair of entangled qubits in Bell-Diagonal State with a hidden-variable."""
+    """
+    Bell-Diagonal state entanglement model.
+    """
 
     @overload
     def __init__(self, *, fidelity=1.0, **kwargs: Unpack[EntanglementInitKwargs]):
@@ -99,9 +101,9 @@ class MixedStateEntanglement(Entanglement):
         Update probability vector.
 
         Args:
-            probv: new probability vector.
-            normalize: if False, assume ``probv`` is already normalized.
-            copy: if False, ``probv`` may be normalized in-place.
+            probv: New probability vector.
+            normalize: If False, assume ``probv`` is already normalized.
+            copy: If False, ``probv`` may be normalized in-place.
         """
         if normalize:
             if copy:
@@ -116,9 +118,6 @@ class MixedStateEntanglement(Entanglement):
 
     @override
     def _do_purify(self, epr1: "MixedStateEntanglement", protocol: PurifProtocol, basis: Basis) -> bool:
-        """
-        Perform distillation using BBPSSW protocol.
-        """
         if basis not in (BASIS_Z, BASIS_X):
             raise ValueError(f"cannot purify in {basis.name} basis")
 

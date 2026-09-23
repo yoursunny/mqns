@@ -36,8 +36,7 @@ import numpy as np
 from mqns.models.core import BASIS_Z, Basis, QuantumModel
 from mqns.models.core.state import QUBIT_STATE_P, QubitRho, build_qubit_state, qubit_state_to_rho
 from mqns.models.error import ErrorModel, PerfectErrorModel, TimeDecayFunc, time_decay_nop
-from mqns.models.qubit import QState, Qubit
-from mqns.models.qubit.gate import CNOT, H, X, Z
+from mqns.models.qubit import CNOT, H, Qubit, X, Z
 from mqns.simulator import Time
 from mqns.utils import AutoIncrementIdentifier, rng
 
@@ -322,24 +321,22 @@ class Entanglement(QuantumModel):
 
     def to_qubits(self) -> tuple[Qubit, Qubit]:
         """
-        Transport the entanglement into a pair of qubits based on the fidelity.
+        Transport the entanglement into a pair of qubits.
         Maximal entanglement returns ``|Φ+>`` state.
+
+        Post-condition:
+
+        * The entanglement is marked as decohered.
 
         Returns:
             A tuple of two qubits.
         """
         if self.is_decohered:
-            q0 = Qubit(QUBIT_STATE_P, name="q0")
-            q1 = Qubit(QUBIT_STATE_P, name="q1")
-            return q0, q1
-
-        q0 = Qubit(name="q0")
-        q1 = Qubit(name="q1")
-        qs = QState([q0, q1], rho=self._to_qubits_rho())
-        q0.state = qs
-        q1.state = qs
-
-        self.is_decohered = True
+            q0 = Qubit(QUBIT_STATE_P)
+            q1 = Qubit(QUBIT_STATE_P)
+        else:
+            q0, q1 = Qubit.create_multi(2, rho=self._to_qubits_rho())
+            self.is_decohered = True
         return q0, q1
 
     def _to_qubits_rho(self) -> QubitRho:

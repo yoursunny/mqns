@@ -4,11 +4,10 @@ from typing import Unpack, final, overload, override
 import numpy as np
 
 from mqns.models.core import BASIS_X, BASIS_Z, Basis
-from mqns.models.core.state import qubit_rho_remove
+from mqns.models.core.state import BELL_RHO_PHI_P, qubit_rho_remove
 from mqns.models.epr.entanglement import Entanglement, EntanglementInitKwargs, PurifProtocol
 from mqns.models.error import PauliErrorModel, PerfectErrorModel
-from mqns.models.qubit import QState, Qubit
-from mqns.models.qubit.gate import CNOT, RX, H
+from mqns.models.qubit import CNOT, RX, H, QState, Qubit
 
 
 @final
@@ -40,10 +39,7 @@ class EntangledQubitPair(Entanglement):
             QState.joint(*qubits)
             self.q0, self.q1 = qubits
         else:
-            self.q0 = Qubit()
-            self.q1 = Qubit()
-            H(self.q0)
-            CNOT(self.q0, self.q1)
+            self.q0, self.q1 = Qubit.create_multi(2, rho=BELL_RHO_PHI_P)
 
     @staticmethod
     def move_from(epr: Entanglement) -> "EntangledQubitPair":

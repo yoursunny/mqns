@@ -92,13 +92,14 @@ def check_qubit_rho(rho: np.ndarray, n=1, *, maybe_zero=False) -> QubitRho:
 
     Args:
         rho: NDArray.
-        n: expected number of qubits.
-        maybe_zero: if True, don't error if the matrix is all zeros.
+        n: Expected number of qubits.
+        maybe_zero: If True, don't error if the matrix is all zeros.
 
     Raises:
         AssertionError: ``rho`` has wrong shape or is not normalized.
 
-    Returns: Validated input.
+    Returns:
+        Validated input.
     """
     _check_rho_shape(rho, n)
     # Unit Trace: the sum of the diagonal elements must be exactly 1,
@@ -122,13 +123,14 @@ def normalize_qubit_rho(rho: np.ndarray, n=1, *, maybe_zero=False) -> QubitRho:
 
     Args:
         rho: NDArray.
-        n: expected number of qubits.
-        maybe_zero: if True, don't error if the matrix is all zeros.
+        n: Expected number of qubits.
+        maybe_zero: If True, don't error if the matrix is all zeros.
 
     Raises:
         AssertionError: ``rho`` has wrong shape.
 
-    Returns: Validated input.
+    Returns:
+        Validated input.
     """
     _check_rho_shape(rho, n)
 
@@ -161,8 +163,8 @@ def qubit_rho_to_state(rho: QubitRho, n=1) -> QubitState | None:
     Convert density matrix to state vector.
 
     Args:
-        rho: density matrix.
-        n: number of qubits.
+        rho: Density matrix.
+        n: Number of qubits.
 
     Returns:
         * State vector if ``rho`` represents a pure state.

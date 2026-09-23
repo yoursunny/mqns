@@ -5,8 +5,7 @@ import pytest
 from mqns.models.core import BASIS_X, BASIS_Z, Basis
 from mqns.models.epr import EntangledQubitPair, Entanglement, MixedStateEntanglement, PurifProtocol, WernerStateEntanglement
 from mqns.models.error import DepolarErrorModel, parse_time_decay
-from mqns.models.qubit import QState, Qubit
-from mqns.models.qubit.gate import CNOT, H
+from mqns.models.qubit import CNOT, H, QState, Qubit
 from mqns.simulator import Time
 from mqns.utils import rng
 
