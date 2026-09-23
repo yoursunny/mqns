@@ -282,7 +282,7 @@ class Entanglement(QuantumModel):
         epr1: Self,
         *,
         now: Time,
-        protocol: PurifProtocol = PurifProtocol.BBPSSW,
+        protocol: PurifProtocol = PurifProtocol.DEJMPS,
         basis: Basis = BASIS_Z,
     ) -> bool:
         """

@@ -88,15 +88,17 @@ class WernerStateEntanglement(Entanglement):
         """
         Perform distillation using Bennett 96 protocol and estimate lower bound.
         """
-        _ = basis, protocol
+        _ = basis, protocol  # Note: DEJMPS on isotropic Werner states yields identical math to BBPSSW
 
-        fmin = min(self.fidelity, epr1.fidelity)
-        expr1 = fmin**2 + 5 / 9 * (1 - fmin) ** 2 + 2 / 3 * fmin * (1 - fmin)
+        f0 = self.fidelity
+        f1 = epr1.fidelity
 
-        if rng.random() > expr1:
+        p_succ = f0 * f1 + (1 / 3) * f0 * (1 - f1) + (1 / 3) * f1 * (1 - f0) + (5 / 9) * (1 - f0) * (1 - f1)
+
+        if rng.random() > p_succ:
             return False
 
-        self.fidelity = (fmin**2 + (1 - fmin) ** 2 / 9) / expr1
+        self.fidelity = (f0 * f1 + (1 - f0) * (1 - f1) / 9) / p_succ
         return True
 
     @override

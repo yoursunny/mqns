@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from typing import Unpack, overload, override
+from typing import Unpack, final, overload, override
 
 import numpy as np
 
@@ -11,6 +11,7 @@ from mqns.models.qubit import QState, Qubit
 from mqns.models.qubit.gate import CNOT, RX, H
 
 
+@final
 class EntangledQubitPair(Entanglement):
     """
     Entanglement model represented with two ``Qubit`` instances.

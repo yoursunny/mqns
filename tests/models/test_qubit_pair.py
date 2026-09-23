@@ -11,6 +11,10 @@ from mqns.simulator import Time
 from mqns.utils import rng
 
 
+def _make_qubit_pair_from_mixed_state(**kwargs):
+    return EntangledQubitPair.move_from(MixedStateEntanglement(**kwargs))
+
+
 @pytest.mark.parametrize("epr_type", [EntangledQubitPair, WernerStateEntanglement, MixedStateEntanglement])
 def test_fidelity_error(epr_type: type[Entanglement]):
     """
@@ -75,23 +79,25 @@ def test_fidelity_move(epr_type: type[Entanglement], decohered: bool):
         assert epr1.fidelity == pytest.approx(0.925, abs=1e-6)
 
 
-@pytest.mark.parametrize("converted", [False, True])
 @pytest.mark.parametrize("reversed", [False, True])
-def test_swap(converted: bool, reversed: bool):
+@pytest.mark.parametrize("epr_type", ["M", "Q"])
+def test_swap(epr_type: Literal["M", "Q"], reversed: bool):
     """
     Verify that swapping ``EntangledQubitPair`` and ``MixedStateEntanglement`` yield the same fidelity.
     Note that we cannot compare with ``WernerStateEntanglement`` because the memory ``DephaseErrorModel``
     would become depolarization on Werner state, which reduces fidelity differently.
     """
     t0 = Time.from_sec(0.0, accuracy=1000000)
-    mem_dt = Time.from_sec(1.0, accuracy=1000000)  # memory dephasing time: 1 second
-    dephase = parse_time_decay(None, mem_dt)
+    t_cohere = Time.from_sec(1.0, accuracy=1000000)  # memory dephasing time: 1 second
+    decay = parse_time_decay(None, t_cohere)
 
-    epr0 = MixedStateEntanglement(fidelity=0.94, fidelity_time=t0, decohere_time=t0 + mem_dt, store_decays=(dephase, dephase))
-    epr1 = MixedStateEntanglement(fidelity=0.91, fidelity_time=t0, decohere_time=t0 + mem_dt, store_decays=(dephase, dephase))
-    if converted:
-        epr0 = EntangledQubitPair.move_from(epr0)
-        epr1 = EntangledQubitPair.move_from(epr1)
+    if epr_type == "M":
+        make_epr = MixedStateEntanglement
+    else:
+        make_epr = _make_qubit_pair_from_mixed_state
+
+    epr0 = make_epr(fidelity=0.94, fidelity_time=t0, decohere_time=t0 + t_cohere, store_decays=(decay, decay))
+    epr1 = make_epr(fidelity=0.91, fidelity_time=t0, decohere_time=t0 + t_cohere, store_decays=(decay, decay))
     if reversed:
         epr0, epr1 = epr1, epr0
 
@@ -101,29 +107,39 @@ def test_swap(converted: bool, reversed: bool):
 
 
 @pytest.mark.parametrize("rng_success", [False, True])
-@pytest.mark.parametrize("converted", [False, True])
 @pytest.mark.parametrize(
-    ("proto", "basis", "store_decay", "expected_fidelity"),
+    ("epr_type", "store_decay"),
     [
-        (PurifProtocol.BBPSSW, BASIS_Z, "PERFECT", 0.946065),
-        (PurifProtocol.BBPSSW, BASIS_Z, None, 0.744208),
-        (PurifProtocol.BBPSSW, BASIS_X, "PERFECT", 0.946065),
-        (PurifProtocol.BBPSSW, BASIS_X, None, 0.907167),
-        (PurifProtocol.DEJMPS, BASIS_Z, "PERFECT", 0.946065),
-        (PurifProtocol.DEJMPS, BASIS_Z, None, 0.907167),
-        (PurifProtocol.DEJMPS, BASIS_X, "PERFECT", 0.946065),
-        (PurifProtocol.DEJMPS, BASIS_X, None, 0.907167),
+        ("W", "PERFECT"),
+        ("M", "PERFECT"),
+        ("M", None),
+        ("Q", "PERFECT"),
+        ("Q", None),
+    ],
+)
+@pytest.mark.parametrize(
+    ("proto", "basis", "perfect_fidelity", "dephase_fidelity"),
+    [
+        pytest.param(PurifProtocol.BBPSSW, BASIS_Z, 0.946065, 0.744208, id="BBPSSW-Z"),
+        pytest.param(PurifProtocol.BBPSSW, BASIS_X, 0.946065, 0.907167, id="BBPSSW-X"),
+        pytest.param(PurifProtocol.DEJMPS, BASIS_Z, 0.946065, 0.907167, id="DEJMPS-Z"),
+        pytest.param(PurifProtocol.DEJMPS, BASIS_X, 0.946065, 0.907167, id="DEJMPS-X"),
     ],
 )
 def test_purify(
     monkeypatch: pytest.MonkeyPatch,
     rng_success: bool,
-    converted: bool,
+    epr_type: Literal["W", "M", "Q"],
     proto: PurifProtocol,
     basis: Basis,
     store_decay: Literal["PERFECT", None],
-    expected_fidelity: float,
+    perfect_fidelity: float,
+    dephase_fidelity: float,
 ):
+    """
+    Verify that purification on each entanglement model yields the same fidelity.
+    """
+
     def new_random() -> float:
         nonlocal randoms
         rnd, *randoms = randoms
@@ -132,23 +148,25 @@ def test_purify(
     randoms: list[float] = []
     monkeypatch.setattr(rng, "random", new_random)
 
+    if epr_type == "W":
+        make_epr = WernerStateEntanglement
+        randoms += [0] if rng_success else [1]
+    elif epr_type == "M":
+        make_epr = MixedStateEntanglement
+        randoms += [0] if rng_success else [1]
+    else:
+        make_epr = _make_qubit_pair_from_mixed_state
+        randoms += [1, 1] if rng_success else [1, 0]
+
     t0 = Time.from_sec(0.000, accuracy=1000000)
     t1 = Time.from_sec(0.010, accuracy=1000000)
     t_cohere = Time.from_sec(0.100, accuracy=1000000)
     decay = parse_time_decay(store_decay, t_cohere)
-
-    epr0 = MixedStateEntanglement(fidelity=0.94, fidelity_time=t0, decohere_time=t0 + t_cohere, store_decays=(decay, decay))
-    epr1 = MixedStateEntanglement(fidelity=0.91, fidelity_time=t1, decohere_time=t1 + t_cohere, store_decays=(decay, decay))
-
-    if converted:
-        epr0 = EntangledQubitPair.move_from(epr0)
-        epr1 = EntangledQubitPair.move_from(epr1)
-        randoms += [1, 1] if rng_success else [1, 0]
-    else:
-        randoms += [0] if rng_success else [1]
+    epr0 = make_epr(fidelity=0.94, fidelity_time=t0, decohere_time=t0 + t_cohere, store_decays=(decay, decay))
+    epr1 = make_epr(fidelity=0.91, fidelity_time=t1, decohere_time=t1 + t_cohere, store_decays=(decay, decay))
 
     success = epr0.purify(cast(Any, epr1), now=Time.from_sec(0.020, accuracy=1000000), protocol=proto, basis=basis)
     assert epr1.is_decohered
     assert success is rng_success
     if success:
-        assert epr0.fidelity == pytest.approx(expected_fidelity)
+        assert epr0.fidelity == pytest.approx(perfect_fidelity if store_decay == "PERFECT" else dephase_fidelity)
