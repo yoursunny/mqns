@@ -80,7 +80,7 @@ class ClassicConnector:
     When the simulator reaches the gate, it would notify the external program by publishing:
 
     * Subject: ``<PREFIX>.O._.gate``
-    * Header ``t``: stop time in simulation time slots
+    * Header ``t``: reached time in simulation time slots
 
     The external program may stop the simulator by publishing:
 
